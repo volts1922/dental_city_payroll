@@ -279,7 +279,7 @@ tbody td{padding:9px 12px;color:var(--text);white-space:nowrap;}
       <button class="modal-close" onclick="closeModal()">×</button>
     </div>
     <div class="modal-body" id="modalBody"></div>
-    <div class="modal-footer"><button class="btn btn-primary" id="modalSave" onclick="saveModal()">💾 Save</button></div>
+    <div class="modal-footer"><button class="btn btn-primary" id="modalSave" onclick="this.disabled=true;saveModal();setTimeout(()=>{if(this)this.disabled=false;},1500)">💾 Save</button></div>
   </div>
 </div>
 
@@ -382,10 +382,11 @@ async function loadAllBranchesFromCloud(){
     });
     // Fill in empty default branches so they still show
     ALL_BRANCHES.forEach(b=>{ if(!_ownerData[b]) _ownerData[b]={}; });
-    console.log('[Owner] Loaded branches:', Object.keys(_ownerData));
     return true;
   }catch(e){
-    console.error('Load all branches error:',e);
+    const msg = e?.message || e?.error_description || JSON.stringify(e) || 'Unknown error';
+    toast(`⚠ Load branches failed: ${msg}`, 5000);
+    setSyncBar('err', '⚠ Load failed — ' + msg.slice(0,40));
     return false;
   }
 }
@@ -479,14 +480,30 @@ const USERS = {
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 let currentRole = null, currentUser = null;
 
+// ── Password hashing ─────────────────────────────────────────────────────────
+async function _sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function _migratePasswords(){
+  for(const [u,d] of Object.entries(USERS)){
+    if(d.password && !d.password.startsWith('h:')){
+      d.password = 'h:' + await _sha256(d.password);
+    }
+  }
+}
+
 async function doLogin(){
   const u = document.getElementById('loginUser').value.trim().toLowerCase();
   const p = document.getElementById('loginPass').value;
   const errEl = document.getElementById('loginErr');
   errEl.textContent='';
 
+  await _migratePasswords();
   const user = USERS[u];
-  if(!user || user.password !== p){
+  if(!user){ errEl.textContent='❌ Incorrect username or password.'; document.getElementById('loginPass').value=''; return; }
+  const inputHash = 'h:' + await _sha256(p);
+  if(user.password !== inputHash){
     errEl.textContent='❌ Incorrect username or password.';
     document.getElementById('loginPass').value=''; return;
   }
@@ -682,7 +699,12 @@ function openModal(title,body,saveFn,saveLabel='💾 Save'){
   document.getElementById('overlay').classList.add('show');
 }
 function closeModal(){ document.getElementById('overlay').classList.remove('show'); _saveFn=null; }
-function saveModal(){ if(_saveFn)_saveFn(); }
+function saveModal(){
+  if(!_saveFn) return;
+  const fn=_saveFn; _saveFn=null;
+  const r=fn();
+  if(r&&typeof r.catch==='function') r.catch(e=>toast('❌ Error: '+e.message));
+}
 document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay'))closeModal(); });
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
@@ -4267,7 +4289,7 @@ function toggleBranchField(){
 }
 
 function addAccount(){
-  openModal('＋ Add Account', accountForm(), ()=>{
+  openModal('＋ Add Account', accountForm(), async ()=>{
     const u    = fval('acc_user').trim().toLowerCase().replace(/\s+/g,'_');
     const name = fval('acc_name').trim();
     const pass = document.getElementById('f_acc_pass')?.value;
@@ -4276,22 +4298,24 @@ function addAccount(){
     if(!u||!name||!pass){ alert('Username, name and password are required'); return; }
     if(USERS[u]){ alert(`Username "${u}" already exists!`); return; }
     if(['BranchAdmin','Staff'].includes(role)&&!branch){ alert('Branch is required for this role'); return; }
-    USERS[u] = {password:pass, role, name, ...(branch?{branch}:{})};
+    const hPass = 'h:' + await _sha256(pass);
+    USERS[u] = {password:hPass, role, name, ...(branch?{branch}:{})};
     toast(`✅ Account "${u}" created!`); closeModal(); showAccountManager();
   },'✅ Create Account');
 }
 
 function editAccount(username){
   const d = {...USERS[username], _username:username};
-  openModal(`✏ Edit — ${username}`, accountForm(d), ()=>{
+  openModal(`✏ Edit — ${username}`, accountForm(d), async ()=>{
     const name  = fval('acc_name').trim();
     const pass  = document.getElementById('f_acc_pass')?.value;
     const role  = fval('acc_role');
     const branch= fval('acc_branch');
     if(!name){ alert('Name is required'); return; }
     if(['BranchAdmin','Staff'].includes(role)&&!branch){ alert('Branch is required'); return; }
+    const ePass = pass ? ('h:' + await _sha256(pass)) : null;
     USERS[username] = {...USERS[username], name, role,
-      ...(pass?{password:pass}:{}),
+      ...(ePass?{password:ePass}:{}),
       ...(branch?{branch}:{})};
     if(!branch) delete USERS[username].branch;
     toast(`✅ "${username}" updated!`); closeModal(); showAccountManager();
@@ -4534,7 +4558,6 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('./sw.js').then(reg=>{
-      console.log('[PWA] ✅ Service worker ready');
 
       // Helper: attach statechange to any installing SW
       function trackInstalling(sw){
@@ -4560,7 +4583,7 @@ if('serviceWorker' in navigator){
       reg.update();
       setInterval(()=>reg.update(), 5 * 60 * 1000);
 
-    }).catch(e=>console.warn('[PWA] SW:',e));
+    }).catch(()=>{})
 
     // Check for updates when user returns to the tab
     document.addEventListener('visibilitychange', ()=>{
