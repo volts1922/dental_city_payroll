@@ -295,6 +295,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   <div id="userBadge" style="display:none;align-items:center;gap:8px;margin-right:6px">
     <span id="roleBadge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;"></span>
     <span id="userLabel" style="font-size:13px;font-weight:600;"></span>
+    <button id="installBtn" style="display:none;background:#0078d4;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:8px;" onmouseover="this.style.background='#106ebe'" onmouseout="this.style.background='#0078d4'">📥 Install</button>
     <button onclick="doLogout()" style="background:#DC2626;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">⏻ Logout</button>
   </div>
   <div class="topbar-clock" id="clock"></div>
@@ -6608,6 +6609,31 @@ async function comprehensiveSystemAudit(){
 }
 
 // ── MOBILE FALLBACK: Ensure login button click works ──────────────────────────
+// ── PWA Install Prompt Handler ────────────────────────────────────────────────
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const installBtn = document.getElementById('installBtn');
+  if(installBtn) installBtn.style.display = 'inline-block';
+});
+
+document.getElementById('installBtn')?.addEventListener('click', async () => {
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    const {outcome} = await deferredPrompt.userChoice;
+    console.log(`User response: ${outcome}`);
+    deferredPrompt = null;
+    document.getElementById('installBtn').style.display = 'none';
+    if(outcome === 'accepted') toast('✅ App installed!');
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('✅ PWA installed successfully');
+  deferredPrompt = null;
+});
+
 document.addEventListener('DOMContentLoaded', ()=>{
 
   // v30.7: Background ghost purge (every 30s)
