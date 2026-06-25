@@ -667,7 +667,7 @@ function getAllAttendance(){
 // ── STORAGE (reads from cache, writes to cache + cloud) ───────────────────────
 const DB = {
   get(k){ return _cache[k] !== undefined ? _cache[k] : (()=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):{}}catch{return {};}})() },
-  set(k,v){ _cache[k]=v; try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} syncToCloud(k,v); }
+  set(k,v){ _cache[k]=v; try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} syncToCloud(k,v).catch(e=>console.error('[DB]',e)); }
 };
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -696,7 +696,7 @@ window.GHOST_TRACKER = {
 setInterval(() => GHOST_TRACKER.check(), 5000);
 console.log('✅ v30.7 ready');
 
-const KEYS = { employees:'pr_employees', attendance:'pr_attendance', leaves:'pr_leaves', loans:'pr_loans', branches:'pr_branches', att_check_log:'pr_att_check_log', payroll_approvals:'pr_payroll_approvals', holidays:'pr_holidays' };
+const KEYS = { employees:'pr_employees', attendance:'pr_attendance', leaves:'pr_leaves', loans:'pr_loans', branches:'pr_branches', att_check_log:'pr_att_check_log', payroll_approvals:'pr_payroll_approvals', holidays:'pr_holidays', accounts:'pr_accounts' };
 
 // Shift definitions (for clinic 10am-9pm)
 const SHIFTS = {
@@ -2723,7 +2723,7 @@ function _checkDailyAttendance(){
   const log=load(KEYS.att_check_log)||{};
   log[today]={checked_at:new Date().toISOString(), count:(log[today]?.count||0)+1};
   save(KEYS.att_check_log,log);
-  syncToCloud(KEYS.att_check_log,log); // Sync to Supabase
+  syncToCloud(KEYS.att_check_log,log).catch(e=>console.error('[SYNC]',e)); // Sync to Supabase
 }
 
 async function _autoPayrollRun(){
@@ -2733,14 +2733,14 @@ async function _autoPayrollRun(){
   document.getElementById('payMonth').value=m;
   computePayroll();
   await confirmPayrollRun();
-  const backup=load(KEYS.payroll_backup)||{};
+  const backup={};
   backup[`${m}_auto`]={date:today(),data:_payrollData,auto:true};
-  save(KEYS.payroll_backup,backup);
+  // backup disabled
   // Mark as pending approval
   const approvals=load(KEYS.payroll_approvals)||{};
   approvals[`${branch}_${m}`]={branch,month:m,status:'pending',computed_at:today(),admin:currentUser};
   save(KEYS.payroll_approvals,approvals);
-  syncToCloud(KEYS.payroll_approvals,approvals);
+  syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
   toast(`✅ Auto-payroll ready. Owner approval pending.`);
 }
 
@@ -4936,7 +4936,7 @@ function approvePayroll(key){
     approvals[key].approved_at=today();
     approvals[key].approved_by=currentUser;
     save(KEYS.payroll_approvals,approvals);
-    syncToCloud(KEYS.payroll_approvals,approvals);
+    syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
     toast('✅ Payroll approved!');
     showOwnerApprovals();
   }
@@ -4955,7 +4955,7 @@ function approveAllPayroll(){
     }
   });
   save(KEYS.payroll_approvals,approvals);
-  syncToCloud(KEYS.payroll_approvals,approvals);
+  syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
   toast(`✅ ${approved} payroll(s) approved!`);
   showOwnerApprovals();
 }
@@ -5323,7 +5323,7 @@ function addHolidayRow(){
   const today = new Date().toISOString().split('T')[0];
   hols.push({date: today, name: 'New Holiday', type: 'RH', rate: 1.0});
   save(KEYS.holidays, hols);
-  syncToCloud(KEYS.holidays, hols);
+  syncToCloud(KEYS.holidays, hols).catch(e=>console.error('[SYNC]',e));
   showHolidayManager();
 }
 
@@ -5332,7 +5332,7 @@ function updateHoliday(idx, field, val){
   if(field==='rate') hols[idx][field] = parseFloat(val) / 100;
   else hols[idx][field] = val;
   save(KEYS.holidays, hols);
-  syncToCloud(KEYS.holidays, hols);
+  syncToCloud(KEYS.holidays, hols).catch(e=>console.error('[SYNC]',e));
   showHolidayManager();
 }
 
@@ -5367,7 +5367,7 @@ function deleteHoliday(idx){
   
   // Sync to cloud
   try{
-    syncToCloud(KEYS.holidays, hols);
+    syncToCloud(KEYS.holidays, hols).catch(e=>console.error('[SYNC]',e));
   }catch(err){
     console.warn('Cloud sync warning:', err);
   }
@@ -5379,7 +5379,7 @@ function deleteHoliday(idx){
 function resetToDefaultHolidays(){
   if(!confirm('Reset to default PH 2026 holidays?')) return;
   save(KEYS.holidays, DEFAULT_HOLIDAYS);
-  syncToCloud(KEYS.holidays, DEFAULT_HOLIDAYS);
+  syncToCloud(KEYS.holidays, DEFAULT_HOLIDAYS).catch(e=>console.error('[SYNC]',e));
   toast('✅ Reset to defaults');
   showHolidayManager();
 }
