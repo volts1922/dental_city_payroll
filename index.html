@@ -389,17 +389,21 @@ async function _auditLog(action, user, details){
     details: details
   };
   
-  SEC.auditLog.push(entry);
-  localStorage.setItem('_auditLog', JSON.stringify(SEC.auditLog.slice(-2000)));
-  
-  if(_sb){
-    try {
-      await _sb.from('pr_audit_log').insert([entry]);
-    } catch(e) {
-      console.log('Audit sync skipped:', e.message);
-    }
+  try {
+    SEC.auditLog.push(entry);
+    localStorage.setItem('_auditLog', JSON.stringify(SEC.auditLog.slice(-2000)));
+  } catch(err) {
+    console.warn('Local audit failed:', err.message);
   }
-}
+  
+  // Non-blocking cloud sync (ignore all errors)
+  if(_sb){
+    _sb.from('pr_audit_log').insert([entry])
+      .catch(e => {
+        // Silently ignore: RLS, 401, network errors
+        // App continues working
+      });
+  }
 
 // Password history functions
 function _loadPasswordHistory(){
@@ -5574,7 +5578,9 @@ async function changePassword(){
     // Sync to Supabase with retry
     if(_sb) {
       _queueSyncOperation(`pwd_${_currentUser}`, () => 
-        _sb.from('payroll_accounts').update({data: u}).eq('username', _currentUser)
+        _sb.from('payroll_accounts').update({
+          password: u.password
+        }).eq('username', _currentUser)
       ).catch(e => console.warn('Background sync warning:', e));
     }
     
@@ -5617,7 +5623,13 @@ async function changeUsername(){
     if(_sb) {
       _queueSyncOperation(`user_${_currentUser}`, async () => {
         await _sb.from('payroll_accounts').delete().eq('username', _currentUser);
-        return _sb.from('payroll_accounts').insert([{username: newU, data: u}]);
+        return _sb.from('payroll_accounts').insert([{
+          username: newU,
+          password: u.password,
+          role: u.role,
+          name: u.name,
+          branch: u.branch || null
+        }]);
       }).catch(e => console.warn('Background sync warning:', e));
     }
     
