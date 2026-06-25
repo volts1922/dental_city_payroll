@@ -1,101 +1,65 @@
 const CACHE_NAME = 'dc-payroll-v30';
-const PAYROLL_SCOPE = '/dental_city_payroll/';
+const ASSETS_TO_CACHE = ['/dental_city_payroll/index.html','/dental_city_payroll/manifest.json'];
 
-const STATIC_ASSETS = [
-  PAYROLL_SCOPE,
-  PAYROLL_SCOPE + 'index.html'
-];
-
-// Install event: cache static assets
-self.addEventListener('install', (e) => {
-  e.waitUntil(
+self.addEventListener('install', (event) => {
+  event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch(err => {
-        console.log('Cache addAll partial failure (OK for dynamic routes):', err);
+      return cache.addAll(ASSETS_TO_CACHE).catch(err => {
+        console.log('[SW] Cache error (non-critical):', err.message);
+        return Promise.resolve();
       });
-    }).then(() => self.skipWaiting())
+    })
   );
+  self.skipWaiting();
 });
 
-// Activate event: clean old caches
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
     caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter(name => name !== CACHE_NAME && name.startsWith('dc-payroll'))
-          .map(name => caches.delete(name))
-      );
-    }).then(() => self.clients.claim())
+      return Promise.all(cacheNames.map((cacheName) => {
+        if (cacheName !== CACHE_NAME) return caches.delete(cacheName);
+      }));
+    })
   );
+  self.clients.claim();
 });
 
-// Fetch event: network-first, fallback to cache
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  if (url.origin !== location.origin) return;
 
-  // Only handle /dental_city_payroll/ scope
-  if (!url.pathname.startsWith(PAYROLL_SCOPE)) {
-    return;
-  }
-
-  // Skip non-GET or cross-origin
-  if (e.request.method !== 'GET') {
-    return;
-  }
-
-  // Supabase API calls: network only
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
-  // HTML: network-first
-  if (e.request.destination === 'document' || e.request.url.endsWith('/') || e.request.url.endsWith('.html')) {
-    e.respondWith(
-      fetch(e.request)
-        .then(response => {
-          if (response.ok) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(e.request, cloned));
-          }
-          return response;
-        })
-        .catch(() => caches.match(e.request).then(cached => cached || new Response('Offline')))
-    );
-    return;
-  }
-
-  // Assets (JS, CSS, images): cache-first
-  if (['script', 'style', 'image', 'font'].includes(e.request.destination)) {
-    e.respondWith(
-      caches.match(e.request).then(cached => {
-        return cached || fetch(e.request).then(response => {
-          if (response.ok && e.request.destination !== 'font') {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(e.request, cloned));
-          }
-          return response;
-        }).catch(() => {
-          if (e.request.destination === 'image') return new Response('Image unavailable', { status: 410 });
-          throw new Error('Network failed');
+  if (url.pathname.includes('/api') || url.hostname.includes('supabase')) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => {
+        return caches.match(request).then((response) => {
+          return response || new Response('Offline', { status: 503 });
         });
       })
     );
     return;
   }
 
-  // Default: network-first
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+  event.respondWith(
+    caches.match(request).then((response) => {
+      if (response) return response;
+      return fetch(request).then((response) => {
+        if (response.ok && request.method === 'GET') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => new Response('Offline', { status: 503 }));
+    })
   );
 });
 
-// Message handler for cache bust
-self.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  if (e.data && e.data.type === 'CLEAR_CACHE') {
-    caches.delete(CACHE_NAME);
-  }
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
