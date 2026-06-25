@@ -398,11 +398,13 @@ async function _auditLog(action, user, details){
   
   // Non-blocking cloud sync (ignore all errors)
   if(_sb){
-    _sb.from('pr_audit_log').insert([entry])
-      .catch(e => {
+    (async () => {
+      try {
+        await _sb.from('pr_audit_log').insert([entry]);
+      } catch(e) {
         // Silently ignore: RLS, 401, network errors
-        // App continues working
-      });
+      }
+    })();
   }
 }
 
@@ -574,8 +576,16 @@ let _ownerData = {}; // { 'Branch 1': {pr_employees, pr_attendance, ...}, ... }
 async function loadAllBranchesFromCloud(){
   if(!_sb) return false;
   try{
-    // Fetch ALL rows from the table — branch list is built ENTIRELY from what
-    // actually exists in Supabase (source of truth), no hardcoded list merging
+    // For Owner: fetch ALL branches from branches table (source of truth)
+    const {data: allBranches, error: branchError} = await _sb.from('branches')
+      .select('name');
+    
+    if(!branchError && allBranches?.length){
+      // Use branches table as source of truth
+      ALL_BRANCHES = allBranches.map(b => b.name).filter(b => b && b !== 'main');
+    }
+    
+    // Still fetch payroll_data for owner data
     const {data, error} = await _sb.from('payroll_data')
       .select('branch_key,data_type,data');
     if(error) throw error;
@@ -604,14 +614,18 @@ async function loadAllBranchesFromCloud(){
       
       _ownerData[row.branch_key][row.data_type] = branchData;
     });
-    const foundBranches = Object.keys(_ownerData).filter(b=>b && b!=='main');
-
-    if(foundBranches.length){
-      // Cloud has real data — that's the full, authoritative branch list
-      ALL_BRANCHES = foundBranches;
-    } else if(!ALL_BRANCHES.length){
-      // Nothing in cloud yet and no branches loaded — seed with defaults (first-ever run)
-      ALL_BRANCHES = [..._DEFAULT_BRANCHES];
+    
+    // If branches table empty, fall back to branches found in payroll_data
+    if(!ALL_BRANCHES.length){
+      const foundBranches = Object.keys(_ownerData).filter(b=>b && b!=='main');
+      if(foundBranches.length){
+        ALL_BRANCHES = foundBranches;
+      } else if(!ALL_BRANCHES.length){
+        ALL_BRANCHES = [..._DEFAULT_BRANCHES];
+        ALL_BRANCHES.forEach(b=>{ if(!_ownerData[b]) _ownerData[b]={}; });
+      }
+    } else {
+      // Ensure _ownerData has keys for all branches (even if no data yet)
       ALL_BRANCHES.forEach(b=>{ if(!_ownerData[b]) _ownerData[b]={}; });
     }
     console.log('[Owner] Loaded branches:', ALL_BRANCHES);
