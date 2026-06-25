@@ -5621,16 +5621,12 @@ async function changeUsername(){
     
     // Sync to Supabase with retry
     if(_sb) {
-      _queueSyncOperation(`user_${_currentUser}`, async () => {
-        await _sb.from('payroll_accounts').delete().eq('username', _currentUser);
-        return _sb.from('payroll_accounts').insert([{
-          username: newU,
-          password: u.password,
-          role: u.role,
-          name: u.name,
-          branch: u.branch || null
-        }]);
-      }).catch(e => console.warn('Background sync warning:', e));
+      _queueSyncOperation(`user_${_currentUser}`, () => 
+        // Update old record with new username (don't delete)
+        _sb.from('payroll_accounts')
+          .update({username: newU, password: u.password, role: u.role, name: u.name, branch: u.branch || null})
+          .eq('username', _currentUser)
+      ).catch(e => console.warn('Background sync warning:', e));
     }
     
     toast('✅ Username changed. Logging out...');
