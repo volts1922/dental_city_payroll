@@ -808,26 +808,28 @@ async function doLogin(){
     if(branch) setBranch(branch);
   }
 
-  // Load data from Supabase cloud
+  // Show dashboard IMMEDIATELY from local cache — don't block on the network.
+  _finishLogin();
+
+  // Sync from Supabase cloud in the BACKGROUND, then quietly refresh the current view.
   if(_sb){
     if(isOwnerRole(user.role)){
-      // Owner: load ALL 9 branches at once
-      showLoading('Loading all branches from cloud...');
-      await loadAllBranchesFromCloud();
-      hideLoading();
-      setSyncBar('ok','☁ All branches loaded');
+      setSyncBar('syncing','☁ Syncing all branches...');
+      loadAllBranchesFromCloud().then(()=>{
+        setSyncBar('ok','☁ All branches loaded');
+        // Refresh current view if it exists
+        if(typeof refreshCurrentView==='function') refreshCurrentView();
+      }).catch(()=>setSyncBar('err','⚠ Sync failed'));
     } else {
-      // Branch admin/staff: load only their branch
-      showLoading('Loading data from cloud...');
-      await loadFromCloud();
-      hideLoading();
-      setSyncBar('ok','☁ Cloud connected');
+      setSyncBar('syncing','☁ Syncing...');
+      loadFromCloud().then(()=>{
+        setSyncBar('ok','☁ Cloud connected');
+        if(typeof refreshCurrentView==='function') refreshCurrentView();
+      }).catch(()=>setSyncBar('err','⚠ Sync failed'));
     }
   } else {
     setSyncBar('offline','💾 Local mode only');
   }
-
-  _finishLogin();
 }
 
 function isOwnerRole(r){ return r==='Owner'||r==='Developer'; }
@@ -1276,6 +1278,22 @@ function navigate(label,fn){
   }
   window[fn]();
 }
+
+// Re-render current page (used after background cloud sync)
+function refreshCurrentView(){
+  try{
+    const allNavs=[].concat(
+      typeof NAV_DEVELOPER!=='undefined'?NAV_DEVELOPER:[],
+      typeof NAV_OWNER!=='undefined'?NAV_OWNER:[],
+      typeof NAV_ADMIN!=='undefined'?NAV_ADMIN:[],
+      typeof NAV_STAFF!=='undefined'?NAV_STAFF:[]
+    );
+    const hit=allNavs.find(n=>n.label===currentPage);
+    const fn=hit&&hit.fn;
+    if(fn && typeof window[fn]==='function') window[fn]();
+  }catch(e){ console.error('refreshCurrentView error',e); }
+}
+
 function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('show'); }
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 
@@ -1575,7 +1593,19 @@ function filterDashboard(filter){
 // ══════════════════════════════════════════════════════════════════════════════
 function showEmployees(q=''){
   const emps=load(KEYS.employees);
-  const rows=Object.entries(emps).filter(([id,e])=>!q||(e.name+id+e.role+(e.branch||'')).toLowerCase().includes(q.toLowerCase()))
+  
+  // Auto-purge ghost records: no name AND no role/daily_rate (these slip through soft-delete filter)
+  let ghostsPurged=false;
+  Object.entries(emps).forEach(([id,e])=>{
+    const noName = !e || !e.name || String(e.name).trim()==='' || String(e.name).trim()==='-';
+    if(noName && !e?.role && !e?.daily_rate){ delete emps[id]; ghostsPurged=true; }
+  });
+  if(ghostsPurged) save(KEYS.employees, emps);
+  
+  // Filter: exclude soft-deleted AND ghost records
+  const filtered=Object.entries(emps).filter(([id,e])=>e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive');
+  
+  const rows=filtered.filter(([id,e])=>!q||(e.name+id+e.role+(e.branch||'')).toLowerCase().includes(q.toLowerCase()))
     .map(([id,e])=>{
       const allow = totalAllowances(e.allowances||{});
       const empTypeBadge = e.emp_type ? `<span class="badge ${e.emp_type==='Regular'?'badge-blue':e.emp_type==='Probationary'?'badge-yellow':e.emp_type==='Contractual'?'badge-gray':'badge-gray'}">${e.emp_type}</span>` : '—';
