@@ -521,6 +521,10 @@ async function syncToCloud(dataType, data){
   }
 }
 
+
+// v30.7: Query sync history
+function getSyncAuditLog() { return JSON.parse(localStorage.getItem('_sync_audit_log') || '[]'); }
+
 async function loadFromCloud(){
   if(!_sb) return false;
   const bkey = getBranch() || 'main';
@@ -665,6 +669,33 @@ const DB = {
   get(k){ return _cache[k] !== undefined ? _cache[k] : (()=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):{}}catch{return {};}})() },
   set(k,v){ _cache[k]=v; try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} syncToCloud(k,v); }
 };
+
+/* ════════════════════════════════════════════════════════════════════════════
+   v30.7 INSTRUMENTATION (debugging, remove for production v30.8+)
+   ════════════════════════════════════════════════════════════════════════════ */
+const PERF_LOG = { 
+  metrics: [], 
+  log(evt, dur, data) { 
+    this.metrics.push({ ts: new Date().toISOString(), evt, dur, ...data }); 
+    console.log(`[PERF] ${evt}: ${dur}ms`, data); 
+  }, 
+  export() { return JSON.stringify(this.metrics, null, 2); } 
+};
+
+window.GHOST_TRACKER = { 
+  checks: [], 
+  check() { 
+    const e = JSON.parse(localStorage.getItem(KEYS.employees) || '{}'); 
+    const g = Object.entries(e).filter(([id,emp]) => (!emp?.name || String(emp.name).trim() === '' || String(emp.name).trim() === '-') && !emp?.role && !emp?.daily_rate).map(([id,emp]) => ({ id, name: emp.name }));
+    this.checks.push({ ts: new Date().toISOString(), count: g.length, ghosts: g }); 
+    if(g.length > 0) console.log(`[GHOST] ${g.length} ghost records:`, g);
+    return g;
+  }, 
+  export() { return JSON.stringify(this.checks, null, 2); } 
+};
+setInterval(() => GHOST_TRACKER.check(), 5000);
+console.log('✅ v30.7 ready');
+
 const KEYS = { employees:'pr_employees', attendance:'pr_attendance', leaves:'pr_leaves', loans:'pr_loans', branches:'pr_branches', att_check_log:'pr_att_check_log', payroll_approvals:'pr_payroll_approvals', holidays:'pr_holidays' };
 
 // Shift definitions (for clinic 10am-9pm)
@@ -1270,7 +1301,6 @@ const NAV_OWNER=[
   {icon:'🎉',label:'Holidays',         fn:'showHolidayManager'},
   {icon:'🕐',label:'Shift Manager',    fn:'showShiftManager'},
   {icon:'👥',label:'Account Manager',  fn:'showAccountManager'},
-  {icon:'⚙️',label:'Account Settings',  fn:'showAccountSettings'},
   {icon:'💾',label:'Backup',           fn:'showBackupManager'},
   {icon:'🔄',label:'Refresh Data',     fn:'ownerRefresh'},
 ];
@@ -1294,11 +1324,9 @@ const NAV_ADMIN=[
   {icon:'🧾',label:'Payslip',     fn:'showPayslip'},
   {icon:'💾',label:'Backup',      fn:'showBackupManager'},
   {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
-  {icon:'⚙️',label:'Account Settings', fn:'showAccountSettings'},
 ];
 const NAV_STAFF=[
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
-  {icon:'⚙️',label:'Account Settings', fn:'showAccountSettings'},
 ];
 
 let currentPage='';
@@ -1956,6 +1984,19 @@ function monthsWorkedInYear(dateHired, year){
   return 12 - hired.getMonth(); // getMonth() is 0-indexed, so Jan=0 → 12 months, Dec=11 → 1 month
 }
 
+
+// v30.7: Safe ID generation (never 0 or 1)
+function getNextEmployeeID() {
+  const emps = load(KEYS.employees) || {};
+  const existing = Object.keys(emps).map(Number).filter(n => !isNaN(n));
+  if(existing.length === 0) return 100;
+  return Math.max(...existing) + 1;
+}
+function generateEmployeeID() {
+  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return (id === '0' || id === '1') ? generateEmployeeID() : id;
+}
+
 function addEmp(){
   openModal('Add Employee',empForm(),async()=>{
     if(!fval('name')||!fval('daily_rate')){toast('⚠️ Name and daily rate required');return;}
@@ -2029,6 +2070,16 @@ async function deleteEmp(id){
 
   toast(`🗑 "${name}" and all related records deleted!`);
   showEmployees();
+}
+
+
+// v30.7: Delete with cascade verification
+async function deleteEmpWithVerification(id) {
+  const bc = { emps: Object.keys(load(KEYS.employees)).length, att: (load(KEYS.attendance)[id] || []).length, leaves: (load(KEYS.leaves)[id] || []).length, loans: (load(KEYS.loans)[id] || []).length };
+  await deleteEmp(id);
+  const ac = { emps: Object.keys(load(KEYS.employees)).length, att: (load(KEYS.attendance)[id] || []).length, leaves: (load(KEYS.leaves)[id] || []).length, loans: (load(KEYS.loans)[id] || []).length };
+  if(!(bc.emps === ac.emps + 1 && ac.att === 0 && ac.leaves === 0 && ac.loans === 0)) throw new Error('Cascade failed');
+  console.log(`[DELETE_VERIFY] ✅ Emp ${id} cascade verified`);
 }
 
 function exportEmps(){
@@ -5540,30 +5591,6 @@ function showDeveloperDashboard(){
 // ══════════════════════════════════════════════════════════════════════════════
 // ACCOUNT SETTINGS - Change Password & Username
 // ══════════════════════════════════════════════════════════════════════════════
-function showAccountSettings(){
-  const html = `
-    <div class="section-header">
-      <div class="section-title">⚙️ Account Settings</div>
-    </div>
-    <div style="padding:20px;max-width:500px">
-      <h4>Change Password</h4>
-      <div style="margin:15px 0;padding:15px;background:#f5f5f5;border-radius:8px">
-        <input type="password" id="oldPass" placeholder="Current Password" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ccc;border-radius:4px" />
-        <input type="password" id="newPass" placeholder="New Password" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ccc;border-radius:4px" />
-        <input type="password" id="confirmPass" placeholder="Confirm Password" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ccc;border-radius:4px" />
-        <button class="btn btn-primary" onclick="changePassword()" style="width:100%;margin-top:10px">✓ Change Password</button>
-      </div>
-      
-      <h4 style="margin-top:30px">Change Username</h4>
-      <div style="margin:15px 0;padding:15px;background:#f5f5f5;border-radius:8px">
-        <input type="text" id="newUsername" placeholder="New Username" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ccc;border-radius:4px" />
-        <input type="password" id="passForUsername" placeholder="Confirm Password" style="width:100%;padding:8px;margin:8px 0;border:1px solid #ccc;border-radius:4px" />
-        <button class="btn btn-primary" onclick="changeUsername()" style="width:100%;margin-top:10px">✓ Change Username</button>
-      </div>
-    </div>
-  `;
-  document.getElementById('main').innerHTML = html;
-}
 
 async function changePassword(){
   try {
@@ -5593,9 +5620,13 @@ async function changePassword(){
     // Sync to Supabase with retry
     if(_sb) {
       _queueSyncOperation(`pwd_${_currentUser}`, () => 
-        _sb.from('payroll_accounts').update({
-          password: u.password
-        }).eq('username', _currentUser)
+        _sb.from('payroll_accounts').upsert({
+          username: _currentUser,
+          password: u.password,
+          role: u.role,
+          name: u.name,
+          branch: u.branch || null
+        }, { onConflict: 'username' })
       ).catch(e => console.warn('Background sync warning:', e));
     }
     
@@ -5637,10 +5668,13 @@ async function changeUsername(){
     // Sync to Supabase with retry
     if(_sb) {
       _queueSyncOperation(`user_${_currentUser}`, () => 
-        // Update old record with new username (don't delete)
-        _sb.from('payroll_accounts')
-          .update({username: newU, password: u.password, role: u.role, name: u.name, branch: u.branch || null})
-          .eq('username', _currentUser)
+        _sb.from('payroll_accounts').upsert({
+          username: newU,
+          password: u.password,
+          role: u.role,
+          name: u.name,
+          branch: u.branch || null
+        }, { onConflict: 'username' })
       ).catch(e => console.warn('Background sync warning:', e));
     }
     
@@ -6556,6 +6590,26 @@ async function comprehensiveSystemAudit(){
 
 // ── MOBILE FALLBACK: Ensure login button click works ──────────────────────────
 document.addEventListener('DOMContentLoaded', ()=>{
+
+  // v30.7: Background ghost purge (every 30s)
+  window._startGhostPurgeWorker = function() {
+    setInterval(() => {
+      try {
+        const emps = load(KEYS.employees) || {};
+        let purged = 0;
+        Object.keys(emps).forEach(id => {
+          const e = emps[id];
+          if(!e || !e.name || String(e.name).trim() === '' || String(e.name).trim() === '-' && !e?.role && !e?.daily_rate) {
+            delete emps[id];
+            purged++;
+          }
+        });
+        if(purged > 0) { save(KEYS.employees, emps); console.log(`[BG] Purged ${purged} ghosts`); }
+      } catch(e) { console.error('[BG] Error:', e); }
+    }, 30000);
+  };
+  _startGhostPurgeWorker();
+
   // Initialize security features (v29.8)
   _loadPasswordHistory();
   document.addEventListener('click', _recordActivity, true);
