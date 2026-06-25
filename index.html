@@ -524,7 +524,21 @@ async function loadFromCloud(){
     // Reset known data types so deleted-in-cloud data doesn't linger locally
     const known = ['pr_employees','pr_attendance','pr_leaves','pr_loans'];
     const returned = {};
-    (data||[]).forEach(row=>{ if(row.data){ _cache[row.data_type]=row.data; returned[row.data_type]=true; } });
+    (data||[]).forEach(row=>{ 
+      if(row.data){ 
+        let cleanData = row.data;
+        // PURGE GHOSTS: remove invalid employee records before caching
+        if(row.data_type==='pr_employees' && cleanData){
+          Object.keys(cleanData).forEach(empId=>{
+            const emp = cleanData[empId];
+            const noName = !emp || !emp.name || String(emp.name).trim()==='' || String(emp.name).trim()==='-';
+            if(noName && !emp?.role && !emp?.daily_rate) delete cleanData[empId];
+          });
+        }
+        _cache[row.data_type]=cleanData; 
+        returned[row.data_type]=true; 
+      } 
+    });
     known.forEach(k=>{
       if(!returned[k]){ _cache[k]={}; try{localStorage.setItem(k,JSON.stringify({}));}catch(e){} }
     });
@@ -554,7 +568,18 @@ async function loadAllBranchesFromCloud(){
     (data||[]).forEach(row=>{
       if(!row.branch_key) return;
       if(!_ownerData[row.branch_key]) _ownerData[row.branch_key] = {};
-      _ownerData[row.branch_key][row.data_type] = row.data || {};
+      let branchData = row.data || {};
+      
+      // PURGE GHOSTS from cloud data: if pr_employees has id 0/1 with no name, remove them
+      if(row.data_type==='pr_employees' && branchData){
+        Object.keys(branchData).forEach(empId=>{
+          const emp = branchData[empId];
+          const noName = !emp || !emp.name || String(emp.name).trim()==='' || String(emp.name).trim()==='-';
+          if(noName && !emp?.role && !emp?.daily_rate) delete branchData[empId];
+        });
+      }
+      
+      _ownerData[row.branch_key][row.data_type] = branchData;
     });
     const foundBranches = Object.keys(_ownerData).filter(b=>b && b!=='main');
 
@@ -1419,7 +1444,7 @@ function showDashboard(){
   const filterByBranch = (arr, bid) => Object.entries(arr).filter(([eid,_])=>(emps[eid]||{}).branch===bid);
   
   // Global stats
-  const active  = Object.values(emps).filter(e=>e.status==='Active').length;
+  const active  = Object.values(emps).filter(e=>e&&e.status==='Active').length;
   const present = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present').length,0);
   const late    = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Late').length,0);
   const absent  = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Absent').length,0);
@@ -1427,7 +1452,7 @@ function showDashboard(){
   
   // Branch-specific stats
   const branchStats = activeBranch==='All' ? null : (() => {
-    const bEmps = Object.entries(emps).filter(([,e])=>e.branch===activeBranch&&e.status==='Active').map(([id])=>id);
+    const bEmps = Object.entries(emps).filter(([,e])=>e&&e.branch===activeBranch&&e.status==='Active').map(([id])=>id);
     const bPresent = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present'&&bEmps.includes(r.employee_id||Object.keys(att).find(eid=>att[eid]===recs))).length,0);
     const bAbsent = bEmps.length - bPresent - bOnLeave;
     const bOnLeave = Object.values(leaves).reduce((s,recs)=>s+recs.filter(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td&&bEmps.includes(r.employee_id||Object.keys(leaves).find(eid=>leaves[eid]===recs))).length,0);
@@ -1440,7 +1465,7 @@ function showDashboard(){
   }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No attendance records today</td></tr>`;
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
-    if(e.status!=='Active') return false;
+    if(!e || e.status!=='Active') return false;
     const hasAtt = (att[eid]||[]).some(r=>r.date===td);
     const hasLeave = (leaves[eid]||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td);
     return !hasAtt && !hasLeave;
