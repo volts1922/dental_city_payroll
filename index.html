@@ -783,7 +783,134 @@ async function _sha256(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
-function _isHash(str){ return typeof str==='string' && /^[a-f0-9]{64}$/.test(str); }
+
+// Constant-time comparison to prevent timing attacks
+function _timingSafeCompare(a, b){
+  if(!a || !b) return false;
+  if(a.length !== b.length) return false;
+  let result = 0;
+  for(let i = 0; i < a.length; i++){
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+// ── SUPABASE SYNC RETRY ───────────────────────────────────────────────────────
+let _syncQueue = [];
+let _syncStatus = {}; // Track sync status per operation
+
+async function _sbSyncWithRetry(operation, retries = 3, backoff = 1000) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const result = await operation();
+      return {success: true, data: result, error: null};
+    } catch (err) {
+      if (attempt === retries - 1) {
+        console.error(`Sync failed after ${retries} attempts:`, err.message);
+        return {success: false, data: null, error: err.message};
+      }
+      await new Promise(r => setTimeout(r, backoff * Math.pow(2, attempt)));
+    }
+  }
+}
+
+async function _queueSyncOperation(key, operation) {
+  _syncStatus[key] = 'syncing';
+  const result = await _sbSyncWithRetry(operation);
+  _syncStatus[key] = result.success ? 'synced' : 'failed';
+  if (!result.success) {
+    console.warn(`⚠️ Sync failed for ${key}: ${result.error}`);
+  }
+  return result;
+}
+
+let _operationLock = false;
+let _operationQueue = [];
+
+async function _acquireLock(operationName) {
+  return new Promise(resolve => {
+    if (!_operationLock) {
+      _operationLock = true;
+      resolve();
+    } else {
+      _operationQueue.push(resolve);
+    }
+  });
+}
+
+function _releaseLock() {
+  if (_operationQueue.length > 0) {
+    const next = _operationQueue.shift();
+    next();
+  } else {
+    _operationLock = false;
+  }
+}
+
+async function _withLock(operation) {
+  await _acquireLock(operation);
+  try {
+    return await operation();
+  } finally {
+    _releaseLock();
+  }
+}
+/**
+ * Safe array element deletion with validation & audit trail
+ * @param {Array} arr - Array to delete from
+ * @param {Number} idx - Index to delete
+ * @param {String} recordType - Type of record being deleted (for audit)
+ * @param {Object} recordData - The data being deleted (for recovery)
+ * @returns {Object} {success, deleted, error}
+ */
+function _safeArrayDelete(arr, idx, recordType='RECORD', recordData=null){
+  try{
+    // Validation: array exists
+    if(!arr || !Array.isArray(arr)){
+      return {success: false, error: 'Array is null or not an array', deleted: null};
+    }
+    
+    // Validation: index is valid number
+    if(!Number.isInteger(idx) || idx < 0){
+      return {success: false, error: `Invalid index: ${idx} (must be non-negative integer)`, deleted: null};
+    }
+    
+    // Validation: index in bounds
+    if(idx >= arr.length){
+      return {success: false, error: `Index ${idx} out of bounds (array length: ${arr.length})`, deleted: null};
+    }
+    
+    // Store backup before deletion
+    const backup = arr[idx];
+    
+    // Perform deletion
+    const deleted = arr.splice(idx, 1);
+    
+    // Verify deletion
+    if(deleted.length !== 1 || arr[idx] === backup){
+      // Rollback if something went wrong
+      arr.splice(idx, 0, backup);
+      return {success: false, error: 'Deletion verification failed - rolled back', deleted: null};
+    }
+    
+    // Audit log
+    try{
+      _auditLog(`${recordType}_DELETED`, _currentUser, {
+        index: idx,
+        record: recordData || backup,
+        timestamp: new Date().toISOString()
+      });
+    }catch(e){
+      console.warn('Audit log failed:', e);
+    }
+    
+    return {success: true, deleted: backup, error: null};
+    
+  }catch(err){
+    console.error('_safeArrayDelete error:', err);
+    return {success: false, error: err.message, deleted: null};
+  }
+}
 
 async function doLogin(){
   _recordActivity(); // Track activity for auto-logout
@@ -806,10 +933,10 @@ async function doLogin(){
   const enteredHash = await _sha256(p);
   let ok = false;
   if(_isHash(user.password)){
-    ok = (enteredHash === user.password);
+    ok = _timingSafeCompare(enteredHash, user.password);
   } else {
     // Legacy plaintext account — verify, then silently migrate to hashed storage
-    ok = (user.password === p);
+    ok = _timingSafeCompare(p, user.password);
     if(ok){
       user.password = enteredHash;
       _saveAccountToCloud(u, user);
@@ -2338,7 +2465,54 @@ function markLoanPaid(eid,idx){
 
 async function deleteLoan(eid,idx){
   const loans=load(KEYS.loans);
-  _confirm('Delete this loan record?', {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}).then(ok=>{ if(ok){ loans[eid].splice(idx,1); save(KEYS.loans,loans); toast('🗑 Deleted'); showLoans(); } });
+  
+  // Validate employee exists
+  if(!loans[eid]){
+    toast('❌ Employee not found');
+    return;
+  }
+  
+  // Validate index before showing confirmation
+  if(!Number.isInteger(idx) || idx < 0 || idx >= loans[eid].length){
+    toast(`❌ Invalid loan record index: ${idx}`);
+    return;
+  }
+  
+  const loanRecord = loans[eid][idx];
+  
+  _confirm(`Delete loan record?<br><br>Amount: ₱${loanRecord.amount || 0} | Status: ${loanRecord.status || 'Active'}`, 
+    {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'})
+    .then(async ok=>{ 
+      if(!ok) return;
+      
+      // Use safe delete
+      const result = _safeArrayDelete(loans[eid], idx, 'LOAN', loanRecord);
+      
+      if(!result.success){
+        toast(`❌ ${result.error}`);
+        return;
+      }
+      
+      // Save to localStorage
+      try{
+        save(KEYS.loans, loans);
+      }catch(err){
+        toast(`❌ Save failed: ${err.message}`);
+        return;
+      }
+      
+      // Sync to cloud
+      try{
+        if(_sb){
+          await _sb.from('loans').delete().eq('id', loanRecord.id);
+        }
+      }catch(err){
+        console.warn('Cloud sync warning:', err);
+      }
+      
+      toast('✅ Loan record deleted');
+      showLoans();
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -5092,10 +5266,41 @@ function updateHoliday(idx, field, val){
 
 function deleteHoliday(idx){
   if(!confirm('Delete this holiday?')) return;
+  
   const hols = getHolidays();
-  hols.splice(idx, 1);
-  save(KEYS.holidays, hols);
-  syncToCloud(KEYS.holidays, hols);
+  
+  // Validate index before deletion
+  if(!Number.isInteger(idx) || idx < 0 || idx >= hols.length){
+    toast(`❌ Invalid holiday index: ${idx}`);
+    return;
+  }
+  
+  const holidayRecord = hols[idx];
+  
+  // Use safe delete
+  const result = _safeArrayDelete(hols, idx, 'HOLIDAY', holidayRecord);
+  
+  if(!result.success){
+    toast(`❌ ${result.error}`);
+    return;
+  }
+  
+  // Save to localStorage
+  try{
+    save(KEYS.holidays, hols);
+  }catch(err){
+    toast(`❌ Save failed: ${err.message}`);
+    return;
+  }
+  
+  // Sync to cloud
+  try{
+    syncToCloud(KEYS.holidays, hols);
+  }catch(err){
+    console.warn('Cloud sync warning:', err);
+  }
+  
+  toast('✅ Holiday deleted');
   showHolidayManager();
 }
 
@@ -5351,21 +5556,24 @@ async function changePassword(){
     
     const u = USERS[_currentUser];
     const oldHash = await _sha256(old);
-    if(!u || oldHash !== u.password){toast('❌ Current password incorrect');return;}
+    if(!u || !_timingSafeCompare(oldHash, u.password)){toast('❌ Current password incorrect');return;}
     
-    // Update password
-    u.password = await _sha256(newP);
-    USERS[_currentUser] = u;
-    
-    // Save locally
-    localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+      // Update password (with lock protection)
+      await _acquireLock('changePassword');
+      try {
+        u.password = await _sha256(newP);
+        USERS[_currentUser] = u;
+        localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+      } finally {
+        _releaseLock();
+      }
     console.log('✅ Password saved to localStorage');
     
-    // Sync to Supabase (fire and forget)
+    // Sync to Supabase with retry
     if(_sb) {
-      _sb.from('payroll_accounts').update({data: u}).eq('username', _currentUser)
-        .then(() => console.log('✅ Password synced to Supabase'))
-        .catch(e => console.error('Supabase sync failed:', e.message));
+      _queueSyncOperation(`pwd_${_currentUser}`, () => 
+        _sb.from('payroll_accounts').update({data: u}).eq('username', _currentUser)
+      ).catch(e => console.warn('Background sync warning:', e));
     }
     
     toast('✅ Password changed successfully');
@@ -5390,22 +5598,25 @@ async function changeUsername(){
     
     const u = USERS[_currentUser];
     const passHash = await _sha256(pass);
-    if(!u || passHash !== u.password){toast('❌ Password incorrect');return;}
+    if(!u || !_timingSafeCompare(passHash, u.password)){toast('❌ Password incorrect');return;}
     
-    // Update USERS object
-    USERS[newU] = u;
-    delete USERS[_currentUser];
-    
-    // Save locally
-    localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+    // Update USERS object (with lock protection)
+    await _acquireLock('changeUsername');
+    try {
+      USERS[newU] = u;
+      delete USERS[_currentUser];
+      localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+    } finally {
+      _releaseLock();
+    }
     console.log('✅ Username changed in localStorage');
     
-    // Sync to Supabase (fire and forget)
+    // Sync to Supabase with retry
     if(_sb) {
-      _sb.from('payroll_accounts').delete().eq('username', _currentUser)
-        .then(() => _sb.from('payroll_accounts').insert([{username: newU, data: u}]))
-        .then(() => console.log('✅ Username synced to Supabase'))
-        .catch(e => console.error('Supabase sync failed:', e.message));
+      _queueSyncOperation(`user_${_currentUser}`, async () => {
+        await _sb.from('payroll_accounts').delete().eq('username', _currentUser);
+        return _sb.from('payroll_accounts').insert([{username: newU, data: u}]);
+      }).catch(e => console.warn('Background sync warning:', e));
     }
     
     toast('✅ Username changed. Logging out...');
@@ -5743,18 +5954,77 @@ function addBranch(){
 
 async function deleteBranch(idx, name){
   const emps = Object.keys((_ownerData[name]||{}).pr_employees||{}).length;
-  if(emps>0){ toast(`⚠️ Cannot delete "${name}" — it has ${emps} employee(s). Remove them first.`); return; }
-  if(!(await _confirm(`Delete branch "${name}"?<br><br>All accounts assigned to this branch will lose their branch.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
-  ALL_BRANCHES.splice(idx,1);
-  Object.values(USERS).forEach(u=>{ if(u.branch===name) delete u.branch; });
-  // Clean up accounts assigned to this branch in Supabase too
-  if(_sb){ try{ await _sb.from('payroll_accounts').update({branch:null}).eq('branch', name); }catch(e){} }
-  delete _ownerData[name];
-  await _deleteCloudBranchRows(name);
-  toast(`🗑 Branch "${name}" deleted`);
-  await loadAllBranchesFromCloud();
-  ownerShowBranchPicker(true);
-  showBranchManager();
+  if(emps>0){ 
+    toast(`⚠️ Cannot delete "${name}" — it has ${emps} employee(s). Remove them first.`); 
+    return; 
+  }
+  
+  // Validate index before deletion
+  if(!Number.isInteger(idx) || idx < 0 || idx >= ALL_BRANCHES.length){
+    toast(`❌ Invalid branch index: ${idx}`);
+    return;
+  }
+  
+  if(!(await _confirm(`Delete branch "${name}"?<br><br>All accounts assigned to this branch will lose their branch.`, 
+    {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
+  
+  // Store backup
+  const branchBackup = ALL_BRANCHES[idx];
+  const userBackups = Object.entries(USERS)
+    .filter(([_, u]) => u.branch === name)
+    .map(([username, u]) => ({username, originalBranch: u.branch}));
+  
+  // Use safe delete
+  const result = _safeArrayDelete(ALL_BRANCHES, idx, 'BRANCH', {
+    name: name,
+    timestamp: new Date().toISOString()
+  });
+  
+  if(!result.success){
+    toast(`❌ ${result.error}`);
+    return;
+  }
+  
+  try{
+    // Update users: clear branch assignment
+    Object.values(USERS).forEach(u=>{ 
+      if(u.branch === name) delete u.branch; 
+    });
+    
+    // Save users to localStorage
+    save(KEYS.accounts, USERS);
+    
+    // Clean up Supabase
+    if(_sb){ 
+      try{ 
+        await _sb.from('payroll_accounts')
+          .update({data: {branch: null}})
+          .eq('data->>branch', name);
+      }catch(e){
+        console.warn('Supabase user update warning:', e);
+      }
+    }
+    
+    // Clean up branch data
+    delete _ownerData[name];
+    
+    // Delete cloud branch rows
+    await _deleteCloudBranchRows(name);
+    
+    toast(`✅ Branch "${name}" deleted`);
+    await loadAllBranchesFromCloud();
+    ownerShowBranchPicker(true);
+    showBranchManager();
+    
+  }catch(err){
+    // Rollback on error
+    ALL_BRANCHES.splice(idx, 0, branchBackup);
+    userBackups.forEach(({username}) => {
+      if(USERS[username]) USERS[username].branch = name;
+    });
+    toast(`❌ Delete failed: ${err.message}`);
+    console.error('deleteBranch error:', err);
+  }
 }
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTO BACKUP SYSTEM
