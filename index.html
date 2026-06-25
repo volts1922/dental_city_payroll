@@ -583,7 +583,7 @@ async function loadAllBranchesFromCloud(){
   try{
     // For Owner: fetch ALL branches from branches table (source of truth)
     const {data: allBranches, error: branchError} = await _sb.from('branches')
-      .select('name');
+      .select('name').catch(e=>({data:null,error:e}));
     
     if(!branchError && allBranches?.length){
       // Use branches table as source of truth
@@ -592,7 +592,7 @@ async function loadAllBranchesFromCloud(){
     
     // Still fetch payroll_data for owner data
     const {data, error} = await _sb.from('payroll_data')
-      .select('branch_key,data_type,data');
+      .select('branch_key,data_type,data').catch(e=>({data:null,error:e}));
     if(error) throw error;
     _ownerData = {};
     (data||[]).forEach(row=>{
@@ -1245,7 +1245,6 @@ function _confirm(msg, opts={}){
     el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.1);backdrop-filter:blur(10px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.2s ease-out;font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif';
     el.innerHTML=`
       <div style="background:rgba(255,255,255,0.95);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.6);border-radius:20px;padding:32px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;animation:slideUp 0.3s cubic-bezier(0.16,1,0.3,1)">
-        <div style="font-size:32px;margin-bottom:10px">${icon}</div>
         <div style="font-size:14px;color:#1e1e1e;line-height:1.6;margin-bottom:24px">${msg}</div>
         <div style="display:flex;gap:12px">
           <button id="_cnfNo"  style="flex:1;background:#f0f0f0;color:#000;border:1px solid #d0d0d0;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;font-family:'Segoe UI',sans-serif">${noText}</button>
