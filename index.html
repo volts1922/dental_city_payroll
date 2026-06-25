@@ -1097,7 +1097,7 @@ function openModal(title,body,saveFn,saveLabel='💾 Save'){
   document.getElementById('overlay').classList.add('show');
 }
 function closeModal(){ document.getElementById('overlay').classList.remove('show'); _saveFn=null; }
-function saveModal(){ if(_saveFn)_saveFn(); }
+async function saveModal(){ if(_saveFn)await _saveFn(); }
 document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay'))closeModal(); });
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
