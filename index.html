@@ -102,6 +102,7 @@ tbody td{padding:9px 12px;color:var(--text);white-space:nowrap;}
 .modal{background:#c0c0c0;border:2px outset #dfdfdf;border-bottom:2px solid #808080;border-right:2px solid #808080;width:100%;max-width:480px;max-height:92vh;display:flex;flex-direction:column;box-shadow:inset 1px 1px 0 #fff, inset -1px -1px 0 #000;animation:slideUp .25s ease;font-family:'MS Sans Serif',Arial,sans-serif;}
 @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 @keyframes slideDown{from{transform:translateY(-100%);opacity:0;}to{transform:translateY(0);opacity:1;}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 .modal-header{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .modal-title{font-family:'DM Serif Display',serif;font-size:17px;}
 .modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
@@ -1237,21 +1238,28 @@ function _confirm(msg, opts={}){
   return new Promise(resolve=>{
     const okText  = opts.ok     || 'Confirm';
     const noText  = opts.cancel || 'Cancel';
-    const okColor = opts.danger ? '#DC2626' : '#0F2744';
+    const okColor = opts.danger ? '#d13438' : '#0078d4';
+    const okColorHover = opts.danger ? '#c50e2c' : '#106ebe';
     const icon    = opts.icon   || '❓';
     const el = document.createElement('div');
-    el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+    el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.1);backdrop-filter:blur(10px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.2s ease-out;font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif';
     el.innerHTML=`
-      <div style="background:#fff;border-radius:16px;padding:28px 28px 20px;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.18);text-align:center">
+      <div style="background:rgba(255,255,255,0.95);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.6);border-radius:20px;padding:32px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;animation:slideUp 0.3s cubic-bezier(0.16,1,0.3,1)">
         <div style="font-size:32px;margin-bottom:10px">${icon}</div>
-        <div style="font-size:14px;color:#1E293B;line-height:1.6;margin-bottom:20px">${msg}</div>
-        <div style="display:flex;gap:10px">
-          <button id="_cnfNo"  style="flex:1;background:#F1F5F9;color:#475569;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer">${noText}</button>
-          <button id="_cnfOk" style="flex:1;background:${okColor};color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer">${okText}</button>
+        <div style="font-size:14px;color:#1e1e1e;line-height:1.6;margin-bottom:24px">${msg}</div>
+        <div style="display:flex;gap:12px">
+          <button id="_cnfNo"  style="flex:1;background:#f0f0f0;color:#000;border:1px solid #d0d0d0;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;font-family:'Segoe UI',sans-serif">${noText}</button>
+          <button id="_cnfOk" style="flex:1;background:${okColor};color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Segoe UI',sans-serif">${okText}</button>
         </div>
       </div>`;
-    el.querySelector('#_cnfOk').addEventListener('click',()=>{ el.remove(); resolve(true); });
-    el.querySelector('#_cnfNo').addEventListener('click',()=>{ el.remove(); resolve(false); });
+    const okBtn = el.querySelector('#_cnfOk');
+    const noBtn = el.querySelector('#_cnfNo');
+    okBtn.addEventListener('mouseover',()=>{ okBtn.style.background=okColorHover; okBtn.style.boxShadow='0 2px 8px '+okColor.replace('#','rgba(0,0,0,0.2)'); });
+    okBtn.addEventListener('mouseout',()=>{ okBtn.style.background=okColor; okBtn.style.boxShadow='none'; });
+    noBtn.addEventListener('mouseover',()=>{ noBtn.style.background='#e6e6e6'; });
+    noBtn.addEventListener('mouseout',()=>{ noBtn.style.background='#f0f0f0'; });
+    okBtn.addEventListener('click',()=>{ el.remove(); resolve(true); });
+    noBtn.addEventListener('click',()=>{ el.remove(); resolve(false); });
     document.body.appendChild(el);
   });
 }
