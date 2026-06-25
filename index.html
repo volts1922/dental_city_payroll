@@ -2026,7 +2026,8 @@ function addEmp(){
     // BranchAdmin: enforce their own branch even if someone tampers with the field
     const branch = isBranchAdmin() ? getBranch() : fval('branch');
     if(!branch){toast('⚠️ Branch is required');return;}
-    const emps=load(KEYS.employees), id=nextId(emps,'');
+    const branchCode = branch.substring(0, 3).toUpperCase() + '_';
+    const emps=load(KEYS.employees), id=nextId(emps, branchCode);
     emps[id]={name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
