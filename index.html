@@ -5115,9 +5115,6 @@ function saveCustomShifts(){
   toast('✅ Shifts saved');
   debouncedShiftSave();
 }
-  toast('✅ Shift times saved');
-  _auditLog('SHIFT_TIMES_UPDATED', _currentUser, 'Updated shift times');
-}
 
 function setShift(empId, shiftType){
   const emps = load(KEYS.employees);
