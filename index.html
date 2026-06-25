@@ -795,6 +795,8 @@ function _timingSafeCompare(a, b){
   return result === 0;
 }
 
+function _isHash(str){ return typeof str==='string' && /^[a-f0-9]{64}$/.test(str); }
+
 // ── SUPABASE SYNC RETRY ───────────────────────────────────────────────────────
 let _syncQueue = [];
 let _syncStatus = {}; // Track sync status per operation
