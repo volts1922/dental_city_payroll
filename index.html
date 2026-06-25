@@ -5354,9 +5354,24 @@ function changePassword(){
   u.password = SHA256(newP);
   _addPasswordToHistory(_currentUser, u.password);
   localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+  
+  // Sync to Supabase
+  if(_sb){
+    (async ()=>{
+      try{
+        await _sb.from('payroll_accounts').update({data: u}).eq('username', _currentUser);
+        console.log('✅ Password synced to Supabase');
+      }catch(e){
+        console.error('Sync error:', e.message || JSON.stringify(e));
+        toast('⚠️ Local change saved, but sync failed. Will retry on next action.');
+      }
+    })();
+  }
+  
   toast('✅ Password changed');
-  _auditLog('PASSWORD_CHANGED', _currentUser, 'User changed own password');
-  document.getElementById('oldPass').value = '';document.getElementById('newPass').value = '';document.getElementById('confirmPass').value = '';
+  document.getElementById('oldPass').value = '';
+  document.getElementById('newPass').value = '';
+  document.getElementById('confirmPass').value = '';
 }
 
 function changeUsername(){
@@ -5370,11 +5385,28 @@ function changeUsername(){
   const u = USERS[_currentUser];
   if(!u || SHA256(pass) !== u.password){toast('❌ Password incorrect');return;}
   
+  // Update local USERS object
   USERS[newU] = u;
   delete USERS[_currentUser];
   localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+  
+  // Sync to Supabase
+  if(_sb){
+    (async ()=>{
+      try{
+        // Delete old username record
+        await _sb.from('payroll_accounts').delete().eq('username', _currentUser);
+        // Insert new username record
+        await _sb.from('payroll_accounts').insert([{username: newU, data: u}]);
+        console.log('✅ Username synced to Supabase');
+      }catch(e){
+        console.error('Sync error:', e.message || JSON.stringify(e));
+        toast('⚠️ Local change saved, but sync failed. Will retry on next action.');
+      }
+    })();
+  }
+  
   toast('✅ Username changed. Logging out...');
-  _auditLog('USERNAME_CHANGED', _currentUser, `Changed to ${newU}`);
   setTimeout(() => doLogout(), 2000);
 }
 
