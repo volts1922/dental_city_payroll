@@ -508,7 +508,7 @@ async function syncToCloud(dataType, data){
     setSyncBar('ok','✅ Saved to cloud');
     setTimeout(()=>setSyncBar('ok','☁ Cloud connected'),2500);
   }catch(e){
-    console.error('Sync error:',e);
+    console.error('Sync error:', e.message || JSON.stringify(e));
     setSyncBar('err','⚠ Sync failed');
     toast('⚠ Save failed: '+(e.message||'check connection'), 5000);
   }
@@ -527,14 +527,24 @@ async function loadFromCloud(){
     (data||[]).forEach(row=>{ 
       if(row.data){ 
         let cleanData = row.data;
-        // PURGE GHOSTS: remove invalid employee records before caching
-        if(row.data_type==='pr_employees' && cleanData){
-          Object.keys(cleanData).forEach(empId=>{
-            const emp = cleanData[empId];
-            const noName = !emp || !emp.name || String(emp.name).trim()==='' || String(emp.name).trim()==='-';
-            if(noName && !emp?.role && !emp?.daily_rate) delete cleanData[empId];
-          });
+        
+        // Parse if string
+        if(typeof cleanData === 'string') {
+          try { cleanData = JSON.parse(cleanData); }
+          catch(e) { console.warn('Could not parse data'); cleanData = {}; }
         }
+        
+        // PURGE GHOSTS: remove invalid employee records before caching
+        if(row.data_type==='pr_employees' && typeof cleanData === 'object' && cleanData){
+          try {
+            Object.keys(cleanData).forEach(empId=>{
+              const emp = cleanData[empId];
+              const noName = !emp || !emp.name || String(emp.name).trim()==='' || String(emp.name).trim()==='-';
+              if(noName && !emp?.role && !emp?.daily_rate) delete cleanData[empId];
+            });
+          }catch(e){ console.warn('Ghost purge error:', e.message); }
+        }
+        
         _cache[row.data_type]=cleanData; 
         returned[row.data_type]=true; 
       } 
@@ -544,7 +554,7 @@ async function loadFromCloud(){
     });
     return true;
   }catch(e){
-    console.error('Load error:',e);
+    console.error('Load error:', e.message || JSON.stringify(e));
     return false;
   }
 }
@@ -570,13 +580,21 @@ async function loadAllBranchesFromCloud(){
       if(!_ownerData[row.branch_key]) _ownerData[row.branch_key] = {};
       let branchData = row.data || {};
       
+      // Parse if string
+      if(typeof branchData === 'string') {
+        try { branchData = JSON.parse(branchData); }
+        catch(e) { console.warn('Could not parse branch data'); branchData = {}; }
+      }
+      
       // PURGE GHOSTS from cloud data: if pr_employees has id 0/1 with no name, remove them
-      if(row.data_type==='pr_employees' && branchData){
-        Object.keys(branchData).forEach(empId=>{
-          const emp = branchData[empId];
-          const noName = !emp || !emp.name || String(emp.name).trim()==='' || String(emp.name).trim()==='-';
-          if(noName && !emp?.role && !emp?.daily_rate) delete branchData[empId];
-        });
+      if(row.data_type==='pr_employees' && typeof branchData === 'object' && branchData){
+        try {
+          Object.keys(branchData).forEach(empId=>{
+            const emp = branchData[empId];
+            const noName = !emp || !emp.name || String(emp.name).trim()==='' || String(emp.name).trim()==='-';
+            if(noName && !emp?.role && !emp?.daily_rate) delete branchData[empId];
+          });
+        }catch(e){ console.warn('Ghost purge error:', e.message); }
       }
       
       _ownerData[row.branch_key][row.data_type] = branchData;
@@ -594,7 +612,7 @@ async function loadAllBranchesFromCloud(){
     console.log('[Owner] Loaded branches:', ALL_BRANCHES);
     return true;
   }catch(e){
-    console.error('Load all branches error:',e);
+    console.error('Load all branches error:', e.message || JSON.stringify(e));
     return false;
   }
 }
@@ -1617,18 +1635,29 @@ function filterDashboard(filter){
 // EMPLOYEES
 // ══════════════════════════════════════════════════════════════════════════════
 function showEmployees(q=''){
-  const emps=load(KEYS.employees);
+  let emps=load(KEYS.employees);
   
-  // Auto-purge ghost records: no name AND no role/daily_rate (these slip through soft-delete filter)
-  let ghostsPurged=false;
-  Object.entries(emps).forEach(([id,e])=>{
+  // Auto-purge ghost records: NO name AND NO role/daily_rate (these slip through soft-delete)
+  const isGhost = (e) => {
     const noName = !e || !e.name || String(e.name).trim()==='' || String(e.name).trim()==='-';
-    if(noName && !e?.role && !e?.daily_rate){ delete emps[id]; ghostsPurged=true; }
-  });
-  if(ghostsPurged) save(KEYS.employees, emps);
+    const noWork = !e?.role && !e?.daily_rate;
+    return noName && noWork;
+  };
   
-  // Filter: exclude soft-deleted AND ghost records
-  const filtered=Object.entries(emps).filter(([id,e])=>e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive');
+  let cleaned = {};
+  Object.entries(emps).forEach(([id,e])=>{
+    if(!isGhost(e)) cleaned[id]=e;
+  });
+  
+  if(Object.keys(cleaned).length < Object.keys(emps).length) {
+    save(KEYS.employees, cleaned);
+    emps = cleaned;
+  }
+  
+  // Filter: show only non-deleted, non-inactive, valid employees
+  const filtered=Object.entries(emps).filter(([id,e])=>
+    e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive'
+  );
   
   const rows=filtered.filter(([id,e])=>!q||(e.name+id+e.role+(e.branch||'')).toLowerCase().includes(q.toLowerCase()))
     .map(([id,e])=>{
@@ -3915,7 +3944,7 @@ async function manualSync(){
     toast('✅ Synced & refreshed!');
     setSyncBar('ok','☁ Up to date');
   }catch(e){
-    console.error('Sync error:',e);
+    console.error('Sync error:', e.message || JSON.stringify(e));
     toast('⚠ Sync failed: '+(e.message||'check connection'),4000);
   }
   if(btn){ btn.textContent='🔄 Sync'; btn.disabled=false; }
@@ -5945,7 +5974,7 @@ function showUpdateBanner(newSW){
     window._swUpdateReady = true;
     sessionStorage.setItem('_payrollUpdating','1');
     banner.remove();
-    newSW.postMessage('skipWaiting');
+    // newSW.postMessage removed - causes Headers clone error
   });
 }
 
