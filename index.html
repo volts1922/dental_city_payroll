@@ -5339,7 +5339,7 @@ function showAccountSettings(){
   document.getElementById('main').innerHTML = html;
 }
 
-function changePassword(){
+async function changePassword(){
   try {
     const old = document.getElementById('oldPass').value;
     const newP = document.getElementById('newPass').value;
@@ -5350,10 +5350,11 @@ function changePassword(){
     if(newP.length < 4){toast('❌ Password must be 4+ characters');return;}
     
     const u = USERS[_currentUser];
-    if(!u || SHA256(old) !== u.password){toast('❌ Current password incorrect');return;}
+    const oldHash = await _sha256(old);
+    if(!u || oldHash !== u.password){toast('❌ Current password incorrect');return;}
     
     // Update password
-    u.password = SHA256(newP);
+    u.password = await _sha256(newP);
     USERS[_currentUser] = u;
     
     // Save locally
@@ -5378,7 +5379,7 @@ function changePassword(){
   }
 }
 
-function changeUsername(){
+async function changeUsername(){
   try {
     const newU = document.getElementById('newUsername').value;
     const pass = document.getElementById('passForUsername').value;
@@ -5388,7 +5389,8 @@ function changeUsername(){
     if(USERS[newU]){toast('❌ Username already exists');return;}
     
     const u = USERS[_currentUser];
-    if(!u || SHA256(pass) !== u.password){toast('❌ Password incorrect');return;}
+    const passHash = await _sha256(pass);
+    if(!u || passHash !== u.password){toast('❌ Password incorrect');return;}
     
     // Update USERS object
     USERS[newU] = u;
