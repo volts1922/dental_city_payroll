@@ -5340,74 +5340,81 @@ function showAccountSettings(){
 }
 
 function changePassword(){
-  const old = document.getElementById('oldPass').value;
-  const newP = document.getElementById('newPass').value;
-  const conf = document.getElementById('confirmPass').value;
-  
-  if(!old||!newP||!conf){toast('❌ All fields required');return;}
-  if(newP !== conf){toast('❌ Passwords do not match');return;}
-  if(newP.length < 4){toast('❌ Password must be 4+ characters');return;}
-  
-  const u = USERS[_currentUser];
-  if(!u || SHA256(old) !== u.password){toast('❌ Current password incorrect');return;}
-  
-  u.password = SHA256(newP);
-  _addPasswordToHistory(_currentUser, u.password);
-  localStorage.setItem('pr_accounts', JSON.stringify(USERS));
-  
-  // Sync to Supabase
-  if(_sb){
-    (async ()=>{
-      try{
-        await _sb.from('payroll_accounts').update({data: u}).eq('username', _currentUser);
-        console.log('✅ Password synced to Supabase');
-      }catch(e){
-        console.error('Sync error:', e.message || JSON.stringify(e));
-        toast('⚠️ Local change saved, but sync failed. Will retry on next action.');
-      }
-    })();
+  try {
+    const old = document.getElementById('oldPass').value;
+    const newP = document.getElementById('newPass').value;
+    const conf = document.getElementById('confirmPass').value;
+    
+    if(!old||!newP||!conf){toast('❌ All fields required');return;}
+    if(newP !== conf){toast('❌ Passwords do not match');return;}
+    if(newP.length < 4){toast('❌ Password must be 4+ characters');return;}
+    
+    const u = USERS[_currentUser];
+    if(!u || SHA256(old) !== u.password){toast('❌ Current password incorrect');return;}
+    
+    // Update password
+    u.password = SHA256(newP);
+    USERS[_currentUser] = u;
+    
+    // Save locally
+    localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+    console.log('✅ Password saved to localStorage');
+    
+    // Sync to Supabase (fire and forget)
+    if(_sb) {
+      _sb.from('payroll_accounts').update({data: u}).eq('username', _currentUser)
+        .then(() => console.log('✅ Password synced to Supabase'))
+        .catch(e => console.error('Supabase sync failed:', e.message));
+    }
+    
+    toast('✅ Password changed successfully');
+    document.getElementById('oldPass').value = '';
+    document.getElementById('newPass').value = '';
+    document.getElementById('confirmPass').value = '';
+    
+  } catch(err) {
+    console.error('changePassword error:', err);
+    toast('❌ Error: ' + err.message);
   }
-  
-  toast('✅ Password changed');
-  document.getElementById('oldPass').value = '';
-  document.getElementById('newPass').value = '';
-  document.getElementById('confirmPass').value = '';
 }
 
 function changeUsername(){
-  const newU = document.getElementById('newUsername').value;
-  const pass = document.getElementById('passForUsername').value;
-  
-  if(!newU||!pass){toast('❌ All fields required');return;}
-  if(newU === _currentUser){toast('❌ New username must be different');return;}
-  if(USERS[newU]){toast('❌ Username already exists');return;}
-  
-  const u = USERS[_currentUser];
-  if(!u || SHA256(pass) !== u.password){toast('❌ Password incorrect');return;}
-  
-  // Update local USERS object
-  USERS[newU] = u;
-  delete USERS[_currentUser];
-  localStorage.setItem('pr_accounts', JSON.stringify(USERS));
-  
-  // Sync to Supabase
-  if(_sb){
-    (async ()=>{
-      try{
-        // Delete old username record
-        await _sb.from('payroll_accounts').delete().eq('username', _currentUser);
-        // Insert new username record
-        await _sb.from('payroll_accounts').insert([{username: newU, data: u}]);
-        console.log('✅ Username synced to Supabase');
-      }catch(e){
-        console.error('Sync error:', e.message || JSON.stringify(e));
-        toast('⚠️ Local change saved, but sync failed. Will retry on next action.');
-      }
-    })();
+  try {
+    const newU = document.getElementById('newUsername').value;
+    const pass = document.getElementById('passForUsername').value;
+    
+    if(!newU||!pass){toast('❌ All fields required');return;}
+    if(newU === _currentUser){toast('❌ New username must be different');return;}
+    if(USERS[newU]){toast('❌ Username already exists');return;}
+    
+    const u = USERS[_currentUser];
+    if(!u || SHA256(pass) !== u.password){toast('❌ Password incorrect');return;}
+    
+    // Update USERS object
+    USERS[newU] = u;
+    delete USERS[_currentUser];
+    
+    // Save locally
+    localStorage.setItem('pr_accounts', JSON.stringify(USERS));
+    console.log('✅ Username changed in localStorage');
+    
+    // Sync to Supabase (fire and forget)
+    if(_sb) {
+      _sb.from('payroll_accounts').delete().eq('username', _currentUser)
+        .then(() => _sb.from('payroll_accounts').insert([{username: newU, data: u}]))
+        .then(() => console.log('✅ Username synced to Supabase'))
+        .catch(e => console.error('Supabase sync failed:', e.message));
+    }
+    
+    toast('✅ Username changed. Logging out...');
+    document.getElementById('newUsername').value = '';
+    document.getElementById('passForUsername').value = '';
+    setTimeout(() => doLogout(), 2000);
+    
+  } catch(err) {
+    console.error('changeUsername error:', err);
+    toast('❌ Error: ' + err.message);
   }
-  
-  toast('✅ Username changed. Logging out...');
-  setTimeout(() => doLogout(), 2000);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
