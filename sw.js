@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'dc-payroll-v30.18'; // BUMPED from v30.9 - Force refresh on ALL devices
+const CACHE_VERSION = 'dc-payroll-v30.19'; // BUMPED from v30.9 - Force refresh on ALL devices
 
 self.addEventListener('install', event => {
   console.log('[SW] Installing version:', CACHE_VERSION);
