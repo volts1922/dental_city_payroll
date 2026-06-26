@@ -1348,9 +1348,11 @@ const NAV_ADMIN=[
   {icon:'🧾',label:'Payslip',     fn:'showPayslip'},
   {icon:'💾',label:'Backup',      fn:'showBackupManager'},
   {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
+  {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
 ];
 const NAV_STAFF=[
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
+  {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
 ];
 
 let currentPage='';
@@ -4231,6 +4233,22 @@ async function ownerRefresh(){
   setSyncBar('ok','☁ All branches refreshed');
   toast('✅ All branch data refreshed!');
   showOwnerDashboard();
+}
+
+// ── Refresh Data for Admin/Staff ────────────────────────────────────────────────
+async function refreshUserData(){
+  showLoading('Clearing cache & reloading...');
+  try {
+    // Clear localStorage
+    localStorage.clear();
+    toast('✅ Cache cleared. Reloading...');
+    // Reload page
+    setTimeout(() => location.reload(), 1000);
+  } catch(err) {
+    console.error('Refresh error:', err);
+    toast('❌ Refresh failed: ' + err.message);
+    hideLoading();
+  }
 }
 
 // ── All Branches Dashboard ────────────────────────────────────────────────────
