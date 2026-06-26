@@ -7113,104 +7113,60 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // ║                    CRITICAL FIXES - PRIORITY 1                           ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
-// ── FIX 1: RUN PAYROLL NOW (Manual trigger) ─────────────────────────────────
-let _payrollRunning = false;
-
+// ── RUN PAYROLL NOW (Simple anon version) ─────────────────────────────────────
 function runPayrollNow(){
-  if(_payrollRunning){
-    toast('⚠️ Payroll already submitting...');
-    return;
-  }
-  
   if(!_payrollData.length){
     toast('⚠️ Compute payroll first');
     return;
   }
   
-  _payrollRunning = true;
+  const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+  const branch = getBranch();
+  const runId = `PR-${branch}-${month}`;
   
-  _confirm('Submit payroll for owner approval?', {ok:'Submit', cancel:'Cancel', icon:'💰'}).then(async ok=>{
-    if(!ok) {
-      _payrollRunning = false;
-      return;
-    }
+  _confirm(`Submit payroll ${runId}?`, {ok:'Submit', cancel:'Cancel'}).then(async ok=>{
+    if(!ok) return;
     
     try {
-      const month = document.getElementById('payMonth')?.value || today().slice(0,7);
-      const branch = getBranch();
-      const runId = `PR-${branch}-${month}`;
+      const total_gross = _payrollData.reduce((s,d)=>s+(parseFloat(d.gross)||0),0);
+      const total_deductions = _payrollData.reduce((s,d)=>s+(parseFloat(d.totalDeductions)||0),0);
+      const total_net = total_gross - total_deductions;
       
-      // Simple check: if already exists in Supabase, don't create duplicate
-      if(_sb) {
-        const {data: existing} = await _sb.from('pr_payroll_approvals').select('*').eq('run_id', runId);
-        if(existing?.length > 0) {
-          toast(`⚠️ Payroll for ${branch} (${month}) already exists`);
-          _payrollRunning = false;
-          return;
-        }
-      }
-      
-      // Create payroll record
-      const payrollRun = {
-        runId,
-        branch: _esc(branch),
-        date: today(),
-        month,
-        status: 'Pending',
-        employees: {},
-        total_gross: 0,
-        total_deductions: 0,
-        total_net: 0,
-        created_at: new Date().toISOString(),
-        created_by: _currentUser || 'System'
-      };
-      
-      // Calculate totals
+      const employees = {};
       _payrollData.forEach(d => {
-        const gross = parseFloat(d.gross) || 0;
-        const ded = parseFloat(d.totalDeductions) || 0;
-        payrollRun.employees[d.eid] = {
-          name: _esc(d.name),
-          gross, deductions: ded, net: gross - ded
+        employees[d.eid] = {
+          name: d.name,
+          gross: parseFloat(d.gross)||0,
+          deductions: parseFloat(d.totalDeductions)||0,
+          net: parseFloat(d.net)||0
         };
-        payrollRun.total_gross += gross;
-        payrollRun.total_deductions += ded;
-        payrollRun.total_net += (gross - ded);
       });
       
-      // Save locally
-      const approvals = load(KEYS.payroll_approvals) || {};
-      approvals[runId] = payrollRun;
-      save(KEYS.payroll_approvals, approvals);
-      
-      // Sync to Supabase ONCE
+      // Save directly via anon key
       if(_sb) {
-        await _sb.from('pr_payroll_approvals').upsert({
+        const {error} = await _sb.from('pr_payroll_approvals').upsert({
           run_id: runId,
           branch_id: branch,
           month,
           status: 'Pending',
-          total_gross: payrollRun.total_gross,
-          total_deductions: payrollRun.total_deductions,
-          total_net: payrollRun.total_net,
-          employees: payrollRun.employees,
+          total_gross,
+          total_deductions,
+          total_net,
+          employees,
           created_by: _currentUser || 'System'
         }, {onConflict: 'run_id'});
+        
+        if(error) throw error;
       }
       
-      toast(`✅ Payroll submitted for approval! Total: ₱${fmt(payrollRun.total_net)}`);
-      setTimeout(() => showOwnerDashboard(), 1000);
-      
+      toast(`✅ Payroll submitted! ₱${fmt(total_net)}`);
+      setTimeout(() => showPayroll(), 1000);
     } catch(err) {
-      console.error('[Payroll] Error:', err);
-      toast(`❌ Error: ${err.message}`);
-    } finally {
-      _payrollRunning = false;
+      console.error('[Payroll]', err);
+      toast(`❌ ${err.message}`);
     }
   });
 }
-
-// ── FIX 2: APPROVE PAYROLL + UPDATE LOAN BALANCES ────────────────────────────
 async function approvePayroll(runId){
   _confirm(`Approve payroll run ${runId}?`,{ok:'Approve',cancel:'Cancel',icon:'💰'}).then(async ok=>{
     if(!ok) return;
