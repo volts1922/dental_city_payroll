@@ -1,65 +1,85 @@
-const CACHE_NAME = 'dc-payroll-v30.8';
-const ASSETS_TO_CACHE = ['/dental_city_payroll/index.html','/dental_city_payroll/manifest.json'];
+const CACHE_VERSION = 'dc-payroll-v30.9'; // BUMPED from v30.8 - Force refresh on ALL devices
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', event => {
+  console.log('[SW] Installing version:', CACHE_VERSION);
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(err => {
-        console.log('[SW] Cache error (non-critical):', err.message);
-        return Promise.resolve();
+    caches.open(CACHE_VERSION).then(cache => {
+      console.log('[SW] Cache opened:', CACHE_VERSION);
+      return cache.addAll([
+        '/',
+        '/index.html',
+        '/manifest.json'
+      ]).catch(err => {
+        console.warn('[SW] Cache addAll partial failure (expected):', err);
       });
     })
   );
-  self.skipWaiting();
+  self.skipWaiting(); // Activate immediately
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate', event => {
+  console.log('[SW] Activating version:', CACHE_VERSION);
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(cacheNames.map((cacheName) => {
-        if (cacheName !== CACHE_NAME) return caches.delete(cacheName);
-      }));
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_VERSION) {
+            console.log('[SW] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
     })
   );
-  self.clients.claim();
+  self.clients.claim(); // Take control immediately
 });
 
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', event => {
   const { request } = event;
-  const url = new URL(request.url);
-  if (url.origin !== location.origin) return;
+  
+  // Skip non-GET requests
+  if (request.method !== 'GET') {
+    return;
+  }
 
-  if (url.pathname.includes('/api') || url.hostname.includes('supabase')) {
+  // Skip Supabase API calls (always fetch fresh)
+  if (request.url.includes('supabase.co')) {
     event.respondWith(
-      fetch(request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => {
-        return caches.match(request).then((response) => {
-          return response || new Response('Offline', { status: 503 });
-        });
-      })
+      fetch(request)
+        .catch(() => caches.match(request))
     );
     return;
   }
 
+  // For HTML, CSS, JS: Try network first, fallback to cache
+  if (request.url.includes('.html') || request.url.includes('.js') || request.url.includes('.css')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.status === 200) {
+            const cache = caches.open(CACHE_VERSION);
+            cache.then(c => c.put(request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // For everything else: Cache first, fallback to network
   event.respondWith(
-    caches.match(request).then((response) => {
-      if (response) return response;
-      return fetch(request).then((response) => {
-        if (response.ok && request.method === 'GET') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => new Response('Offline', { status: 503 }));
-    })
+    caches.match(request)
+      .then(response => response || fetch(request))
+      .catch(() => new Response('Offline', { status: 503 }))
   );
 });
 
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+// Handle messages from clients
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
+
+console.log('[SW] Service Worker loaded. Cache version:', CACHE_VERSION);
