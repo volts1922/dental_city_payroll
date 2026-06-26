@@ -5972,25 +5972,31 @@ function changeOwnPassword(){
 
 // ── CHANGE OWN USERNAME ──────────────────────────────────────────────────
 function changeOwnUsername(){
-  openModal('👤 Change Username', `
+  const html = `
     <div class="form-group">
-      <label class="form-label">Current Username</label>
-      <input class="form-control" value="${_currentUser}" disabled style="background:#f0f0f0">
+      <label class="form-label">Current Username: <strong>${_currentUser}</strong></label>
     </div>
     <div class="form-group">
       <label class="form-label">New Username *</label>
-      <input class="form-control" id="f_new_user" type="text" placeholder="Enter new username">
+      <input type="text" class="form-control" id="changeUserInput" placeholder="Enter new username" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
     </div>
-  `, async ()=>{
-    const newUser = fval('f_new_user').trim().toLowerCase().replace(/\s+/g,'_');
+  `;
+  openModal('👤 Change Username', html, async ()=>{
+    const inp = document.getElementById('changeUserInput');
+    if(!inp) { toast('❌ Input not found'); return; }
+    const newUser = (inp.value || '').trim().toLowerCase().replace(/\s+/g,'_');
     if(!newUser) { toast('⚠️ Username required'); return; }
+    if(newUser === _currentUser) { toast('⚠️ Same username!'); return; }
     if(USERS[newUser]) { toast(`⚠️ Username "${newUser}" already taken`); return; }
     USERS[newUser] = USERS[_currentUser];
     delete USERS[_currentUser];
     _saveAccountToCloud(newUser, USERS[_currentUser]);
     _currentUser = newUser;
-    toast('✅ Username changed! Re-login on next session.'); closeModal();
+    toast('✅ Username changed!'); 
+    closeModal();
   }, '✅ Change Username');
+  // Focus input after modal renders
+  setTimeout(() => document.getElementById('changeUserInput')?.focus(), 100);
 }
 
 
