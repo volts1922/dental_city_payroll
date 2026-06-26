@@ -1186,6 +1186,12 @@ function _normalizeBranch(n){
   return n.trim().replace(/\s+/g,' ').replace(/\w\S*/g, w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());
 }
 function getBranch(){ return _normalizeBranch(BRANCH_NAME||localStorage.getItem('pr_branch')||''); }
+
+// Get branch dropdown options based on user role
+function getBranchOptions(){
+  if(isOwner()) return ['All', ...ALL_BRANCHES];
+  return [getBranch()]; // Admin/Staff see only their own branch
+}
 function setBranch(n){ const nn=_normalizeBranch(n); BRANCH_NAME=nn; localStorage.setItem('pr_branch',nn); }
 function initBranch(){
   const n=getBranch();
@@ -1717,8 +1723,7 @@ function showDashboard(){
     <div class="section-header" style="margin-bottom:12px">
       <div class="section-title">📊 Real-Time Status</div>
       <select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
-        <option value="All">All Branches</option>
-        ${branchList.map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
+        ${getBranchOptions().map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
       </select>
     </div>
     ${branchStats ? `
@@ -4737,7 +4742,7 @@ function showAllAttendance(filterBranch='All', filterDate=''){
     <td>${badge(r.status||'—')}</td>
   </tr>`).join('')||`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No attendance records for this date</td></tr>`;
 
-  const branches=['All',...ALL_BRANCHES];
+  const branches = getBranchOptions();
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div class="section-title">All Attendance</div>
@@ -7109,11 +7114,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 // ── FIX 1: RUN PAYROLL NOW (Manual trigger) ─────────────────────────────────
-let _payrollRunning = false; // Prevent duplicate submissions
+let _payrollRunning = false;
 
 function runPayrollNow(){
   if(_payrollRunning){
-    toast('⚠️ Payroll already submitting... please wait');
+    toast('⚠️ Payroll already submitting...');
     return;
   }
   
@@ -7122,150 +7127,85 @@ function runPayrollNow(){
     return;
   }
   
-  _payrollRunning = true; // Set flag IMMEDIATELY to block concurrent calls
+  _payrollRunning = true;
   
-  // Prevent double-click
-  const btn = event?.target;
-  if(btn) {
-    btn.disabled = true;
-    btn.style.opacity = '0.5';
-  }
-  
-  _confirm('Create payroll run for owner approval?<br><br>This will submit the computed payroll for owner review and approval.',
-    {ok:'Submit for Approval', cancel:'Cancel', icon:'💰'}).then(async ok=>{
+  _confirm('Submit payroll for owner approval?', {ok:'Submit', cancel:'Cancel', icon:'💰'}).then(async ok=>{
     if(!ok) {
-      _payrollRunning = false; // Clear on cancel
-      if(btn) {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-      }
+      _payrollRunning = false;
       return;
     }
     
     try {
       const month = document.getElementById('payMonth')?.value || today().slice(0,7);
       const branch = getBranch();
-      // Use branch+month as runId so running payroll twice UPDATES not CREATES
       const runId = `PR-${branch}-${month}`;
       
-      console.log('[Payroll] Pre-checking Supabase for existing payroll:', {runId, branch, month});
-      
-      // ── PRE-CHECK: Query Supabase first to prevent duplicates ──
+      // Simple check: if already exists in Supabase, don't create duplicate
       if(_sb) {
-        try {
-          const {data: existingRuns, error: checkError} = await _sb
-            .from('pr_payroll_approvals')
-            .select('*')
-            .eq('run_id', runId);
-          
-          if(checkError) {
-            console.error('[Payroll] Pre-check error:', checkError);
-          } else if(existingRuns && existingRuns.length > 0) {
-            const currentStatus = existingRuns[0].status;
-            console.log('[Payroll] Found existing payroll:', {runId, status: currentStatus});
-            
-            if(currentStatus === 'Pending') {
-              toast(`⚠️ Payroll for ${branch} (${month}) is ALREADY pending owner approval`);
-              _payrollRunning = false;
-              if(btn) {
-                btn.disabled = false;
-                btn.style.opacity = '1';
-              }
-              return;
-            } else if(currentStatus === 'Approved') {
-              toast(`✅ Payroll for ${branch} (${month}) has ALREADY been approved`);
-              _payrollRunning = false;
-              if(btn) {
-                btn.disabled = false;
-                btn.style.opacity = '1';
-              }
-              return;
-            }
-          }
-        } catch(err) {
-          console.error('[Payroll] Failed to pre-check cloud approvals:', err);
+        const {data: existing} = await _sb.from('pr_payroll_approvals').select('*').eq('run_id', runId);
+        if(existing?.length > 0) {
+          toast(`⚠️ Payroll for ${branch} (${month}) already exists`);
+          _payrollRunning = false;
+          return;
         }
       }
       
-      console.log('[Payroll] Submitting:', {runId, branch, month, empCount: _payrollData.length});
-      
-      // Clear old approvals from localStorage - start fresh
-      localStorage.removeItem(KEYS.payroll_approvals);
-      
-      // Format payroll data with sanitization
-      const employees = {};
-      _payrollData.forEach(d=>{
-        employees[d.eid] = {
-          name: _esc(d.name),
-          gross: parseFloat(d.gross)||0,
-          deductions: parseFloat(d.totalDeductions)||0,
-          net: parseFloat(d.net)||0,
-          loan_deduction: parseFloat(d.loanDeduction)||0
-        };
-      });
-      
+      // Create payroll record
       const payrollRun = {
         runId,
         branch: _esc(branch),
         date: today(),
         month,
         status: 'Pending',
-        employees,
-        total_gross: parseFloat(_payrollData.reduce((s,d)=>s+(parseFloat(d.gross)||0),0))||0,
-        total_deductions: parseFloat(_payrollData.reduce((s,d)=>s+(parseFloat(d.totalDeductions)||0),0))||0,
-        total_net: parseFloat(_payrollData.reduce((s,d)=>s+(parseFloat(d.net)||0),0))||0,
+        employees: {},
+        total_gross: 0,
+        total_deductions: 0,
+        total_net: 0,
         created_at: new Date().toISOString(),
         created_by: _currentUser || 'System'
       };
       
-      // Save locally first
+      // Calculate totals
+      _payrollData.forEach(d => {
+        const gross = parseFloat(d.gross) || 0;
+        const ded = parseFloat(d.totalDeductions) || 0;
+        payrollRun.employees[d.eid] = {
+          name: _esc(d.name),
+          gross, deductions: ded, net: gross - ded
+        };
+        payrollRun.total_gross += gross;
+        payrollRun.total_deductions += ded;
+        payrollRun.total_net += (gross - ded);
+      });
+      
+      // Save locally
       const approvals = load(KEYS.payroll_approvals) || {};
       approvals[runId] = payrollRun;
       save(KEYS.payroll_approvals, approvals);
-      console.log('[Payroll] Saved locally');
       
-      // Sync ONLY to pr_payroll_approvals (no fallback blob sync)
-      if(_sb){
-        try {
-          console.log('[Payroll] Syncing to Supabase...');
-          const {error} = await _sb.from('pr_payroll_approvals').upsert({
-            run_id: runId,
-            branch_id: branch,
-            month,
-            status: 'Pending',
-            total_gross: payrollRun.total_gross,
-            total_deductions: payrollRun.total_deductions,
-            total_net: payrollRun.total_net,
-            employees: payrollRun.employees,
-            created_by: _currentUser || 'System',
-            created_at: new Date().toISOString()
-          }, {onConflict: 'run_id'});
-          
-          if(error) {
-            console.error('[Payroll] Sync error:', error.message);
-            throw error;
-          }
-          console.log('[Payroll] ✅ Synced successfully');
-        } catch(err) {
-          console.error('[Payroll] Sync failed:', err.message);
-          toast('⚠️ Local saved. Cloud sync failed - will retry later');
-        }
+      // Sync to Supabase ONCE
+      if(_sb) {
+        await _sb.from('pr_payroll_approvals').upsert({
+          run_id: runId,
+          branch_id: branch,
+          month,
+          status: 'Pending',
+          total_gross: payrollRun.total_gross,
+          total_deductions: payrollRun.total_deductions,
+          total_net: payrollRun.total_net,
+          employees: payrollRun.employees,
+          created_by: _currentUser || 'System'
+        }, {onConflict: 'run_id'});
       }
       
-      toast(`✅ Payroll submitted! Total: ₱${fmt(payrollRun.total_net)}`);
-      setTimeout(()=>{
-        if(isOwner()) showPayrollApprovals();
-        else showOwnerDashboard();
-      }, 1500);
+      toast(`✅ Payroll submitted for approval! Total: ₱${fmt(payrollRun.total_net)}`);
+      setTimeout(() => showOwnerDashboard(), 1000);
+      
     } catch(err) {
-      console.error('runPayrollNow error:', err);
+      console.error('[Payroll] Error:', err);
       toast(`❌ Error: ${err.message}`);
     } finally {
-      _payrollRunning = false; // Clear flag
-      if(btn) {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-      }
+      _payrollRunning = false;
     }
   });
 }
