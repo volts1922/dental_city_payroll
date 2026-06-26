@@ -7172,7 +7172,7 @@ function runPayrollNow(){
       console.log('[Payroll] Submitting:', {runId, branch, month, empCount: _payrollData.length});
       
       // Clear old approvals from localStorage - start fresh
-      await W(localStorage, KEYS.payroll_approvals);
+      localStorage.removeItem(KEYS.payroll_approvals);
       
       // Format payroll data with sanitization
       const employees = {};
