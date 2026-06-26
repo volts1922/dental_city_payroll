@@ -7126,8 +7126,9 @@ function runPayrollNow(){
     
     try {
       const month = document.getElementById('payMonth')?.value || today().slice(0,7);
-      const runId = `PR-${today()}-${Date.now().toString(36).toUpperCase()}`;
       const branch = getBranch();
+      // Use branch+month as runId so running payroll twice UPDATES not CREATES
+      const runId = `PR-${branch}-${month}`;
       
       console.log('[Payroll] Submitting:', {runId, branch, month, empCount: _payrollData.length});
       
