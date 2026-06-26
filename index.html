@@ -7104,6 +7104,8 @@ function runPayrollNow(){
     return;
   }
   
+  _payrollRunning = true; // Set flag IMMEDIATELY to block concurrent calls
+  
   // Prevent double-click
   const btn = event?.target;
   if(btn) {
@@ -7114,6 +7116,7 @@ function runPayrollNow(){
   _confirm('Create payroll run for owner approval?<br><br>This will submit the computed payroll for owner review and approval.',
     {ok:'Submit for Approval', cancel:'Cancel', icon:'💰'}).then(async ok=>{
     if(!ok) {
+      _payrollRunning = false; // Clear on cancel
       if(btn) {
         btn.disabled = false;
         btn.style.opacity = '1';
@@ -7121,14 +7124,15 @@ function runPayrollNow(){
       return;
     }
     
-    _payrollRunning = true; // Set flag
-    
     try {
       const month = document.getElementById('payMonth')?.value || today().slice(0,7);
       const runId = `PR-${today()}-${Date.now().toString(36).toUpperCase()}`;
       const branch = getBranch();
       
       console.log('[Payroll] Submitting:', {runId, branch, month, empCount: _payrollData.length});
+      
+      // Clear old approvals from localStorage - start fresh
+      await W(localStorage, KEYS.payroll_approvals);
       
       // Format payroll data with sanitization
       const employees = {};
