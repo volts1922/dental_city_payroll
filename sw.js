@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'dc-payroll-v30.20'; // BUMPED from v30.9 - Force refresh on ALL devices
+const CACHE_VERSION = 'dc-payroll-v30.22'; // BUMPED from v30.9 - Force refresh on ALL devices
 
 self.addEventListener('install', event => {
   console.log('[SW] Installing version:', CACHE_VERSION);
@@ -57,8 +57,9 @@ self.addEventListener('fetch', event => {
       fetch(request)
         .then(response => {
           if (response.status === 200) {
-            const cache = caches.open(CACHE_VERSION);
-            cache.then(c => c.put(request, response.clone()));
+            caches.open(CACHE_VERSION).then(cache => {
+              cache.put(request, response.clone());
+            });
           }
           return response;
         })
