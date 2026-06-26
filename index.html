@@ -6738,7 +6738,7 @@ function open201(empId){
     </details>`;
   }
   document.getElementById('form201Sections').innerHTML = html;
-  window._current201Id = empId;
+  window._currentUser = empId;
   window._201ReadOnly = isReadOnly;
   document.getElementById('modal201').style.display = 'block';
   if(isReadOnly) toast('👀 View-only (dev backup)');
@@ -6750,7 +6750,7 @@ function close201(){
 
 async function save201(){
   if(window._201ReadOnly){ toast('❌ View-only access'); return; }
-  let data = {employee_id: window._current201Id, branch_id: getBranch()};
+  let data = {employee_id: window._currentUser, branch_id: getBranch()};
   for(let field of Object.values(SECTIONS_201).flat()){
     data[field] = document.getElementById(`f_${field}`)?.value || null;
   }
@@ -6818,7 +6818,7 @@ function approvePayroll(runId){
     if(approvals[runId]){
       approvals[runId].status = 'Approved';
       approvals[runId].approved_at = new Date().toISOString();
-      approvals[runId].approved_by = _current201Id;
+      approvals[runId].approved_by = _currentUser;
       save(KEYS.payroll_approvals, approvals);
       await syncToCloud(KEYS.payroll_approvals, approvals);
       toast(`✅ Payroll ${runId} approved!`);
@@ -6834,7 +6834,7 @@ function denyPayroll(runId){
     if(approvals[runId]){
       approvals[runId].status = 'Denied';
       approvals[runId].denied_at = new Date().toISOString();
-      approvals[runId].denied_by = _current201Id;
+      approvals[runId].denied_by = _currentUser;
       save(KEYS.payroll_approvals, approvals);
       await syncToCloud(KEYS.payroll_approvals, approvals);
       toast(`⛔ Payroll ${runId} denied`);
@@ -6881,7 +6881,7 @@ function runPayrollNow(){
       total_deductions: _payrollData.reduce((s,d)=>s+d.totalDeductions,0),
       total_net: _payrollData.reduce((s,d)=>s+d.net,0),
       created_at: new Date().toISOString(),
-      created_by: _current201Id
+      created_by: _currentUser
     };
     
     // Save to approvals table
