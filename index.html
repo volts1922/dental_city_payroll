@@ -1924,6 +1924,7 @@ function showEmployees(q=''){
 function empForm(d={}){
   const emps=load(KEYS.employees);
   const allow = d.allowances || {};
+  const photoPreview = d.photo ? `<img src="${d.photo}" style="width:50px;height:50px;border-radius:8px;margin-top:8px;border:2px solid var(--border)">` : '';
 
   // BranchAdmin can only add to their own branch — lock the field
   const myBranch = getBranch();
@@ -1942,6 +1943,12 @@ function empForm(d={}){
        </div>`;
 
   return `
+    <div class="form-group">
+      <label class="form-label">📸 Photo (1x1)</label>
+      <input class="form-control" id="f_photo_file" type="file" accept="image/*" onchange="compressPhoto(this)">
+      <input type="hidden" id="f_photo" value="${d.photo||''}">
+      ${photoPreview}
+    </div>
     ${formRow('Full Name *','name',d.name)}
     ${formRow('Role / Position','role',d.role)}
     ${formRow('Daily Rate (₱) *','daily_rate',d.daily_rate,'number')}
@@ -1984,6 +1991,35 @@ function empForm(d={}){
       </div>
       <div id="allow_total" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;text-align:right"></div>
     </div>`;
+}
+
+// Compress photo to 1x1 pixel base64
+function compressPhoto(input){
+  if(!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 1, 1);
+      const base64 = canvas.toDataURL('image/jpeg', 0.8);
+      document.getElementById('f_photo').value = base64;
+      // Show preview
+      const previewDiv = document.getElementById('f_photo').parentElement;
+      const existing = previewDiv.querySelector('img');
+      if(existing) existing.remove();
+      const img_preview = document.createElement('img');
+      img_preview.src = base64;
+      img_preview.style.cssText = 'width:50px;height:50px;border-radius:8px;margin-top:8px;border:2px solid var(--border)';
+      previewDiv.appendChild(img_preview);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 function getAllowances(){
@@ -2056,34 +2092,45 @@ function addEmp(){
     if(!branch){toast('⚠️ Branch is required');return;}
     const branchCode = branch.substring(0, 3).toUpperCase() + '_';
     const emps=load(KEYS.employees), id=nextId(emps, branchCode);
+    const photo = document.getElementById('f_photo')?.value || '';
     emps[id]={name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
-      allowances:getAllowances()};
+      allowances:getAllowances(), photo};
     save(KEYS.employees,emps); 
     
-    // Auto-create empty 201 record in Supabase
+    // Auto-create 201 record with photo in Supabase
     try{
-      await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branch});
+      await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branch,photo});
     }catch(e){
       console.warn('⚠️ 201 auto-create failed (non-blocking):',e.message);
     }
     
-    closeModal(); toast('✅ Employee added! Empty 201 file created.'); showEmployees();
+    closeModal(); toast('✅ Employee added with photo! Empty 201 file created.'); showEmployees();
   });
 }
 
 function editEmp(id){
   const emps=load(KEYS.employees);
-  openModal('Edit Employee',empForm(emps[id]),()=>{
+  openModal('Edit Employee',empForm(emps[id]),async()=>{
     if(!fval('name')||!fval('daily_rate')){toast('⚠️ Name and daily rate required');return;}
     // BranchAdmin: keep their branch locked
     const branch = isBranchAdmin() ? getBranch() : fval('branch');
+    const photo = document.getElementById('f_photo')?.value || emps[id]?.photo || '';
     emps[id]={...emps[id],name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
-      allowances:getAllowances()};
-    save(KEYS.employees,emps); closeModal(); toast('✅ Updated!'); showEmployees();
+      allowances:getAllowances(), photo};
+    save(KEYS.employees,emps);
+    
+    // Sync photo to Supabase
+    try{
+      await _sbInsertOrUpdate('employees_201',{employee_id:id, photo});
+    }catch(e){
+      console.warn('⚠️ Photo sync failed:',e.message);
+    }
+    
+    closeModal(); toast('✅ Updated!'); showEmployees();
   });
 }
 
