@@ -6851,7 +6851,49 @@ function showPayrollApprovals(){
     return;
   }
   
-  const approvals = load(KEYS.payroll_approvals) || {};
+  // Load from localStorage first
+  let approvals = load(KEYS.payroll_approvals) || {};
+  
+  // Also load from Supabase pr_payroll_approvals table
+  if(_sb){
+    _sb.from('pr_payroll_approvals')
+      .select('*')
+      .eq('status', 'Pending')
+      .then(({data, error}) => {
+        if(error) {
+          console.error('Failed to load approvals from Supabase:', error);
+          return;
+        }
+        if(data && data.length > 0) {
+          // Merge Supabase data with localStorage
+          data.forEach(row => {
+            if(!approvals[row.run_id]) {
+              approvals[row.run_id] = {
+                runId: row.run_id,
+                branch: row.branch_id,
+                date: row.created_at?.split('T')[0],
+                month: row.month,
+                status: row.status,
+                employees: row.employees || {},
+                created_by: row.created_by,
+                total_gross: row.total_gross,
+                total_deductions: row.total_deductions,
+                total_net: row.total_net
+              };
+            }
+          });
+          // Refresh the display with merged data
+          renderPayrollApprovals(approvals);
+        } else {
+          renderPayrollApprovals(approvals);
+        }
+      });
+  } else {
+    renderPayrollApprovals(approvals);
+  }
+}
+
+function renderPayrollApprovals(approvals){
   const pendingRuns = [];
   
   Object.entries(approvals).forEach(([runId, run])=>{
@@ -7080,10 +7122,19 @@ function runPayrollNow(){
             created_by: _currentUser || 'System',
             created_at: new Date().toISOString()
           }, {onConflict: 'run_id'});
-          if(error) throw error;
+          if(error) {
+            console.error('Payroll sync error details:', error.message, error.details, error.hint);
+            throw error;
+          }
+          console.log('✅ Payroll synced to pr_payroll_approvals');
         } catch(err) {
-          console.error('Payroll sync failed:', err);
-          toast('⚠️ Local saved. Sync failed - will retry when online');
+          console.error('Payroll sync to pr_payroll_approvals failed:', err.message || JSON.stringify(err));
+          // Fallback to blob sync
+          console.log('Falling back to payroll_data blob sync...');
+          await syncToCloud(KEYS.payroll_approvals, approvals).catch(e => {
+            console.error('Fallback sync also failed:', e);
+            toast('⚠️ Local saved. Cloud sync failed');
+          });
         }
       }
       
