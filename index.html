@@ -296,6 +296,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <span id="roleBadge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;"></span>
     <span id="userLabel" style="font-size:13px;font-weight:600;"></span>
     <button id="installBtn" style="display:none;background:#0078d4;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:8px;" onmouseover="this.style.background='#106ebe'" onmouseout="this.style.background='#0078d4'">📥 Install</button>
+    <button onclick="changeOwnPassword()" style="background:#FF9800;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#E68900'" onmouseout="this.style.background='#FF9800'" title="Change your password">🔐</button>
+    <button onclick="changeOwnUsername()" style="background:#9C27B0;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#7B1FA2'" onmouseout="this.style.background='#9C27B0'" title="Change your username">👤</button>
     <button onclick="doLogout()" style="background:#DC2626;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">⏻ Logout</button>
   </div>
   <div class="topbar-clock" id="clock"></div>
@@ -5938,6 +5940,59 @@ async function deleteAccount(username){
   _deleteAccountFromCloud(username);
   toast(`🗑 Account "${username}" deleted`); showAccountManager();
 }
+
+// ── CHANGE OWN PASSWORD ──────────────────────────────────────────────────
+function changeOwnPassword(){
+  openModal('🔐 Change Password', `
+    <div class="form-group">
+      <label class="form-label">Current Password *</label>
+      <input class="form-control" id="f_curr_pass" type="password" placeholder="Enter current password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">New Password *</label>
+      <input class="form-control" id="f_new_pass" type="password" placeholder="Enter new password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirm New Password *</label>
+      <input class="form-control" id="f_conf_pass" type="password" placeholder="Confirm new password">
+    </div>
+  `, async ()=>{
+    const curr = document.getElementById('f_curr_pass')?.value;
+    const newPass = document.getElementById('f_new_pass')?.value;
+    const conf = document.getElementById('f_conf_pass')?.value;
+    if(!curr || !newPass || !conf) { toast('⚠️ All fields required'); return; }
+    if(newPass !== conf) { toast('⚠️ Passwords don\'t match'); return; }
+    const currHash = await _sha256(curr);
+    if(currHash !== USERS[_currentUser].password) { toast('❌ Current password incorrect'); return; }
+    USERS[_currentUser].password = await _sha256(newPass);
+    _saveAccountToCloud(_currentUser, USERS[_currentUser]);
+    toast('✅ Password changed!'); closeModal();
+  }, '✅ Change Password');
+}
+
+// ── CHANGE OWN USERNAME ──────────────────────────────────────────────────
+function changeOwnUsername(){
+  openModal('👤 Change Username', `
+    <div class="form-group">
+      <label class="form-label">Current Username</label>
+      <input class="form-control" value="${_currentUser}" disabled style="background:#f0f0f0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">New Username *</label>
+      <input class="form-control" id="f_new_user" type="text" placeholder="Enter new username">
+    </div>
+  `, async ()=>{
+    const newUser = fval('f_new_user').trim().toLowerCase().replace(/\s+/g,'_');
+    if(!newUser) { toast('⚠️ Username required'); return; }
+    if(USERS[newUser]) { toast(`⚠️ Username "${newUser}" already taken`); return; }
+    USERS[newUser] = USERS[_currentUser];
+    delete USERS[_currentUser];
+    _saveAccountToCloud(newUser, USERS[_currentUser]);
+    _currentUser = newUser;
+    toast('✅ Username changed! Re-login on next session.'); closeModal();
+  }, '✅ Change Username');
+}
+
 
 // ── Branch Manager ────────────────────────────────────────────────────────────
 function showBranchManager(){
