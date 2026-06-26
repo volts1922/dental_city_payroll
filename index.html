@@ -5988,9 +5988,10 @@ function changeOwnUsername(){
     if(!newUser) { toast('⚠️ Username required'); return; }
     if(newUser === _currentUser) { toast('⚠️ Same username!'); return; }
     if(USERS[newUser]) { toast(`⚠️ Username "${newUser}" already taken`); return; }
-    USERS[newUser] = USERS[_currentUser];
+    const oldUserData = USERS[_currentUser];
+    USERS[newUser] = oldUserData;
     delete USERS[_currentUser];
-    _saveAccountToCloud(newUser, USERS[_currentUser]);
+    _saveAccountToCloud(newUser, USERS[newUser]);
     _currentUser = newUser;
     toast('✅ Username changed!'); 
     closeModal();
@@ -7064,11 +7065,25 @@ function runPayrollNow(){
       approvals[runId] = payrollRun;
       save(KEYS.payroll_approvals, approvals);
       
-      // Then sync to cloud with retry
-      await syncToCloud(KEYS.payroll_approvals, approvals).catch(err=>{
-        console.error('Sync failed:', err);
-        toast('⚠️ Local saved. Sync failed - will retry when online');
-      });
+      // Sync to pr_payroll_approvals table (individual records, not blob)
+      if(_sb){
+        await _sb.from('pr_payroll_approvals').upsert({
+          run_id: runId,
+          branch_id: branch,
+          month,
+          status: 'Pending',
+          total_gross: payrollRun.total_gross,
+          total_deductions: payrollRun.total_deductions,
+          total_net: payrollRun.total_net,
+          employees: payrollRun.employees,
+          created_by: _currentUser || 'System',
+          created_at: new Date().toISOString()
+        }, {onConflict: 'run_id'})
+        .catch(err => {
+          console.error('Payroll sync failed:', err);
+          toast('⚠️ Local saved. Sync failed - will retry when online');
+        });
+      }
       
       toast(`✅ Payroll submitted! Total: ₱${fmt(payrollRun.total_net)}`);
       setTimeout(()=>{
