@@ -7114,17 +7114,21 @@ if(typeof _esc !== 'function'){
 
 // ── Missing Supabase Insert/Update Function ──────────────────────────────────
 async function _sbInsertOrUpdate(tableName, data){
-  if(!_sb) return;
   try {
-    const {error} = await _sb.from(tableName).upsert(data, {onConflict: 'id'});
+    if(!_sb) {
+      console.error('❌ Supabase client not initialized');
+      return {data: null, error: {message: 'Supabase not initialized'}};
+    }
+    const {data: result, error} = await _sb.from(tableName).upsert(data, {onConflict: 'id'});
     if(error) {
       console.warn(`⚠️ Supabase insert/update to ${tableName} failed:`, error);
-      return false;
+      return {data: null, error};
     }
-    return true;
+    console.log(`✅ Saved to ${tableName}:`, result);
+    return {data: result, error: null};
   } catch(e) {
     console.error(`❌ _sbInsertOrUpdate error on ${tableName}:`, e);
-    return false;
+    return {data: null, error: e};
   }
 }
 
