@@ -296,9 +296,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <span id="roleBadge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;"></span>
     <span id="userLabel" style="font-size:13px;font-weight:600;"></span>
     <button id="installBtn" style="display:none;background:#0078d4;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:8px;" onmouseover="this.style.background='#106ebe'" onmouseout="this.style.background='#0078d4'">📥 Install</button>
-    <button onclick="softRefreshWithSync()" style="background:#10B981;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10B981'" title="Sync to cloud & refresh (stay logged in)">🔄 Sync</button>
-    <button onclick="softRefresh()" style="background:#06B6D4;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#0891B2'" onmouseout="this.style.background='#06B6D4'" title="Refresh page (keeps you logged in)">🔃</button>
-    <button onclick="changeOwnPassword()" style="background:#FF9800;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#E68900'" onmouseout="this.style.background='#FF9800'" title="Change your password">🔐</button>
+    <button onclick="openAccountSettings()" style="background:#9C27B0;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#7B1FA2'" onmouseout="this.style.background='#9C27B0'" title="Change password or username">⚙️</button>
     <button onclick="changeOwnUsername()" style="background:#9C27B0;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#7B1FA2'" onmouseout="this.style.background='#9C27B0'" title="Change your username">👤</button>
     <button onclick="doLogout()" style="background:#DC2626;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">⏻ Logout</button>
   </div>
@@ -6064,21 +6062,72 @@ async function deleteAccount(username){
 }
 
 // ── CHANGE OWN PASSWORD ──────────────────────────────────────────────────
-function changeOwnPassword(){
-  openModal('🔐 Change Password', `
-    <div class="form-group">
-      <label class="form-label">Current Password *</label>
-      <input class="form-control" id="f_curr_pass" type="password" placeholder="Enter current password">
+// ✅ COMBINED: Change username OR password
+function openAccountSettings(){
+  const html = `
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <button id="tab_pass" class="btn btn-primary" style="flex:1;padding:8px" onclick="switchAccountTab('pass')">🔐 Password</button>
+      <button id="tab_user" class="btn btn-secondary" style="flex:1;padding:8px" onclick="switchAccountTab('user')">👤 Username</button>
     </div>
-    <div class="form-group">
-      <label class="form-label">New Password *</label>
-      <input class="form-control" id="f_new_pass" type="password" placeholder="Enter new password">
+    
+    <div id="pass_form">
+      <div class="form-group">
+        <label class="form-label">Current Password *</label>
+        <input class="form-control" id="f_curr_pass" type="password" placeholder="Enter current password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password *</label>
+        <input class="form-control" id="f_new_pass" type="password" placeholder="Enter new password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password *</label>
+        <input class="form-control" id="f_conf_pass" type="password" placeholder="Confirm new password">
+      </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Confirm New Password *</label>
-      <input class="form-control" id="f_conf_pass" type="password" placeholder="Confirm new password">
+    
+    <div id="user_form" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Current Username</label>
+        <input class="form-control" type="text" value="${_currentUser}" disabled style="background:#f0f0f0;cursor:not-allowed">
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Username *</label>
+        <input class="form-control" id="changeUserInput" type="text" placeholder="Enter new username">
+      </div>
     </div>
-  `, async ()=>{
+  `;
+  openModal('⚙️ Account Settings', html, accountSettingsSave, '✅ Save Changes');
+  setTimeout(() => document.getElementById('f_curr_pass')?.focus(), 100);
+}
+
+function switchAccountTab(tab){
+  const passForm = document.getElementById('pass_form');
+  const userForm = document.getElementById('user_form');
+  const tabPass = document.getElementById('tab_pass');
+  const tabUser = document.getElementById('tab_user');
+  
+  if(tab === 'pass'){
+    passForm.style.display = 'block';
+    userForm.style.display = 'none';
+    tabPass.className = 'btn btn-primary';
+    tabUser.className = 'btn btn-secondary';
+    document.getElementById('f_curr_pass')?.focus();
+  } else {
+    passForm.style.display = 'none';
+    userForm.style.display = 'block';
+    tabPass.className = 'btn btn-secondary';
+    tabUser.className = 'btn btn-primary';
+    document.getElementById('changeUserInput')?.focus();
+  }
+}
+
+async function accountSettingsSave(){
+  const passForm = document.getElementById('pass_form');
+  const userForm = document.getElementById('user_form');
+  
+  // Check which tab is active
+  if(passForm.style.display !== 'none'){
+    // Password change
     const curr = document.getElementById('f_curr_pass')?.value;
     const newPass = document.getElementById('f_new_pass')?.value;
     const conf = document.getElementById('f_conf_pass')?.value;
@@ -6088,22 +6137,9 @@ function changeOwnPassword(){
     if(currHash !== USERS[_currentUser].password) { toast('❌ Current password incorrect'); return; }
     USERS[_currentUser].password = await _sha256(newPass);
     _saveAccountToCloud(_currentUser, USERS[_currentUser]);
-    toast('✅ Password changed!'); closeModal();
-  }, '✅ Change Password');
-}
-
-// ── CHANGE OWN USERNAME ──────────────────────────────────────────────────
-function changeOwnUsername(){
-  const html = `
-    <div class="form-group">
-      <label class="form-label">Current Username: <strong>${_currentUser}</strong></label>
-    </div>
-    <div class="form-group">
-      <label class="form-label">New Username *</label>
-      <input type="text" class="form-control" id="changeUserInput" placeholder="Enter new username" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
-    </div>
-  `;
-  openModal('👤 Change Username', html, async ()=>{
+    toast('✅ Password changed!');
+  } else {
+    // Username change
     const inp = document.getElementById('changeUserInput');
     if(!inp) { toast('❌ Input not found'); return; }
     const newUser = (inp.value || '').trim().toLowerCase().replace(/\s+/g,'_');
@@ -6115,12 +6151,14 @@ function changeOwnUsername(){
     delete USERS[_currentUser];
     _saveAccountToCloud(newUser, USERS[newUser]);
     _currentUser = newUser;
-    toast('✅ Username changed!'); 
-    closeModal();
-  }, '✅ Change Username');
-  // Focus input after modal renders
-  setTimeout(() => document.getElementById('changeUserInput')?.focus(), 100);
+    toast('✅ Username changed!');
+  }
+  closeModal();
 }
+
+// Keep old functions for backward compatibility (just redirect)
+function changeOwnPassword(){ openAccountSettings(); }
+function changeOwnUsername(){ openAccountSettings(); }
 
 
 // ── Branch Manager ────────────────────────────────────────────────────────────
