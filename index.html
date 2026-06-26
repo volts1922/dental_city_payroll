@@ -2765,7 +2765,7 @@ async function _autoPayrollRun(){
   approvals[`${branch}_${m}`]={branch,month:m,status:'pending',computed_at:today(),admin:currentUser};
   save(KEYS.payroll_approvals,approvals);
   syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
-  toast(`✅ Auto-payroll ready. Awaiting owner approval — <span style="font-weight:600;cursor:pointer;text-decoration:underline" onclick="showPayrollApprovals()">Review</span>`);
+  toast(`✅ Auto-payroll ready. Go to 'All Branches' → Review Approvals`);
 }
 
 
