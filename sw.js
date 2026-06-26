@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dc-payroll-v30.7';
+const CACHE_NAME = 'dc-payroll-v30.8';
 const ASSETS_TO_CACHE = ['/dental_city_payroll/index.html','/dental_city_payroll/manifest.json'];
 
 self.addEventListener('install', (event) => {
