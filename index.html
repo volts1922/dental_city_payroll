@@ -386,7 +386,7 @@ async function _handleInactivityLogout(){
 async function _auditLog(action, user, details){
   const entry = {
     id: Math.random().toString(36).slice(2,9),
-    timestamp: new Date().toISOString(),
+    timestamp: nowPH(),  // ✅ Use PH timezone
     action: action,
     user: user,
     branch: getBranch?.() || 'main',
@@ -833,14 +833,22 @@ async function _saveAccountToCloud(username, acc){
 
 async function _deleteAccountFromCloud(username){
   if(!_sb) return;
-  try{ await _sb.from('payroll_accounts').delete().eq('username', username); }catch(e){}
+  try {
+    const {error} = await _sb.from('payroll_accounts').delete().eq('username', username);
+    if(error) console.error('[Account] Delete failed:', username, error.message);
+  } catch(e) {
+    console.error('[Account] Delete exception:', username, e.message);
+  }
 }
 
 async function _renameBranchInCloudAccounts(oldName, newName){
   if(!_sb) return;
-  try{
-    await _sb.from('payroll_accounts').update({ branch: newName }).eq('branch', oldName);
-  }catch(e){}
+  try {
+    const {error} = await _sb.from('payroll_accounts').update({ branch: newName }).eq('branch', oldName);
+    if(error) console.error('[Branch] Rename accounts failed:', oldName, error.message);
+  } catch(e) {
+    console.error('[Branch] Rename accounts exception:', oldName, e.message);
+  }
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -1551,6 +1559,17 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function today(){ return new Date().toISOString().split('T')[0]; }
+
+// ✅ NEW: Get current date/time in PH timezone (UTC+8)
+function todayPH(){
+  const phDate = new Date(new Date().getTime() + (8 * 60 * 60 * 1000));
+  return phDate.toISOString().split('T')[0];
+}
+
+function nowPH(){
+  const phDate = new Date(new Date().getTime() + (8 * 60 * 60 * 1000));
+  return phDate.toISOString();
+}
 function nextId(data,prefix=''){ const nums=Object.keys(data).map(k=>parseInt(k.replace(prefix,''))).filter(n=>!isNaN(n)); return prefix+String(nums.length?Math.max(...nums)+1:1).padStart(3,'0'); }
 function fmt(n){ return '₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
 function fval(k){ const el=document.getElementById('f_'+k); return el?el.value.trim():''; }
@@ -2485,6 +2504,23 @@ function setLeave(eid,idx,status){
       cur.setDate(cur.getDate()+1);
     }
     save(KEYS.attendance, att);
+    
+    // ✅ NEW: Sync updated attendance to Supabase
+    if(_sb && count > 0) {
+      (async () => {
+        try {
+          const {error} = await _sb.from('payroll_data').upsert(
+            {branch_key: getBranch(), data_type: 'pr_attendance', data: JSON.stringify(att), updated_at: new Date().toISOString()},
+            {onConflict: 'branch_key,data_type'}
+          );
+          if(error) throw error;
+          console.log('[Leave] Attendance synced to cloud for', eid);
+        } catch(e) {
+          console.warn('[Leave] Attendance sync failed:', e.message);
+        }
+      })();
+    }
+    
     toast(`✅ Approved! ${count} day(s) marked as On Leave in attendance.`);
   } else {
     toast(`✅ ${status}!`);
@@ -4669,17 +4705,39 @@ function ownerEditEmp(branch, eid){
 
 async function ownerDeleteEmp(branch, eid, name){
   if(!(await _confirm(`Delete "${name}" from ${branch}?<br><br>This cannot be undone.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
+  
+  // Audit log before delete
+  if(_sb) {
+    try {
+      await _sb.from('pr_audit_log').insert([{
+        action: 'DELETE_EMPLOYEE',
+        entity: 'employees_201',
+        old_value: JSON.stringify({employee_id: eid, branch_id: branch}),
+        timestamp: new Date().toISOString(),
+        performed_by: _currentUser || 'System'
+      }]);
+    } catch(e) {
+      console.warn('[Audit] Failed to log employee delete:', e.message);
+    }
+  }
+  
   const emps = (_ownerData[branch]||{}).pr_employees||{};
   delete emps[eid];
   ownerSaveBranch(branch,'pr_employees',emps);
   
-  // DELETE FROM employees_201 when employee removed
+  // DELETE FROM employees_201 table in Supabase
   if(_sb) {
-    await _sb.from('employees_201')
-      .delete()
-      .eq('employee_id', eid)
-      .eq('branch_id', branch)
-      .catch(e => console.error('Delete from employees_201 failed:', e));
+    try {
+      const {error} = await _sb.from('employees_201')
+        .delete()
+        .eq('employee_id', eid)
+        .eq('branch_id', branch);
+      if(error) throw error;
+      console.log('[Employee] Deleted from employees_201:', eid);
+    } catch(e) {
+      console.error('[Employee] Delete from employees_201 failed:', eid, e.message);
+      toast('⚠️ Local deleted, but cloud sync failed - will retry');
+    }
   }
   
   toast(`🗑 "${name}" deleted!`);
@@ -5895,7 +5953,9 @@ function showAccountManager(){
 }
 
 function accountForm(d={}){
-  const branchOpts = ['',...ALL_BRANCHES].map(b=>`<option value="${b}"${(d.branch||'')=== b?' selected':''}>${b||'— All Branches'}</option>`).join('');
+  // BranchAdmin can only manage their own branch; Owner can manage all
+  const availableBranches = isBranchAdmin() ? [getBranch()] : ALL_BRANCHES;
+  const branchOpts = ['',...availableBranches].map(b=>`<option value="${b}"${(d.branch||'')=== b?' selected':''}>${b||'— All Branches'}</option>`).join('');
   return `
     ${formRow('Username *','acc_user', d._username||'')}
     ${formRow('Display Name *','acc_name', d.name||'')}
@@ -5906,7 +5966,7 @@ function accountForm(d={}){
     <div class="form-group">
       <label class="form-label">Role *</label>
       <select class="form-control" id="f_acc_role" onchange="toggleBranchField()">
-        ${['Owner','Admin','BranchAdmin','Staff'].map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
+        ${(isOwner()?['Owner','Admin','BranchAdmin','Staff']:['BranchAdmin','Staff']).map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
       </select>
     </div>
     <div class="form-group" id="branchFieldGroup" style="display:${['BranchAdmin','Staff'].includes(d.role||'Staff')?'block':'none'}">
@@ -5938,7 +5998,13 @@ function addAccount(){
 }
 
 function editAccount(username){
+  // ✅ NEW: Check if BranchAdmin is trying to edit someone outside their branch
   const d = {...USERS[username], _username:username};
+  if(isBranchAdmin() && d.branch && d.branch !== getBranch()){
+    toast('⛔ You can only manage accounts in your branch');
+    return;
+  }
+  
   openModal(`✏ Edit — ${username}`, accountForm(d), async ()=>{
     const name  = fval('acc_name').trim();
     const pass  = document.getElementById('f_acc_pass')?.value;
@@ -5946,6 +6012,13 @@ function editAccount(username){
     const branch= fval('acc_branch');
     if(!name){ toast('⚠️ Name is required'); return; }
     if(['BranchAdmin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
+    
+    // ✅ NEW: Prevent branch escalation (BranchAdmin can't create Owner accounts)
+    if(isBranchAdmin() && role !== 'Staff'){
+      toast('⛔ You can only create Staff accounts');
+      return;
+    }
+    
     USERS[username] = {...USERS[username], name, role,
       ...(pass?{password: await _sha256(pass)}:{}),
       ...(branch?{branch}:{})};
@@ -6059,7 +6132,12 @@ function showBranchManager(){
 
 async function _deleteCloudBranchRows(branchKey){
   if(!_sb) return;
-  try{ await _sb.from('payroll_data').delete().eq('branch_key', branchKey); }catch(e){}
+  try {
+    const {error} = await _sb.from('payroll_data').delete().eq('branch_key', branchKey);
+    if(error) console.error('[Branch] Delete cloud rows failed:', branchKey, error.message);
+  } catch(e) {
+    console.error('[Branch] Delete cloud rows exception:', branchKey, e.message);
+  }
 }
 
 function renameBranch(idx, oldName){
@@ -6134,7 +6212,14 @@ async function cleanupDuplicateBranches(){
       });
       _ownerData[keep] = keepData;
       // Move accounts pointing to the duplicate over to the keeper
-      if(_sb){ try{ await _sb.from('payroll_accounts').update({branch:keep}).eq('branch', b); }catch(e){} }
+      if(_sb){
+        try {
+          const {error} = await _sb.from('payroll_accounts').update({branch:keep}).eq('branch', b);
+          if(error) console.error('[Merge] Account update failed:', b, '->', keep, error.message);
+        } catch(e) {
+          console.error('[Merge] Account update exception:', b, '->', keep, e.message);
+        }
+      }
       // Delete the duplicate's rows from Supabase
       await _deleteCloudBranchRows(b);
       delete _ownerData[b];
