@@ -7111,4 +7111,22 @@ if(typeof _esc !== 'function'){
 }
 
 
+
+// ── Missing Supabase Insert/Update Function ──────────────────────────────────
+async function _sbInsertOrUpdate(tableName, data){
+  if(!_sb) return;
+  try {
+    const {error} = await _sb.from(tableName).upsert(data, {onConflict: 'id'});
+    if(error) {
+      console.warn(`⚠️ Supabase insert/update to ${tableName} failed:`, error);
+      return false;
+    }
+    return true;
+  } catch(e) {
+    console.error(`❌ _sbInsertOrUpdate error on ${tableName}:`, e);
+    return false;
+  }
+}
+
+
 </script>
