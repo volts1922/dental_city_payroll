@@ -2624,8 +2624,7 @@ function showPayroll(){
       <div class="btn-row">
         <input type="month" id="payMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
         <button class="btn btn-primary" onclick="computePayroll()">Compute</button>
-        <button class="btn btn-secondary" onclick="confirmPayrollRun()">✅ Confirm & Deduct Loans</button>
-        <button class="btn btn-warning" onclick="_autoPayrollRun()" style="background:#F59E0B;color:#fff">⚡ Run Auto-Payroll</button>
+        <button class="btn btn-success" onclick="runPayrollNow()" style="background:#10B981;color:#fff;font-weight:600">🚀 Run Payroll Now</button>
         <button class="btn btn-teal" onclick="exportPayroll()">Export CSV</button>
       </div>
     </div>
@@ -6841,6 +6840,61 @@ function denyPayroll(runId){
       toast(`⛔ Payroll ${runId} denied`);
       showPayrollApprovals();
     }
+  });
+}
+
+// ── Run Payroll Now (Manual) — Create pending payroll for owner approval ──────
+function runPayrollNow(){
+  if(!_payrollData.length){
+    toast('⚠️ Compute payroll first');
+    return;
+  }
+  
+  _confirm('Create payroll run for owner approval?<br><br>This will submit the computed payroll for owner review and approval.',
+    {ok:'Submit for Approval', cancel:'Cancel', icon:'💰'}).then(async ok=>{
+    if(!ok) return;
+    
+    const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+    const runId = `PR-${today()}-${Date.now().toString(36).toUpperCase()}`;
+    const branch = getBranch();
+    
+    // Format payroll data
+    const employees = {};
+    _payrollData.forEach(d=>{
+      employees[d.eid] = {
+        name: d.name,
+        gross: d.gross,
+        deductions: d.totalDeductions,
+        net: d.net,
+        loan_deduction: d.loanDeduction || 0
+      };
+    });
+    
+    const payrollRun = {
+      runId,
+      branch,
+      date: today(),
+      month,
+      status: 'Pending',
+      employees,
+      total_gross: _payrollData.reduce((s,d)=>s+d.gross,0),
+      total_deductions: _payrollData.reduce((s,d)=>s+d.totalDeductions,0),
+      total_net: _payrollData.reduce((s,d)=>s+d.net,0),
+      created_at: new Date().toISOString(),
+      created_by: _current201Id
+    };
+    
+    // Save to approvals table
+    const approvals = load(KEYS.payroll_approvals) || {};
+    approvals[runId] = payrollRun;
+    save(KEYS.payroll_approvals, approvals);
+    await syncToCloud(KEYS.payroll_approvals, approvals);
+    
+    toast(`✅ Payroll submitted! Total: ${fmt(payrollRun.total_net)}`);
+    setTimeout(()=>{
+      if(isOwner()) showPayrollApprovals();
+      else navigate('All Branches', 'showOwnerDashboard');
+    }, 1500);
   });
 }
 </script>
