@@ -296,6 +296,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <span id="roleBadge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;"></span>
     <span id="userLabel" style="font-size:13px;font-weight:600;"></span>
     <button id="installBtn" style="display:none;background:#0078d4;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:8px;" onmouseover="this.style.background='#106ebe'" onmouseout="this.style.background='#0078d4'">📥 Install</button>
+    <button onclick="softRefreshWithSync()" style="background:#10B981;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10B981'" title="Sync to cloud & refresh (stay logged in)">🔄 Sync</button>
+    <button onclick="softRefresh()" style="background:#06B6D4;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#0891B2'" onmouseout="this.style.background='#06B6D4'" title="Refresh page (keeps you logged in)">🔃</button>
     <button onclick="changeOwnPassword()" style="background:#FF9800;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#E68900'" onmouseout="this.style.background='#FF9800'" title="Change your password">🔐</button>
     <button onclick="changeOwnUsername()" style="background:#9C27B0;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px" onmouseover="this.style.background='#7B1FA2'" onmouseout="this.style.background='#9C27B0'" title="Change your username">👤</button>
     <button onclick="doLogout()" style="background:#DC2626;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">⏻ Logout</button>
@@ -4288,6 +4290,31 @@ async function refreshUserData(){
     console.error('Refresh error:', err);
     toast('❌ Refresh failed: ' + err.message);
     hideLoading();
+  }
+}
+
+// ✅ NEW: Soft refresh - reload page WITHOUT logging out
+function softRefresh(){
+  showLoading('Refreshing page...');
+  toast('✅ Reloading...');
+  setTimeout(() => location.reload(), 800);
+}
+
+// ✅ NEW: Soft refresh WITH sync to cloud
+async function softRefreshWithSync(){
+  showLoading('Syncing & refreshing...');
+  try {
+    // Sync current data to cloud
+    if(_sb && Object.keys(DB).length > 0){
+      const allData = Object.fromEntries(DB);
+      await syncToCloud('all_data', allData).catch(e => console.warn('Sync warning:', e.message));
+    }
+    toast('✅ Synced & reloading...');
+    setTimeout(() => location.reload(), 1000);
+  } catch(err) {
+    console.error('Sync refresh error:', err);
+    toast('⚠️ Sync failed, reloading anyway...');
+    setTimeout(() => location.reload(), 1500);
   }
 }
 
