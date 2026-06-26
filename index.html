@@ -6757,7 +6757,9 @@ async function save201(){
     data[field] = document.getElementById(`f_${field}`)?.value || null;
   }
   try{
-    let {data: result, error} = await _sbInsertOrUpdate('employees_201', data);
+    let {data: result, error} = await _sb.from('employees_201')
+      .upsert(data, {onConflict: 'employee_id,branch_id'})
+      .select();
     if(error) throw error;
     toast('✅ 201 file saved');
     close201();
