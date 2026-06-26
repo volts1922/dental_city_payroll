@@ -6845,52 +6845,58 @@ async function save201(){
 
 
 // ── OWNER: Payroll Approvals ──────────────────────────────────────────────────
-function showPayrollApprovals(){
+async function showPayrollApprovals(){
   if(!isOwner()){
     toast('⛔ Access denied. Owner only.');
     return;
   }
   
-  // Load from localStorage first
+  // Show loading state
+  document.getElementById('main').innerHTML=`
+    <div class="section-header">
+      <div class="section-title">💰 Payroll Approvals</div>
+      <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+    </div>
+    <div style="text-align:center;padding:40px;color:var(--muted)">⏳ Loading approvals...</div>`;
+  
   let approvals = load(KEYS.payroll_approvals) || {};
   
-  // Also load from Supabase pr_payroll_approvals table
+  // Load from Supabase FIRST (required)
   if(_sb){
-    _sb.from('pr_payroll_approvals')
-      .select('*')
-      .eq('status', 'Pending')
-      .then(({data, error}) => {
-        if(error) {
-          console.error('Failed to load approvals from Supabase:', error);
-          return;
-        }
-        if(data && data.length > 0) {
-          // Merge Supabase data with localStorage
-          data.forEach(row => {
-            if(!approvals[row.run_id]) {
-              approvals[row.run_id] = {
-                runId: row.run_id,
-                branch: row.branch_id,
-                date: row.created_at?.split('T')[0],
-                month: row.month,
-                status: row.status,
-                employees: row.employees || {},
-                created_by: row.created_by,
-                total_gross: row.total_gross,
-                total_deductions: row.total_deductions,
-                total_net: row.total_net
-              };
-            }
-          });
-          // Refresh the display with merged data
-          renderPayrollApprovals(approvals);
-        } else {
-          renderPayrollApprovals(approvals);
-        }
-      });
-  } else {
-    renderPayrollApprovals(approvals);
+    try {
+      const {data, error} = await _sb.from('pr_payroll_approvals')
+        .select('*')
+        .eq('status', 'Pending');
+      
+      if(error) {
+        console.error('Failed to load approvals from Supabase:', error);
+      } else if(data && data.length > 0) {
+        console.log('Loaded', data.length, 'pending approvals from Supabase');
+        // Merge Supabase data with localStorage
+        data.forEach(row => {
+          if(!approvals[row.run_id]) {
+            approvals[row.run_id] = {
+              runId: row.run_id,
+              branch: row.branch_id,
+              date: row.created_at?.split('T')[0],
+              month: row.month,
+              status: row.status,
+              employees: row.employees || {},
+              created_by: row.created_by,
+              total_gross: row.total_gross,
+              total_deductions: row.total_deductions,
+              total_net: row.total_net
+            };
+          }
+        });
+      }
+    } catch(err) {
+      console.error('Supabase query error:', err);
+    }
   }
+  
+  // Render with merged data
+  renderPayrollApprovals(approvals);
 }
 
 function renderPayrollApprovals(approvals){
