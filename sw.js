@@ -6,9 +6,9 @@ self.addEventListener('install', event => {
     caches.open(CACHE_VERSION).then(cache => {
       console.log('[SW] Cache opened:', CACHE_VERSION);
       return cache.addAll([
-        '/',
-        '/index.html',
-        '/manifest.json'
+        '/dental_city_payroll/',
+        '/dental_city_payroll/index.html',
+        '/dental_city_payroll/manifest.json'
       ]).catch(err => {
         console.warn('[SW] Cache addAll partial failure (expected):', err);
       });
