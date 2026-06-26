@@ -6851,7 +6851,7 @@ async function showPayrollApprovals(){
     return;
   }
   
-  console.log('[Approvals] Loading...');
+  console.log('[Approvals] Loading from Supabase only...');
   
   // Show loading state
   document.getElementById('main').innerHTML=`
@@ -6861,49 +6861,65 @@ async function showPayrollApprovals(){
     </div>
     <div style="text-align:center;padding:40px;color:var(--muted)">⏳ Loading approvals...</div>`;
   
-  let approvals = load(KEYS.payroll_approvals) || {};
-  console.log('[Approvals] From localStorage:', Object.keys(approvals).length, 'records');
+  let approvals = {};
   
-  // Load from Supabase FIRST (required)
-  if(_sb){
-    try {
-      console.log('[Approvals] Querying Supabase...');
-      const {data, error} = await _sb.from('pr_payroll_approvals')
-        .select('*')
-        .eq('status', 'Pending');
-      
-      if(error) {
-        console.error('[Approvals] Supabase error:', error.message);
-      } else {
-        console.log('[Approvals] From Supabase:', data?.length || 0, 'records');
-        if(data && data.length > 0) {
-          data.forEach(row => {
-            if(!approvals[row.run_id]) {
-              approvals[row.run_id] = {
-                runId: row.run_id,
-                branch: row.branch_id,
-                date: row.created_at?.split('T')[0],
-                month: row.month,
-                status: row.status,
-                employees: row.employees || {},
-                created_by: row.created_by,
-                total_gross: row.total_gross,
-                total_deductions: row.total_deductions,
-                total_net: row.total_net
-              };
-            }
-          });
-          console.log('[Approvals] Merged total:', Object.keys(approvals).length, 'records');
-        }
-      }
-    } catch(err) {
-      console.error('[Approvals] Supabase query error:', err);
-    }
-  } else {
-    console.warn('[Approvals] Supabase not connected');
+  // Load ONLY from Supabase (ignore localStorage)
+  if(!_sb){
+    document.getElementById('main').innerHTML=`
+      <div class="section-header">
+        <div class="section-title">💰 Payroll Approvals</div>
+        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+      </div>
+      <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:16px;color:#991B1B">
+        ❌ Supabase not connected
+      </div>`;
+    return;
   }
   
-  // Render with merged data
+  try {
+    console.log('[Approvals] Querying pr_payroll_approvals table...');
+    const {data, error} = await _sb.from('pr_payroll_approvals')
+      .select('*')
+      .eq('status', 'Pending')
+      .order('created_at', {ascending: false});
+    
+    if(error) {
+      console.error('[Approvals] Query error:', error.message);
+      throw error;
+    }
+    
+    console.log('[Approvals] Result:', data?.length || 0, 'records');
+    
+    if(data && data.length > 0) {
+      data.forEach(row => {
+        approvals[row.run_id] = {
+          runId: row.run_id,
+          branch: row.branch_id,
+          date: row.created_at?.split('T')[0],
+          month: row.month,
+          status: row.status,
+          employees: row.employees || {},
+          created_by: row.created_by,
+          total_gross: row.total_gross,
+          total_deductions: row.total_deductions,
+          total_net: row.total_net
+        };
+      });
+    }
+  } catch(err) {
+    console.error('[Approvals] Failed:', err.message);
+    document.getElementById('main').innerHTML=`
+      <div class="section-header">
+        <div class="section-title">💰 Payroll Approvals</div>
+        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+      </div>
+      <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:16px;color:#991B1B">
+        ❌ Failed to load: ${err.message}
+      </div>`;
+    return;
+  }
+  
+  // Render with Supabase data only
   renderPayrollApprovals(approvals);
 }
 
@@ -7075,7 +7091,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 // ── FIX 1: RUN PAYROLL NOW (Manual trigger) ─────────────────────────────────
+let _payrollRunning = false; // Prevent duplicate submissions
+
 function runPayrollNow(){
+  if(_payrollRunning){
+    toast('⚠️ Payroll already submitting... please wait');
+    return;
+  }
+  
   if(!_payrollData.length){
     toast('⚠️ Compute payroll first');
     return;
@@ -7097,6 +7120,8 @@ function runPayrollNow(){
       }
       return;
     }
+    
+    _payrollRunning = true; // Set flag
     
     try {
       const month = document.getElementById('payMonth')?.value || today().slice(0,7);
@@ -7174,6 +7199,7 @@ function runPayrollNow(){
       console.error('runPayrollNow error:', err);
       toast(`❌ Error: ${err.message}`);
     } finally {
+      _payrollRunning = false; // Clear flag
       if(btn) {
         btn.disabled = false;
         btn.style.opacity = '1';
