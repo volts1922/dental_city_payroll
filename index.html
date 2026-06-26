@@ -6821,7 +6821,7 @@ function approvePayroll(runId){
       approvals[runId].approved_by = _currentUser || getBranch();
       save(KEYS.payroll_approvals, approvals);
       await syncToCloud(KEYS.payroll_approvals, approvals);
-      toast(`✅ Payroll ${runId} approved!`);
+      addNotification(approvals[runId].branch, "approved", runId, {}); toast(`✅ Payroll ${runId} approved!`);
       showPayrollApprovals();
     }
   });
@@ -6837,64 +6837,101 @@ function denyPayroll(runId){
       approvals[runId].denied_by = _currentUser || getBranch();
       save(KEYS.payroll_approvals, approvals);
       await syncToCloud(KEYS.payroll_approvals, approvals);
-      toast(`⛔ Payroll ${runId} denied`);
+      addNotification(approvals[runId].branch, "denied", runId, {}); toast(`⛔ Payroll ${runId} denied`);
       showPayrollApprovals();
     }
   });
 }
 
-// ── Run Payroll Now (Manual) — Create pending payroll for owner approval ──────
-function runPayrollNow(){
-  if(!_payrollData.length){
-    toast('⚠️ Compute payroll first');
-    return;
-  }
+// ── NOTIFICATIONS SYSTEM (localStorage-based) ────────────────────────────────
+const NOTIFICATION_STORAGE_KEY = 'dc_payroll_notifications';
+
+function getNotifications(){
+  const stored = localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+  return stored ? JSON.parse(stored) : [];
+}
+
+function saveNotifications(notifs){
+  localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(notifs));
+  updateNotificationBadge();
+}
+
+function addNotification(branch, type, payrollId, details){
+  // Owner and Developer see ALL branches, Branch Admin sees only their branch
+  if(!isOwner() && !isDeveloper() && branch !== getBranch()) return;
   
-  _confirm('Create payroll run for owner approval?<br><br>This will submit the computed payroll for owner review and approval.',
-    {ok:'Submit for Approval', cancel:'Cancel', icon:'💰'}).then(async ok=>{
-    if(!ok) return;
-    
-    const month = document.getElementById('payMonth')?.value || today().slice(0,7);
-    const runId = `PR-${today()}-${Date.now().toString(36).toUpperCase()}`;
-    const branch = getBranch();
-    
-    // Format payroll data
-    const employees = {};
-    _payrollData.forEach(d=>{
-      employees[d.eid] = {
-        name: d.name,
-        gross: d.gross,
-        deductions: d.totalDeductions,
-        net: d.net,
-        loan_deduction: d.loanDeduction || 0
-      };
-    });
-    
-    const payrollRun = {
-      runId,
-      branch,
-      date: today(),
-      month,
-      status: 'Pending',
-      employees,
-      total_gross: _payrollData.reduce((s,d)=>s+d.gross,0),
-      total_deductions: _payrollData.reduce((s,d)=>s+d.totalDeductions,0),
-      total_net: _payrollData.reduce((s,d)=>s+d.net,0),
-      created_at: new Date().toISOString(),
-      created_by: _currentUser || getBranch()
-    };
-    
-    // Save to approvals table
-    const approvals = load(KEYS.payroll_approvals) || {};
-    approvals[runId] = payrollRun;
-    save(KEYS.payroll_approvals, approvals);
-    await syncToCloud(KEYS.payroll_approvals, approvals);
-    
-    toast(`✅ Payroll submitted! Total: ${fmt(payrollRun.total_net)}`);
-    setTimeout(()=>{
-      if(isOwner()) showPayrollApprovals();
-      else navigate('All Branches', 'showOwnerDashboard');
-    }, 1500);
+  const notifs = getNotifications();
+  notifs.unshift({
+    id: Date.now().toString(36),
+    branch,
+    type, // 'approved' or 'denied'
+    payrollId,
+    details,
+    timestamp: new Date().toISOString(),
+    read: false
+  });
+  
+  // Keep only last 50 notifications
+  if(notifs.length > 50) notifs.pop();
+  saveNotifications(notifs);
+  showNotificationToast(type, payrollId);
+}
+
+function showNotificationToast(type, payrollId){
+  if(type === 'approved'){
+    toast(`✅ Payroll ${payrollId} APPROVED by owner`);
+  } else if(type === 'denied'){
+    toast(`⛔ Payroll ${payrollId} DENIED by owner`);
+  }
+}
+
+function updateNotificationBadge(){
+  const notifs = getNotifications();
+  const unreadCount = notifs.filter(n => !n.read).length;
+  const badge = document.getElementById('notifBadge');
+  if(badge){
+    badge.textContent = unreadCount;
+    badge.style.display = unreadCount > 0 ? 'flex' : 'none';
+  }
+}
+
+function showNotificationCenter(){
+  const notifs = getNotifications();
+  const branchDisplay = isOwner() || isDeveloper() ? 'ALL BRANCHES' : getBranch();
+  const rows = notifs.map(n => `
+    <div style="background:var(--sky);border-radius:8px;padding:10px;margin-bottom:8px;border-left:4px solid ${n.type==='approved'?'var(--green)':'#DC2626'}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:600;font-size:13px">${n.type.toUpperCase()} - ${n.branch}</div>
+          <div style="font-size:12px;color:var(--muted)">Payroll: ${n.payrollId}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${new Date(n.timestamp).toLocaleString()}</div>
+        </div>
+        <button class="btn btn-sm" style="background:#EEE;border:none" onclick="dismissNotification('${n.id}')">✕</button>
+      </div>
+    </div>`).join('');
+  
+  openModal('📬 Notifications', `
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      <b>${notifs.length}</b> notification${notifs.length!==1?'s':''} for <b>${branchDisplay}</b>
+    </div>
+    ${notifs.length===0?`<div style="text-align:center;color:var(--muted);padding:20px">No notifications yet</div>`:rows}
+  `, async()=>{
+    // Mark all as read
+    notifs.forEach(n => n.read = true);
+    saveNotifications(notifs);
   });
 }
+
+function dismissNotification(id){
+  let notifs = getNotifications();
+  notifs = notifs.filter(n => n.id !== id);
+  saveNotifications(notifs);
+  showNotificationCenter();
+}
+
+// Initialize badge on page load
+document.addEventListener('DOMContentLoaded', ()=>{
+  updateNotificationBadge();
+});
+
 </script>
