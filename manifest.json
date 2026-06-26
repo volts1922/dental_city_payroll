@@ -1,14 +1,23 @@
 {
   "name": "Dental City Payroll",
   "short_name": "DC Payroll",
-  "description": "Dental City Multi-Branch Payroll Management System",
-  "start_url": "/dental_city_payroll/index.html",
+  "description": "Multi-branch dental clinic payroll management system",
+  "start_url": "/dental_city_payroll/",
   "scope": "/dental_city_payroll/",
   "display": "standalone",
   "orientation": "portrait",
+  "theme_color": "#0078d4",
   "background_color": "#ffffff",
-  "theme_color": "#2c3e50",
-  "version": "30.7",
-  "categories": ["business"],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230078d4' width='192' height='192'/><text x='50%' y='50%' font-size='48' fill='white' text-anchor='middle' dominant-baseline='middle' font-family='Arial'>DC</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "version": "30.8",
+  "last_updated": "2026-06-26"
 }
