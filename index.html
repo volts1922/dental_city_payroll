@@ -2765,7 +2765,7 @@ async function _autoPayrollRun(){
   approvals[`${branch}_${m}`]={branch,month:m,status:'pending',computed_at:today(),admin:currentUser};
   save(KEYS.payroll_approvals,approvals);
   syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
-  toast(`✅ Auto-payroll ready. Owner approval pending.`);
+  toast(`✅ Auto-payroll ready. Awaiting owner approval — <span style="font-weight:600;cursor:pointer;text-decoration:underline" onclick="showPayrollApprovals()">Review</span>`);
 }
 
 
@@ -4302,6 +4302,7 @@ function showOwnerDashboard(){
   // ── Pending notifications ────────────────────────────────────────────────
   const pendingLeaves = [];
   const activeLoans   = [];
+  const pendingPayruns = [];
   ALL_BRANCHES.forEach(b=>{
     const bdata  = _ownerData[b] || {};
     const emps   = bdata.pr_employees || {};
@@ -4321,6 +4322,16 @@ function showOwnerDashboard(){
         activeLoans.push({branch:b, name, type:l.type||'Loan', amount:l.total_amount||l.amount||0, eid});
       });
     });
+  });
+  
+  // Pending payroll approvals
+  const approvals = load(KEYS.payroll_approvals) || {};
+  Object.entries(approvals).forEach(([runId, run])=>{
+    if(run.status==='Pending'){
+      const empCount = Object.keys(run.employees||{}).length;
+      const totalAmt = Object.values(run.employees||{}).reduce((s,e)=>s+parseFloat(e.net||0),0);
+      pendingPayruns.push({runId, branch:run.branch, date:run.date, empCount, totalAmt, status:run.status});
+    }
   });
 
   const leaveAlert = pendingLeaves.length ? `
@@ -4365,7 +4376,30 @@ function showOwnerDashboard(){
       </div>
     </div>` : '';
 
-  const noAlerts = !pendingLeaves.length && !activeLoans.length ? `
+  const payrollAlert = pendingPayruns.length ? `
+    <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:18px">💰</span>
+        <span style="font-weight:700;color:#DC2626">${pendingPayruns.length} Payroll Run${pendingPayruns.length>1?'s':''} Awaiting Approval</span>
+        <button class="btn btn-sm" style="margin-left:auto;background:#DC2626;color:#fff;font-weight:600" onclick="showPayrollApprovals()">Review & Approve →</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${pendingPayruns.slice(0,5).map(p=>`
+          <div style="font-size:12px;color:#7F1D1D;background:#FECACA;border-radius:6px;padding:5px 10px;display:flex;gap:8px;align-items:center;justify-content:space-between">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-weight:600">${p.branch}</span>
+              <span style="color:#991B1B">·</span>
+              <span>${p.date}</span>
+              <span style="color:#991B1B">·</span>
+              <span>${p.empCount} employees</span>
+            </div>
+            <span style="font-weight:700;color:#991B1B">${fmt(p.totalAmt)}</span>
+          </div>`).join('')}
+        ${pendingPayruns.length>5?`<div style="font-size:11px;color:#991B1B;padding:4px 10px">...and ${pendingPayruns.length-5} more</div>`:''};
+      </div>
+    </div>` : '';
+
+  const noAlerts = !pendingLeaves.length && !activeLoans.length && !pendingPayruns.length ? `
     <div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
       <span style="font-size:16px">✅</span>
       <span style="font-weight:600;color:#16A34A;font-size:13px">No pending leaves or new loans today — all clear!</span>
@@ -4387,7 +4421,7 @@ function showOwnerDashboard(){
       <div class="card" style="border-color:var(--purple)">
         <div class="card-val" style="color:var(--purple)">9</div><div class="card-lbl">🏢 Branches</div></div>
     </div>
-    ${leaveAlert}${loanAlert}${noAlerts}
+    ${leaveAlert}${payrollAlert}${loanAlert}${noAlerts}
     <div class="section-header">
       <div class="section-title">All Branches Overview <span style="font-size:12px;color:var(--muted);font-weight:400">— click any branch to see today's attendance</span></div>
       <button class="btn btn-primary btn-sm" onclick="ownerRefresh()">🔄 Refresh</button>
@@ -6731,5 +6765,82 @@ async function save201(){
   }
 }
 
+
+// ── OWNER: Payroll Approvals ──────────────────────────────────────────────────
+function showPayrollApprovals(){
+  if(!isOwner()){
+    toast('⛔ Access denied. Owner only.');
+    return;
+  }
+  
+  const approvals = load(KEYS.payroll_approvals) || {};
+  const pendingRuns = [];
+  
+  Object.entries(approvals).forEach(([runId, run])=>{
+    if(run.status==='Pending'){
+      pendingRuns.push({runId, branch:run.branch||'N/A', date:run.date||today(), empCount:Object.keys(run.employees||{}).length, totalAmt:Object.values(run.employees||{}).reduce((s,e)=>s+parseFloat(e.net||0),0), run});
+    }
+  });
+  
+  const rows = pendingRuns.map(p=>`<tr onclick="expandPayrollRun('${p.runId}')" style="cursor:pointer;transition:background 0.15s">
+    <td style="font-weight:600">${_esc(p.branch)}</td>
+    <td>${p.date}</td>
+    <td style="text-align:center"><span style="background:var(--blue-bg);color:var(--blue);padding:4px 8px;border-radius:6px;font-weight:600;font-size:12px">${p.empCount} emp</span></td>
+    <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(p.totalAmt)}</td>
+    <td style="text-align:center;display:flex;gap:6px">
+      <button class="btn btn-sm" style="background:var(--green);color:#fff;font-weight:600" onclick="event.stopPropagation();approvePayroll('${p.runId}')">✓ Approve</button>
+      <button class="btn btn-sm" style="background:#EF4444;color:#fff" onclick="event.stopPropagation();denyPayroll('${p.runId}')">✕ Deny</button>
+    </td>
+  </tr>`).join('');
+  
+  document.getElementById('main').innerHTML=`
+    <div class="section-header">
+      <div class="section-title">💰 Payroll Approvals</div>
+      <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+    </div>
+    ${pendingRuns.length===0?`<div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:16px;text-align:center;color:#16A34A">✅ No pending payroll approvals</div>`:`
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px"><b>${pendingRuns.length}</b> payroll run${pendingRuns.length>1?'s':''} awaiting your approval</div>
+    <div class="table-wrap"><table class="table" style="font-size:13px">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th>Branch</th>
+        <th>Date</th>
+        <th style="text-align:center">Employees</th>
+        <th style="text-align:right">Total Amount</th>
+        <th style="text-align:center">Action</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`}`;
+}
+
+function approvePayroll(runId){
+  _confirm(`Approve payroll run ${runId}?`,{ok:'Approve',cancel:'Cancel',icon:'💰'}).then(async ok=>{
+    if(!ok) return;
+    const approvals = load(KEYS.payroll_approvals) || {};
+    if(approvals[runId]){
+      approvals[runId].status = 'Approved';
+      approvals[runId].approved_at = new Date().toISOString();
+      approvals[runId].approved_by = _current201Id;
+      save(KEYS.payroll_approvals, approvals);
+      await syncToCloud(KEYS.payroll_approvals, approvals);
+      toast(`✅ Payroll ${runId} approved!`);
+      showPayrollApprovals();
+    }
+  });
+}
+
+function denyPayroll(runId){
+  _confirm(`Deny payroll run ${runId}?`,{ok:'Deny',cancel:'Cancel',danger:true}).then(async ok=>{
+    if(!ok) return;
+    const approvals = load(KEYS.payroll_approvals) || {};
+    if(approvals[runId]){
+      approvals[runId].status = 'Denied';
+      approvals[runId].denied_at = new Date().toISOString();
+      approvals[runId].denied_by = _current201Id;
+      save(KEYS.payroll_approvals, approvals);
+      await syncToCloud(KEYS.payroll_approvals, approvals);
+      toast(`⛔ Payroll ${runId} denied`);
+      showPayrollApprovals();
+    }
+  });
+}
 </script>
-</html>
