@@ -6934,4 +6934,181 @@ document.addEventListener('DOMContentLoaded', ()=>{
   updateNotificationBadge();
 });
 
+
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║                    CRITICAL FIXES - PRIORITY 1                           ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+
+// ── FIX 1: RUN PAYROLL NOW (Manual trigger) ─────────────────────────────────
+function runPayrollNow(){
+  if(!_payrollData.length){
+    toast('⚠️ Compute payroll first');
+    return;
+  }
+  
+  _confirm('Create payroll run for owner approval?<br><br>This will submit the computed payroll for owner review and approval.',
+    {ok:'Submit for Approval', cancel:'Cancel', icon:'💰'}).then(async ok=>{
+    if(!ok) return;
+    
+    try {
+      const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+      const runId = `PR-${today()}-${Date.now().toString(36).toUpperCase()}`;
+      const branch = getBranch();
+      
+      // Format payroll data with sanitization
+      const employees = {};
+      _payrollData.forEach(d=>{
+        employees[d.eid] = {
+          name: _esc(d.name), // FIX 3: XSS sanitization
+          gross: parseFloat(d.gross)||0,
+          deductions: parseFloat(d.totalDeductions)||0,
+          net: parseFloat(d.net)||0,
+          loan_deduction: parseFloat(d.loanDeduction)||0
+        };
+      });
+      
+      const payrollRun = {
+        runId,
+        branch: _esc(branch),
+        date: today(),
+        month,
+        status: 'Pending',
+        employees,
+        total_gross: parseFloat(_payrollData.reduce((s,d)=>s+(parseFloat(d.gross)||0),0))||0,
+        total_deductions: parseFloat(_payrollData.reduce((s,d)=>s+(parseFloat(d.totalDeductions)||0),0))||0,
+        total_net: parseFloat(_payrollData.reduce((s,d)=>s+(parseFloat(d.net)||0),0))||0,
+        created_at: new Date().toISOString(),
+        created_by: _currentUser || 'System'
+      };
+      
+      // FIX 2: Transaction-like support - save locally first
+      const approvals = load(KEYS.payroll_approvals) || {};
+      approvals[runId] = payrollRun;
+      save(KEYS.payroll_approvals, approvals);
+      
+      // Then sync to cloud with retry
+      await syncToCloud(KEYS.payroll_approvals, approvals).catch(err=>{
+        console.error('Sync failed:', err);
+        toast('⚠️ Local saved. Sync failed - will retry when online');
+      });
+      
+      toast(`✅ Payroll submitted! Total: ₱${fmt(payrollRun.total_net)}`);
+      setTimeout(()=>{
+        if(isOwner()) showPayrollApprovals();
+        else showOwnerDashboard();
+      }, 1500);
+    } catch(err) {
+      console.error('runPayrollNow error:', err);
+      toast(`❌ Error: ${err.message}`);
+    }
+  });
+}
+
+// ── FIX 2: APPROVE PAYROLL + UPDATE LOAN BALANCES ────────────────────────────
+async function approvePayroll(runId){
+  _confirm(`Approve payroll run ${runId}?`,{ok:'Approve',cancel:'Cancel',icon:'💰'}).then(async ok=>{
+    if(!ok) return;
+    
+    try {
+      const approvals = load(KEYS.payroll_approvals) || {};
+      if(!approvals[runId]){
+        toast('❌ Payroll run not found');
+        return;
+      }
+      
+      // Update payroll status
+      approvals[runId].status = 'Approved';
+      approvals[runId].approved_at = new Date().toISOString();
+      approvals[runId].approved_by = _currentUser || 'System';
+      
+      // FIX 1: NOW UPDATE LOAN BALANCES ✅
+      const loans = load(KEYS.loans) || {};
+      const employees = approvals[runId].employees || {};
+      let loansUpdated = 0;
+      
+      Object.entries(employees).forEach(([eid, emp])=>{
+        if(!emp.loan_deduction || emp.loan_deduction <= 0) return;
+        
+        const empLoans = (loans[eid] || []).filter(l => l.status === 'Active');
+        let remaining = emp.loan_deduction;
+        
+        empLoans.forEach(l=>{
+          if(remaining <= 0) return;
+          
+          const balance = parseFloat(l.balance) || 0;
+          const amort = parseFloat(l.monthly_amort) || 0;
+          const deduct = Math.min(amort, balance, remaining);
+          
+          l.balance = Math.max(balance - deduct, 0);
+          remaining -= deduct;
+          
+          if(l.balance <= 0) l.status = 'Paid';
+          loansUpdated++;
+        });
+      });
+      
+      // Save both with transaction-like semantics
+      save(KEYS.payroll_approvals, approvals);
+      save(KEYS.loans, loans);
+      
+      // Sync both (FIX 2: With retry)
+      await Promise.all([
+        syncToCloud(KEYS.payroll_approvals, approvals).catch(e=>console.error('Sync approvals failed:', e)),
+        syncToCloud(KEYS.loans, loans).catch(e=>console.error('Sync loans failed:', e))
+      ]);
+      
+      addNotification(approvals[runId].branch, 'approved', runId, {});
+      toast(`✅ Payroll approved! ${loansUpdated} loan(s) updated.`);
+      showPayrollApprovals();
+    } catch(err) {
+      console.error('approvePayroll error:', err);
+      toast(`❌ Error: ${err.message}`);
+    }
+  });
+}
+
+// ── FIX 2: DENY PAYROLL (Same error handling) ───────────────────────────────
+async function denyPayroll(runId){
+  _confirm(`Deny payroll run ${runId}?`,{ok:'Deny',cancel:'Cancel',danger:true}).then(async ok=>{
+    if(!ok) return;
+    
+    try {
+      const approvals = load(KEYS.payroll_approvals) || {};
+      if(!approvals[runId]){
+        toast('❌ Payroll run not found');
+        return;
+      }
+      
+      approvals[runId].status = 'Denied';
+      approvals[runId].denied_at = new Date().toISOString();
+      approvals[runId].denied_by = _currentUser || 'System';
+      
+      save(KEYS.payroll_approvals, approvals);
+      
+      await syncToCloud(KEYS.payroll_approvals, approvals).catch(err=>{
+        console.error('Sync failed:', err);
+        toast('⚠️ Local saved. Sync failed - will retry when online');
+      });
+      
+      addNotification(approvals[runId].branch, 'denied', runId, {});
+      toast(`⛔ Payroll denied. Returned to branch admin.`);
+      showPayrollApprovals();
+    } catch(err) {
+      console.error('denyPayroll error:', err);
+      toast(`❌ Error: ${err.message}`);
+    }
+  });
+}
+
+// ── FIX 3: INPUT SANITIZATION (Already in code, verify _esc exists) ──────────
+if(typeof _esc !== 'function'){
+  window._esc = function(str){
+    if(!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  };
+}
+
+
 </script>
