@@ -7067,22 +7067,24 @@ function runPayrollNow(){
       
       // Sync to pr_payroll_approvals table (individual records, not blob)
       if(_sb){
-        await _sb.from('pr_payroll_approvals').upsert({
-          run_id: runId,
-          branch_id: branch,
-          month,
-          status: 'Pending',
-          total_gross: payrollRun.total_gross,
-          total_deductions: payrollRun.total_deductions,
-          total_net: payrollRun.total_net,
-          employees: payrollRun.employees,
-          created_by: _currentUser || 'System',
-          created_at: new Date().toISOString()
-        }, {onConflict: 'run_id'})
-        .catch(err => {
+        try {
+          const {error} = await _sb.from('pr_payroll_approvals').upsert({
+            run_id: runId,
+            branch_id: branch,
+            month,
+            status: 'Pending',
+            total_gross: payrollRun.total_gross,
+            total_deductions: payrollRun.total_deductions,
+            total_net: payrollRun.total_net,
+            employees: payrollRun.employees,
+            created_by: _currentUser || 'System',
+            created_at: new Date().toISOString()
+          }, {onConflict: 'run_id'});
+          if(error) throw error;
+        } catch(err) {
           console.error('Payroll sync failed:', err);
           toast('⚠️ Local saved. Sync failed - will retry when online');
-        });
+        }
       }
       
       toast(`✅ Payroll submitted! Total: ₱${fmt(payrollRun.total_net)}`);
