@@ -4233,9 +4233,9 @@ async function ownerRefresh(){
 
 // ── All Branches Dashboard ────────────────────────────────────────────────────
 function showOwnerDashboard(){
-  // Only Owner/Developer can view All Branches
-  if(!isOwner()){
-    toast('⛔ Access denied. Owner only.');
+  // Only Admin and above can view dashboard
+  if(!isAdmin()){
+    toast('⛔ Access denied.');
     navigate('Dashboard','showDashboard');
     return;
   }
@@ -4243,7 +4243,10 @@ function showOwnerDashboard(){
   const td = today();
   let totalEmps=0, totalPresent=0, totalPayroll=0;
 
-  const branchCards = ALL_BRANCHES.map((b,i)=>{
+  // ADMIN: show only their branch. OWNER: show ALL_BRANCHES
+  const branchesToShow = isOwner() ? ALL_BRANCHES : [getBranch()];
+  
+  const branchCards = branchesToShow.map((b,i)=>{
     const bdata   = _ownerData[b] || {};
     const emps    = bdata.pr_employees  || {};
     const att     = bdata.pr_attendance || {};
@@ -4645,6 +4648,16 @@ async function ownerDeleteEmp(branch, eid, name){
   const emps = (_ownerData[branch]||{}).pr_employees||{};
   delete emps[eid];
   ownerSaveBranch(branch,'pr_employees',emps);
+  
+  // DELETE FROM employees_201 when employee removed
+  if(_sb) {
+    await _sb.from('employees_201')
+      .delete()
+      .eq('employee_id', eid)
+      .eq('branch_id', branch)
+      .catch(e => console.error('Delete from employees_201 failed:', e));
+  }
+  
   toast(`🗑 "${name}" deleted!`);
   showAllEmployees();
 }
