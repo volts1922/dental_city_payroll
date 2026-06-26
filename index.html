@@ -6851,6 +6851,8 @@ async function showPayrollApprovals(){
     return;
   }
   
+  console.log('[Approvals] Loading...');
+  
   // Show loading state
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -6860,39 +6862,45 @@ async function showPayrollApprovals(){
     <div style="text-align:center;padding:40px;color:var(--muted)">⏳ Loading approvals...</div>`;
   
   let approvals = load(KEYS.payroll_approvals) || {};
+  console.log('[Approvals] From localStorage:', Object.keys(approvals).length, 'records');
   
   // Load from Supabase FIRST (required)
   if(_sb){
     try {
+      console.log('[Approvals] Querying Supabase...');
       const {data, error} = await _sb.from('pr_payroll_approvals')
         .select('*')
         .eq('status', 'Pending');
       
       if(error) {
-        console.error('Failed to load approvals from Supabase:', error);
-      } else if(data && data.length > 0) {
-        console.log('Loaded', data.length, 'pending approvals from Supabase');
-        // Merge Supabase data with localStorage
-        data.forEach(row => {
-          if(!approvals[row.run_id]) {
-            approvals[row.run_id] = {
-              runId: row.run_id,
-              branch: row.branch_id,
-              date: row.created_at?.split('T')[0],
-              month: row.month,
-              status: row.status,
-              employees: row.employees || {},
-              created_by: row.created_by,
-              total_gross: row.total_gross,
-              total_deductions: row.total_deductions,
-              total_net: row.total_net
-            };
-          }
-        });
+        console.error('[Approvals] Supabase error:', error.message);
+      } else {
+        console.log('[Approvals] From Supabase:', data?.length || 0, 'records');
+        if(data && data.length > 0) {
+          data.forEach(row => {
+            if(!approvals[row.run_id]) {
+              approvals[row.run_id] = {
+                runId: row.run_id,
+                branch: row.branch_id,
+                date: row.created_at?.split('T')[0],
+                month: row.month,
+                status: row.status,
+                employees: row.employees || {},
+                created_by: row.created_by,
+                total_gross: row.total_gross,
+                total_deductions: row.total_deductions,
+                total_net: row.total_net
+              };
+            }
+          });
+          console.log('[Approvals] Merged total:', Object.keys(approvals).length, 'records');
+        }
       }
     } catch(err) {
-      console.error('Supabase query error:', err);
+      console.error('[Approvals] Supabase query error:', err);
     }
+  } else {
+    console.warn('[Approvals] Supabase not connected');
   }
   
   // Render with merged data
@@ -7073,20 +7081,35 @@ function runPayrollNow(){
     return;
   }
   
+  // Prevent double-click
+  const btn = event?.target;
+  if(btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+  }
+  
   _confirm('Create payroll run for owner approval?<br><br>This will submit the computed payroll for owner review and approval.',
     {ok:'Submit for Approval', cancel:'Cancel', icon:'💰'}).then(async ok=>{
-    if(!ok) return;
+    if(!ok) {
+      if(btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+      return;
+    }
     
     try {
       const month = document.getElementById('payMonth')?.value || today().slice(0,7);
       const runId = `PR-${today()}-${Date.now().toString(36).toUpperCase()}`;
       const branch = getBranch();
       
+      console.log('[Payroll] Submitting:', {runId, branch, month, empCount: _payrollData.length});
+      
       // Format payroll data with sanitization
       const employees = {};
       _payrollData.forEach(d=>{
         employees[d.eid] = {
-          name: _esc(d.name), // FIX 3: XSS sanitization
+          name: _esc(d.name),
           gross: parseFloat(d.gross)||0,
           deductions: parseFloat(d.totalDeductions)||0,
           net: parseFloat(d.net)||0,
@@ -7108,14 +7131,16 @@ function runPayrollNow(){
         created_by: _currentUser || 'System'
       };
       
-      // FIX 2: Transaction-like support - save locally first
+      // Save locally first
       const approvals = load(KEYS.payroll_approvals) || {};
       approvals[runId] = payrollRun;
       save(KEYS.payroll_approvals, approvals);
+      console.log('[Payroll] Saved locally');
       
-      // Sync to pr_payroll_approvals table (individual records, not blob)
+      // Sync ONLY to pr_payroll_approvals (no fallback blob sync)
       if(_sb){
         try {
+          console.log('[Payroll] Syncing to Supabase...');
           const {error} = await _sb.from('pr_payroll_approvals').upsert({
             run_id: runId,
             branch_id: branch,
@@ -7128,19 +7153,15 @@ function runPayrollNow(){
             created_by: _currentUser || 'System',
             created_at: new Date().toISOString()
           }, {onConflict: 'run_id'});
+          
           if(error) {
-            console.error('Payroll sync error details:', error.message, error.details, error.hint);
+            console.error('[Payroll] Sync error:', error.message);
             throw error;
           }
-          console.log('✅ Payroll synced to pr_payroll_approvals');
+          console.log('[Payroll] ✅ Synced successfully');
         } catch(err) {
-          console.error('Payroll sync to pr_payroll_approvals failed:', err.message || JSON.stringify(err));
-          // Fallback to blob sync
-          console.log('Falling back to payroll_data blob sync...');
-          await syncToCloud(KEYS.payroll_approvals, approvals).catch(e => {
-            console.error('Fallback sync also failed:', e);
-            toast('⚠️ Local saved. Cloud sync failed');
-          });
+          console.error('[Payroll] Sync failed:', err.message);
+          toast('⚠️ Local saved. Cloud sync failed - will retry later');
         }
       }
       
@@ -7152,6 +7173,11 @@ function runPayrollNow(){
     } catch(err) {
       console.error('runPayrollNow error:', err);
       toast(`❌ Error: ${err.message}`);
+    } finally {
+      if(btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
     }
   });
 }
