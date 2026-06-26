@@ -6818,7 +6818,7 @@ function approvePayroll(runId){
     if(approvals[runId]){
       approvals[runId].status = 'Approved';
       approvals[runId].approved_at = new Date().toISOString();
-      approvals[runId].approved_by = _currentUser;
+      approvals[runId].approved_by = _currentUser || getBranch();
       save(KEYS.payroll_approvals, approvals);
       await syncToCloud(KEYS.payroll_approvals, approvals);
       toast(`✅ Payroll ${runId} approved!`);
@@ -6834,7 +6834,7 @@ function denyPayroll(runId){
     if(approvals[runId]){
       approvals[runId].status = 'Denied';
       approvals[runId].denied_at = new Date().toISOString();
-      approvals[runId].denied_by = _currentUser;
+      approvals[runId].denied_by = _currentUser || getBranch();
       save(KEYS.payroll_approvals, approvals);
       await syncToCloud(KEYS.payroll_approvals, approvals);
       toast(`⛔ Payroll ${runId} denied`);
@@ -6881,7 +6881,7 @@ function runPayrollNow(){
       total_deductions: _payrollData.reduce((s,d)=>s+d.totalDeductions,0),
       total_net: _payrollData.reduce((s,d)=>s+d.net,0),
       created_at: new Date().toISOString(),
-      created_by: _currentUser
+      created_by: _currentUser || getBranch()
     };
     
     // Save to approvals table
