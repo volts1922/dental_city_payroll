@@ -1713,7 +1713,21 @@ function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('o
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-function today(){ return new Date().toISOString().split('T')[0]; }
+function today(){ 
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`; 
+}
+function getLocalTimeStr() {
+  const now = new Date();
+  let hh = now.getHours();
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  hh = hh % 12 || 12; // Convert 0 to 12, keep 1-11, convert 13-23 to 1-11
+  return `${String(hh).padStart(2, '0')}:${mm} ${ampm}`;
+}
 
 // ✅ NEW: Get current date/time in PH timezone (UTC+8)
 function todayPH(){
@@ -2525,7 +2539,7 @@ async function clockIn(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,8), td=today();
+  const nowStr=getLocalTimeStr(), td=today();
   const empName = sel.split(' (')[0];
   if(!(await _confirm(`Clock IN "${empName}" at ${nowStr}?<br>Date: ${td}`, {ok:'Clock In', cancel:'Cancel', icon:'⏵'}))) return;
   if(!att[eid]) att[eid]=[];
@@ -2562,7 +2576,7 @@ async function clockOut(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,5), td=today(); // Changed to slice(0,5) for HH:MM format
+  const nowStr=getLocalTimeStr(), td=today();
   console.log('🔍 clockOut debug:', {sel, eid, td, attKeys: Object.keys(att), empAtt: att[eid]});
   const existing=(att[eid]||[]).find(r=>r.date===td);
   if(!existing||!existing.time_in||existing.time_in==='—'){
