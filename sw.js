@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.55
-const VERSION = 'v30.55-clean';
-const CACHE = 'dcpayroll-v30.55';
+// DC Payroll Service Worker v30.56
+const VERSION = 'v30.56-owner-dev';
+const CACHE = 'dcpayroll-v30.56';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.55')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.56')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.55 ready');
+console.log('[SW] v30.56 ready');
