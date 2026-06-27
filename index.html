@@ -385,16 +385,33 @@ class SupabaseTable {
         console.error(`Supabase ${method} error:`, res.status, err);
         return { data: null, error: { status: res.status, message: err } };
       }
-      const data = await res.json();
-      return { data: this.isSingle ? data[0] : data, error: null };
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : (method === 'POST' || method === 'PATCH' ? [] : []);
+      return { data: this.isSingle ? (Array.isArray(data) ? data[0] : data) : data, error: null };
     } catch (e) {
       console.error('Supabase fetch error:', e);
       return { data: null, error: e };
     }
   }
   then(cb) { return this.execute().then(r => cb(r)); }
-  async insert(data) { return this.execute('POST', Array.isArray(data) ? data : [data]); }
-  async update(data) { return this.execute('PATCH', data); }
+  async insert(data) { 
+    const text = await fetch(`${this.url}/rest/v1/${this.table}`, {
+      method: 'POST',
+      headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(Array.isArray(data) ? data : [data])
+    }).then(r => r.text()).catch(e => { console.error('Insert error:', e); return null; });
+    const json = text ? JSON.parse(text) : [];
+    return { data: json, error: null };
+  }
+  async update(data) { 
+    const text = await fetch(`${this.url}/rest/v1/${this.table}`, {
+      method: 'PATCH',
+      headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).then(r => r.text()).catch(e => { console.error('Update error:', e); return null; });
+    const json = text ? JSON.parse(text) : [];
+    return { data: json, error: null };
+  }
   async upsert(data, options = {}) {
     const { onConflict } = options;
     const query = onConflict ? `?on_conflict=${encodeURIComponent(onConflict)}` : '';
@@ -418,7 +435,17 @@ class SupabaseTable {
       return { data: null, error: e };
     }
   }
-  async delete() { return this.execute('DELETE'); }
+  async delete() { 
+    try {
+      const res = await fetch(`${this.url}/rest/v1/${this.table}`, {
+        method: 'DELETE',
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+      });
+      return { data: null, error: null };
+    } catch (e) {
+      return { data: null, error: e };
+    }
+  }
 }
 
 const _sb = new SupabaseREST(SUPABASE_URL, SUPABASE_KEY);
