@@ -2436,7 +2436,7 @@ let _attTrackerPeriod='week';
 function showAttendanceTracker(period='week'){
   _attTrackerPeriod=period;
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
-  const attData=JSON.parse(att||'{}');
+  const attData = typeof att === 'string' ? JSON.parse(att) : (att || {});
   const activeEmps=Object.entries(emps||{})
     .filter(([,e])=>e.status!=='Resigned')
     .map(([id,e])=>({id,name:e.name||id}));
