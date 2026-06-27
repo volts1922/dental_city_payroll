@@ -8151,38 +8151,6 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
 // BREAK TRACKING & PAYROLL SYNC
 // ════════════════════════════════════════════════════════════════
 
-async function clockIn(empId, branchId) {
-  try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const timeIn = now.toTimeString().slice(0, 5);
-    const existing = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
-    if(existing.data && existing.data.status === 'clocked_in') {
-      throw new Error('Already clocked in at ' + existing.data.time_in);
-    }
-    const {data, error} = await _sb.from('time_clock').upsert({
-      employee_id: empId, 
-      branch_id: branchId, 
-      date: today, 
-      time_in: timeIn,
-      time_out: null,
-      status: 'clocked_in', 
-      validation_status: 'valid',
-      hours: 0,
-      ot_hours: 0,
-      nd_hours: 0,
-      break_hours: 0,
-      created_at: now.toISOString(),
-      updated_at: now.toISOString()
-    }, {onConflict: 'employee_id,branch_id,date'});
-    if(error) throw error;
-    toast(`✅ Clocked in at ${timeIn}`);
-    return data;
-  } catch(e) {
-    console.error(e);
-    toast(`❌ ${e.message}`);
-  }
-}
 
 async function startBreak(empId, branchId, breakType = 'Lunch') {
   try {
