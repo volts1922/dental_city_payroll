@@ -349,6 +349,41 @@ class SupabaseREST {
   }
 }
 
+class SupabaseUpdateBuilder {
+  constructor(url, key, table, data) {
+    this.url = url;
+    this.key = key;
+    this.table = table;
+    this.data = data;
+    this.filters = [];
+  }
+  eq(col, val) {
+    this.filters.push(`${col}=eq.${encodeURIComponent(val)}`);
+    return this;
+  }
+  async execute() {
+    const query = this.filters.length ? '?' + this.filters.join('&') : '';
+    try {
+      const res = await fetch(`${this.url}/rest/v1/${this.table}${query}`, {
+        method: 'PATCH',
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.data)
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error('Update error:', res.status, err);
+        return { data: null, error: { status: res.status, message: err } };
+      }
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : [];
+      return { data: json, error: null };
+    } catch (e) {
+      console.error('Update error:', e);
+      return { data: null, error: e };
+    }
+  }
+}
+
 class SupabaseTable {
   constructor(url, key, table) {
     this.url = url;
@@ -403,14 +438,8 @@ class SupabaseTable {
     const json = text ? JSON.parse(text) : [];
     return { data: json, error: null };
   }
-  async update(data) { 
-    const text = await fetch(`${this.url}/rest/v1/${this.table}`, {
-      method: 'PATCH',
-      headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    }).then(r => r.text()).catch(e => { console.error('Update error:', e); return null; });
-    const json = text ? JSON.parse(text) : [];
-    return { data: json, error: null };
+  update(data) { 
+    return new SupabaseUpdateBuilder(this.url, this.key, this.table, data);
   }
   async upsert(data, options = {}) {
     const { onConflict } = options;
@@ -2572,7 +2601,7 @@ async function clockOut(){
         employee_name: empName,
         status: 'clocked_out',
         updated_at: now.toISOString()
-      }).eq('employee_id', eid).eq('branch_id', branchId).eq('date', td);
+      }).eq('employee_id', eid).eq('branch_id', branchId).eq('date', td).execute();
       if(error) console.warn('Sync warning:', error);
     }
   } catch(e) {
@@ -8099,17 +8128,26 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
     
     // Determine conflict strategy based on table
     let onConflict = 'id';
-    if(tableName === 'employees_201') onConflict = 'employee_id';
+    if(tableName === 'employees_201') onConflict = null; // No unique constraint, just insert
     if(tableName === 'pr_payroll_approvals') onConflict = 'run_id';
     if(tableName === 'payroll_accounts') onConflict = 'username';
     
     let lastError = null;
     for(let attempt = 0; attempt <= retries; attempt++){
       try {
-        const {data: result, error} = await _sb.from(tableName).upsert(data, {onConflict});
+        let result;
+        if(onConflict) {
+          const {data: d, error: e} = await _sb.from(tableName).upsert(data, {onConflict});
+          result = {data: d, error: e};
+        } else {
+          // For tables without unique constraint, just insert
+          const {data: d, error: e} = await _sb.from(tableName).insert(data);
+          result = {data: d, error: e};
+        }
+        const {data, error} = result;
         if(error) {
-          if(error.status === 409) {
-            console.log(`ℹ️ [${tableName}] Conflict (409) - data already exists, continuing`);
+          if(error.status === 409 || error.code === '23505') { // 409 Conflict or duplicate key
+            console.log(`ℹ️ [${tableName}] Duplicate - data already exists, continuing`);
             return {data: null, error: null};
           }
           lastError = error;
