@@ -2689,142 +2689,66 @@ function showAdminLiveTracker(){
   const emps=load(KEYS.employees)||{}, att=load(KEYS.attendance)||{}, leaves=load(KEYS.leaves)||{};
   const today_str = today();
   
-  // Get employee status for today
-  const getStatus = (eid) => {
-    const recs = att[eid] || [];
-    const todayRec = recs.find(r => r.date === today_str);
-    return todayRec ? todayRec.status : 'No Record';
-  };
-  
-  // Check if on approved leave
   const isOnLeave = (eid) => {
     const leavRecs = leaves[eid] || [];
     return leavRecs.some(l => l.status === 'Approved' && l.start_date <= today_str && l.end_date >= today_str);
   };
   
-  // Get time in/out
+  const getStatus = (eid) => {
+    if(isOnLeave(eid)) return 'On Leave';
+    const recs = att[eid] || [];
+    const todayRec = recs.find(r => r.date === today_str);
+    return todayRec ? todayRec.status : 'No Record';
+  };
+  
   const getTimes = (eid) => {
     const recs = att[eid] || [];
     const todayRec = recs.find(r => r.date === today_str);
-    return todayRec ? { timeIn: todayRec.time_in, timeOut: todayRec.time_out, hours: todayRec.hours || 0 } : { timeIn: '—', timeOut: '—', hours: 0 };
+    return todayRec ? { in: todayRec.time_in, out: todayRec.time_out, hrs: todayRec.hours || 0 } : { in: '—', out: '—', hrs: 0 };
   };
   
-  // Categorize employees
   const active = Object.entries(emps).filter(([,e]) => e.status === 'Active').sort((a, b) => a[1].name.localeCompare(b[1].name));
   
-  const statusGroups = {
-    'Present': [],
-    'Late': [],
-    'Absent': [],
-    'On Leave': [],
-    'Rest Day': [],
-    'No Record': []
-  };
-  
+  const groups = { 'Present': [], 'Late': [], 'Absent': [], 'On Leave': [], 'No Record': [] };
   active.forEach(([eid, emp]) => {
-    if(isOnLeave(eid)){
-      statusGroups['On Leave'].push([eid, emp]);
-    } else {
-      const status = getStatus(eid);
-      if(statusGroups[status]) statusGroups[status].push([eid, emp]);
-      else statusGroups['No Record'].push([eid, emp]);
-    }
+    const status = getStatus(eid);
+    if(groups[status]) groups[status].push([eid, emp]);
+    else groups['No Record'].push([eid, emp]);
   });
   
-  // Color coding
-  const colors = {
-    'Present': 'var(--green)',
-    'Late': 'var(--orange)',
-    'Absent': 'var(--red)',
-    'On Leave': 'var(--purple)',
-    'Rest Day': 'var(--gray)',
-    'No Record': 'var(--gray)'
-  };
+  const colors = { 'Present': 'var(--green)', 'Late': 'var(--orange)', 'Absent': 'var(--red)', 'On Leave': 'var(--purple)', 'No Record': 'var(--gray)' };
+  const emoji = { 'Present': '✅', 'Late': '⏰', 'Absent': '❌', 'On Leave': '🌴', 'No Record': '❓' };
   
-  const statusEmoji = {
-    'Present': '✅',
-    'Late': '⏰',
-    'Absent': '❌',
-    'On Leave': '🌴',
-    'Rest Day': '😎',
-    'No Record': '❓'
-  };
-  
-  // Build employee cards
-  let content = `<div style="display:grid;gap:16px">`;
-  
-  Object.entries(statusGroups).forEach(([status, empsInStatus]) => {
+  let html = '<div style="display:grid;gap:16px">';
+  Object.entries(groups).forEach(([status, empsInStatus]) => {
     if(empsInStatus.length === 0) return;
-    
-    const badge = `<span style="display:inline-block;background:${colors[status]};color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:12px">${statusEmoji[status]} ${status}: ${empsInStatus.length}</span>`;
-    
-    const cards = empsInStatus.map(([eid, emp]) => {
-      const { timeIn, timeOut, hours } = getTimes(eid);
-      const branch = emp.branch || getBranch() || '—';
-      
-      return `<div style="border:1.5px solid ${colors[status]};border-radius:8px;padding:12px;background:#fafafa">
-        <div style="font-weight:700;font-size:13px;color:${colors[status]};margin-bottom:6px">${_esc(emp.name)}</div>
-        <div style="font-size:11px;color:#555;margin-bottom:8px">${branch} • ${emp.role || 'Staff'}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px">
-          <div>
-            <label style="color:#999;font-weight:700">IN</label>
-            <div style="color:var(--navy);font-weight:700">${timeIn}</div>
-          </div>
-          <div>
-            <label style="color:#999;font-weight:700">OUT</label>
-            <div style="color:var(--navy);font-weight:700">${timeOut}</div>
-          </div>
-          <div colspan="2">
-            <label style="color:#999;font-weight:700">HOURS</label>
-            <div style="color:var(--blue);font-weight:700">${hours > 0 ? hours : '—'}</div>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-    
-    content += `<div>${badge}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">${cards}</div></div>`;
+    html += `<div><span style="display:inline-block;background:${colors[status]};color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:12px">${emoji[status]} ${status}: ${empsInStatus.length}</span>`;
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
+    empsInStatus.forEach(([eid, emp]) => {
+      const t = getTimes(eid);
+      html += `<div style="border:1.5px solid ${colors[status]};border-radius:8px;padding:10px;background:#fafafa"><div style="font-weight:700;font-size:12px;color:${colors[status]};margin-bottom:4px">${_esc(emp.name)}</div><div style="font-size:10px;color:#555;margin-bottom:8px">${emp.branch||'—'} • ${emp.role||'Staff'}</div><div style="font-size:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px"><div><strong>In:</strong> ${t.in}</div><div><strong>Out:</strong> ${t.out}</div><div style="grid-column:1/-1"><strong>Hrs:</strong> ${t.hrs > 0 ? t.hrs : '—'}</div></div></div>`;
+    });
+    html += '</div></div>';
   });
-  
-  content += `</div>`;
+  html += '</div>';
   
   document.getElementById('main').innerHTML = `
     <div class="section-header">
       <div class="section-title">🔴 Live Tracker — ${today_str}</div>
       <button class="btn btn-secondary btn-sm" onclick="showAdminLiveTracker()">🔄 Refresh</button>
     </div>
-    <div style="padding:16px;background:#f9fafb;border-radius:8px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;font-size:13px;font-weight:700;text-align:center">
-        <div style="background:var(--green);color:white;padding:12px;border-radius:6px">
-          ✅ Present<br><span style="font-size:18px">${statusGroups['Present'].length}</span>
-        </div>
-        <div style="background:var(--orange);color:white;padding:12px;border-radius:6px">
-          ⏰ Late<br><span style="font-size:18px">${statusGroups['Late'].length}</span>
-        </div>
-        <div style="background:var(--red);color:white;padding:12px;border-radius:6px">
-          ❌ Absent<br><span style="font-size:18px">${statusGroups['Absent'].length}</span>
-        </div>
-        <div style="background:var(--purple);color:white;padding:12px;border-radius:6px">
-          🌴 On Leave<br><span style="font-size:18px">${statusGroups['On Leave'].length}</span>
-        </div>
-        <div style="background:var(--gray);color:white;padding:12px;border-radius:6px">
-          ❓ No Record<br><span style="font-size:18px">${statusGroups['No Record'].length}</span>
-        </div>
-      </div>
+    <div style="padding:12px;background:#f0f0f0;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;font-size:12px;font-weight:700;text-align:center">
+      <div style="background:var(--green);color:white;padding:8px;border-radius:4px">✅ ${groups['Present'].length}</div>
+      <div style="background:var(--orange);color:white;padding:8px;border-radius:4px">⏰ ${groups['Late'].length}</div>
+      <div style="background:var(--red);color:white;padding:8px;border-radius:4px">❌ ${groups['Absent'].length}</div>
+      <div style="background:var(--purple);color:white;padding:8px;border-radius:4px">🌴 ${groups['On Leave'].length}</div>
+      <div style="background:var(--gray);color:white;padding:8px;border-radius:4px">❓ ${groups['No Record'].length}</div>
     </div>
-    ${content}
-    <div style="margin-top:16px;padding:12px;background:#fffbeb;border-left:4px solid var(--orange);border-radius:4px;font-size:12px;color:#555">
-      📊 Updates every minute | Last updated: ${new Date().toLocaleTimeString()}
-    </div>
+    ${html}
   `;
   
   applyRole();
-  
-  // Auto-refresh every 60 seconds
-  setTimeout(() => {
-    if(document.getElementById('main').textContent.includes('Live Tracker')){
-      showAdminLiveTracker();
-    }
-  }, 60000);
+  setTimeout(() => { if(document.getElementById('main').textContent.includes('Live Tracker')) showAdminLiveTracker(); }, 60000);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
