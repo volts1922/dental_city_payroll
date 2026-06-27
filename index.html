@@ -860,6 +860,14 @@ const SHIFTS = {
   'Afternoon': { start: '14:00', end: '21:00', hours: 7, name: 'Afternoon (2pm-9pm)' },
   'Full': { start: '10:00', end: '21:00', hours: 11, name: 'Full (10am-9pm)' }
 };
+
+// 201 Employee File Sections
+const SECTIONS_201 = {
+  'Personal': ['full_name','birthdate','civil_status','address','phone'],
+  'Emergency': ['emergency_contact','emergency_phone','dependents_count'],
+  'IDs': ['sss_id','pag_ibig_id','philhealth_id','tin'],
+  'Other': ['health_insurance','education']
+};
 const load = k=>DB.get(k);
 const save = (k,v)=>{
   try{
@@ -7676,13 +7684,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   console.log('✅ v29.8 Security features initialized (2FA, Auto-logout, Audit, Password History)');
 });
 
-// ── 201 EMPLOYEE FILE MODAL ────────────────────────────────────────────────
-const SECTIONS_201 = {
-  'Personal': ['full_name','birthdate','civil_status','address','phone'],
-  'Emergency': ['emergency_contact','emergency_phone','dependents_count'],
-  'IDs': ['sss_id','pag_ibig_id','philhealth_id','tin'],
-  'Other': ['health_insurance','education']
-};
 
 function open201(empId){
   const role = currentRole;
@@ -8178,7 +8179,7 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
           const {data: d, error: e} = await _sb.from(tableName).insert(data);
           result = {data: d, error: e};
         }
-        const {data, error} = result;
+        const {data: resultData, error} = result;
         if(error) {
           if(error.status === 409 || error.code === '23505') { // 409 Conflict or duplicate key
             console.log(`ℹ️ [${tableName}] Duplicate - data already exists, continuing`);
@@ -8193,7 +8194,7 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
           throw error;
         }
         console.log(`✅ [${tableName}] Synced successfully`);
-        return {data: result, error: null};
+        return {data: resultData, error: null};
       }catch(e){
         lastError = e;
         if(attempt < retries){
