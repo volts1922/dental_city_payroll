@@ -1342,6 +1342,7 @@ const NAV_OWNER=[
   {icon:'👤',label:'Employees',        fn:'showEmployees'},
   {icon:'📅',label:'Attendance',       fn:'showAttendance'},
   {icon:'📊',label:'Tracker (D/W/M/Y)', fn:'showAttendanceTracker'},
+  {icon:'🔴',label:'Live Tracker',       fn:'showAdminLiveTracker'},
   {icon:'🌴',label:'Leave',            fn:'showLeave'},
   {icon:'💳',label:'Loans',            fn:'showLoans'},
   {icon:'💰',label:'Payroll',          fn:'showPayroll'},
@@ -2681,6 +2682,152 @@ function exportAtt(){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ADMIN LIVE TRACKER — Real-time Employee Activity Monitor
+// ══════════════════════════════════════════════════════════════════════════════
+function showAdminLiveTracker(){
+  ownerEnsureBranchData();
+  const emps=load(KEYS.employees)||{}, att=load(KEYS.attendance)||{}, leaves=load(KEYS.leaves)||{};
+  const today_str = today();
+  
+  // Get employee status for today
+  const getStatus = (eid) => {
+    const recs = att[eid] || [];
+    const todayRec = recs.find(r => r.date === today_str);
+    return todayRec ? todayRec.status : 'No Record';
+  };
+  
+  // Check if on approved leave
+  const isOnLeave = (eid) => {
+    const leavRecs = leaves[eid] || [];
+    return leavRecs.some(l => l.status === 'Approved' && l.start_date <= today_str && l.end_date >= today_str);
+  };
+  
+  // Get time in/out
+  const getTimes = (eid) => {
+    const recs = att[eid] || [];
+    const todayRec = recs.find(r => r.date === today_str);
+    return todayRec ? { timeIn: todayRec.time_in, timeOut: todayRec.time_out, hours: todayRec.hours || 0 } : { timeIn: '—', timeOut: '—', hours: 0 };
+  };
+  
+  // Categorize employees
+  const active = Object.entries(emps).filter(([,e]) => e.status === 'Active').sort((a, b) => a[1].name.localeCompare(b[1].name));
+  
+  const statusGroups = {
+    'Present': [],
+    'Late': [],
+    'Absent': [],
+    'On Leave': [],
+    'Rest Day': [],
+    'No Record': []
+  };
+  
+  active.forEach(([eid, emp]) => {
+    if(isOnLeave(eid)){
+      statusGroups['On Leave'].push([eid, emp]);
+    } else {
+      const status = getStatus(eid);
+      if(statusGroups[status]) statusGroups[status].push([eid, emp]);
+      else statusGroups['No Record'].push([eid, emp]);
+    }
+  });
+  
+  // Color coding
+  const colors = {
+    'Present': 'var(--green)',
+    'Late': 'var(--orange)',
+    'Absent': 'var(--red)',
+    'On Leave': 'var(--purple)',
+    'Rest Day': 'var(--gray)',
+    'No Record': 'var(--gray)'
+  };
+  
+  const statusEmoji = {
+    'Present': '✅',
+    'Late': '⏰',
+    'Absent': '❌',
+    'On Leave': '🌴',
+    'Rest Day': '😎',
+    'No Record': '❓'
+  };
+  
+  // Build employee cards
+  let content = `<div style="display:grid;gap:16px">`;
+  
+  Object.entries(statusGroups).forEach(([status, empsInStatus]) => {
+    if(empsInStatus.length === 0) return;
+    
+    const badge = `<span style="display:inline-block;background:${colors[status]};color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:12px">${statusEmoji[status]} ${status}: ${empsInStatus.length}</span>`;
+    
+    const cards = empsInStatus.map(([eid, emp]) => {
+      const { timeIn, timeOut, hours } = getTimes(eid);
+      const branch = emp.branch || getBranch() || '—';
+      
+      return `<div style="border:1.5px solid ${colors[status]};border-radius:8px;padding:12px;background:#fafafa">
+        <div style="font-weight:700;font-size:13px;color:${colors[status]};margin-bottom:6px">${_esc(emp.name)}</div>
+        <div style="font-size:11px;color:#555;margin-bottom:8px">${branch} • ${emp.role || 'Staff'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px">
+          <div>
+            <label style="color:#999;font-weight:700">IN</label>
+            <div style="color:var(--navy);font-weight:700">${timeIn}</div>
+          </div>
+          <div>
+            <label style="color:#999;font-weight:700">OUT</label>
+            <div style="color:var(--navy);font-weight:700">${timeOut}</div>
+          </div>
+          <div colspan="2">
+            <label style="color:#999;font-weight:700">HOURS</label>
+            <div style="color:var(--blue);font-weight:700">${hours > 0 ? hours : '—'}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    
+    content += `<div>${badge}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">${cards}</div></div>`;
+  });
+  
+  content += `</div>`;
+  
+  document.getElementById('main').innerHTML = `
+    <div class="section-header">
+      <div class="section-title">🔴 Live Tracker — ${today_str}</div>
+      <button class="btn btn-secondary btn-sm" onclick="showAdminLiveTracker()">🔄 Refresh</button>
+    </div>
+    <div style="padding:16px;background:#f9fafb;border-radius:8px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;font-size:13px;font-weight:700;text-align:center">
+        <div style="background:var(--green);color:white;padding:12px;border-radius:6px">
+          ✅ Present<br><span style="font-size:18px">${statusGroups['Present'].length}</span>
+        </div>
+        <div style="background:var(--orange);color:white;padding:12px;border-radius:6px">
+          ⏰ Late<br><span style="font-size:18px">${statusGroups['Late'].length}</span>
+        </div>
+        <div style="background:var(--red);color:white;padding:12px;border-radius:6px">
+          ❌ Absent<br><span style="font-size:18px">${statusGroups['Absent'].length}</span>
+        </div>
+        <div style="background:var(--purple);color:white;padding:12px;border-radius:6px">
+          🌴 On Leave<br><span style="font-size:18px">${statusGroups['On Leave'].length}</span>
+        </div>
+        <div style="background:var(--gray);color:white;padding:12px;border-radius:6px">
+          ❓ No Record<br><span style="font-size:18px">${statusGroups['No Record'].length}</span>
+        </div>
+      </div>
+    </div>
+    ${content}
+    <div style="margin-top:16px;padding:12px;background:#fffbeb;border-left:4px solid var(--orange);border-radius:4px;font-size:12px;color:#555">
+      📊 Updates every minute | Last updated: ${new Date().toLocaleTimeString()}
+    </div>
+  `;
+  
+  applyRole();
+  
+  // Auto-refresh every 60 seconds
+  setTimeout(() => {
+    if(document.getElementById('main').textContent.includes('Live Tracker')){
+      showAdminLiveTracker();
+    }
+  }, 60000);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // LEAVE
 // ══════════════════════════════════════════════════════════════════════════════
 function showLeave(){
@@ -2744,21 +2891,22 @@ function fileLeave(){
   document.getElementById('f_eid').innerHTML='<option value="">-- Select --</option>'+empOptions();
 }
 
-function setLeave(eid,idx,status){
+async function setLeave(eid,idx,status){
   const leaves=load(KEYS.leaves);
   leaves[eid][idx].status=status;
   save(KEYS.leaves,leaves);
 
-  // Sync leave record to Supabase
+  // Sync leave record to Supabase (FIXED: Now properly awaited)
   try{
-    (async () => {
+    if(_sb){
       await _sbInsertOrUpdate('payroll_data', {
         branch_key: getBranch(),
         data_type: 'pr_leaves',
         data: JSON.stringify(leaves),
         updated_at: nowPH()
       });
-    })();
+      console.log('[Leave] Cloud sync completed for', eid);
+    }
   }catch(e){
     console.warn('[Leave] Leaves data sync failed:', e.message);
   }
@@ -2773,7 +2921,6 @@ function setLeave(eid,idx,status){
     let count = 0;
     while(cur<=end){
       const ds = cur.toISOString().split('T')[0];
-      // Only mark if no record exists yet
       const exists = att[eid].find(r=>r.date===ds);
       if(!exists){
         att[eid].push({date:ds,status:'On Leave',time_in:'—',time_out:'—',hours:0,ot_hours:0,nd_hours:0,holiday:''});
@@ -2785,20 +2932,17 @@ function setLeave(eid,idx,status){
     }
     save(KEYS.attendance, att);
     
-    // Sync updated attendance to Supabase
-    if(_sb && count > 0) {
-      (async () => {
-        try {
-          const {error} = await _sb.from('payroll_data').upsert(
-            {branch_key: getBranch(), data_type: 'pr_attendance', data: JSON.stringify(att), updated_at: new Date().toISOString()},
-            {onConflict: 'branch_key,data_type'}
-          );
-          if(error) throw error;
-          console.log('[Leave] Attendance synced to cloud for', eid);
-        } catch(e) {
-          console.warn('[Leave] Attendance sync failed:', e.message);
-        }
-      })();
+    // Sync updated attendance to Supabase (FIXED: Now properly awaited)
+    try{
+      if(_sb && count > 0) {
+        await _sb.from('payroll_data').upsert(
+          {branch_key: getBranch(), data_type: 'pr_attendance', data: JSON.stringify(att), updated_at: nowPH()},
+          {onConflict: 'branch_key,data_type'}
+        );
+        console.log('[Leave] Attendance synced to cloud for', eid);
+      }
+    }catch(e){
+      console.warn('[Leave] Attendance sync failed:', e.message);
     }
     
     toast(`✅ Approved! ${count} day(s) marked as On Leave in attendance.`);
@@ -2970,10 +3114,15 @@ async function deleteLoan(eid,idx){
         return;
       }
       
-      // Sync to cloud
+      // Sync to cloud (FIXED: Use payroll_data blob, not loans table)
       try{
         if(_sb){
-          await _sb.from('loans').delete().eq('id', loanRecord.id);
+          await _sbInsertOrUpdate('payroll_data', {
+            branch_key: getBranch(),
+            data_type: 'pr_loans',
+            data: JSON.stringify(loans),
+            updated_at: nowPH()
+          });
         }
       }catch(err){
         console.warn('Cloud sync warning:', err);
@@ -3053,6 +3202,15 @@ function computePayroll(){
 // Deduct loan balances after confirming payroll run
 async function confirmPayrollRun(){
   if(!_payrollData.length){ toast('⚠️ Compute payroll first'); return; }
+  
+  // Idempotency check: Prevent double confirmation (FIXED: HIGH-3)
+  const month = today().substring(0, 7);
+  const approvals = load(KEYS.payroll_approvals) || {};
+  const runKey = `${getBranch()}_${month}`;
+  if(approvals[runKey] && approvals[runKey].status === 'Confirmed'){
+    if(!(await _confirm(`⚠️ This payroll was ALREADY confirmed on ${approvals[runKey].confirmed_at}.<br><br>Confirming again will deduct loans AGAIN!<br><br>Continue?`, {ok:'Yes, Confirm Again', cancel:'Cancel', danger:true}))) return;
+  }
+  
   if(!(await _confirm('Confirm this payroll run?<br><br>This will deduct loan amortizations from employee loan balances and cannot be undone.', {ok:'Confirm', cancel:'Cancel', icon:'✅'}))) return;
 
   const loans = load(KEYS.loans);
@@ -3076,15 +3234,15 @@ async function confirmPayrollRun(){
   
   // Sync payroll and loans to Supabase
   try{
-    const month = today().substring(0, 7); // YYYY-MM
     const run_id = `${getBranch()}_${month}_${Date.now()}`;
     
-    // Save to pr_payroll_approvals
+    // Save to pr_payroll_approvals with timestamp
     await _sbInsertOrUpdate('pr_payroll_approvals', {
       run_id,
       branch_id: getBranch(),
       month,
       status: 'Confirmed',
+      confirmed_at: nowPH(),
       employees: _payrollData,
       updated_at: nowPH()
     });
@@ -3097,6 +3255,10 @@ async function confirmPayrollRun(){
       updated_at: nowPH()
     });
     
+    // Update local approvals record
+    approvals[runKey] = { status: 'Confirmed', confirmed_at: today(), run_id, employee_count: _payrollData.length };
+    save(KEYS.payroll_approvals, approvals);
+    
     console.log('[Payroll] Confirmed and synced to Supabase');
   }catch(e){
     console.warn('⚠️ Payroll sync failed:', e.message);
@@ -3106,8 +3268,25 @@ async function confirmPayrollRun(){
   toast(`✅ Payroll confirmed! ${updated} loan(s) updated.`);
 }
 
-function exportPayroll(){
+async function exportPayroll(){
   if(!_payrollData.length){toast('⚠️ Compute payroll first');return;}
+  
+  // Sync payroll to Supabase BEFORE exporting (FIXED: prevent data loss)
+  try{
+    const month = today().substring(0, 7);
+    if(_sb){
+      await _sbInsertOrUpdate('payroll_data', {
+        branch_key: getBranch(),
+        data_type: `pr_payroll_${month}`,
+        data: JSON.stringify(_payrollData),
+        updated_at: nowPH()
+      });
+      console.log('[Payroll] Export data synced to cloud');
+    }
+  }catch(err){
+    console.warn('⚠️ Payroll sync warning:', err.message);
+  }
+  
   const rows=[['ID','Name','Branch','Daily Rate','Days Worked','Basic Gross',
     'OT Pay','Night Diff','Holiday Pay','Gross Pay',
     'SSS','PhilHealth','Pag-IBIG','Tax','Loan','Total Deductions','Net Pay',
