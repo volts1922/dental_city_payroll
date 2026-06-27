@@ -4277,6 +4277,7 @@ function generateSlip(){
   const hasAtt     = daysPresent+absences+halfDays>0;
   const daysWorked = hasAtt?daysPresent+(halfDays*0.5):null;
   const allowances = e.allowances || {};
+  const totalAllow = totalAllowances(allowances);
   
   // Determine which period (1st half, 2nd half, or full month)
   const month = fromDate.slice(0,7);
