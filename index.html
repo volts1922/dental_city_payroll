@@ -2508,6 +2508,30 @@ async function clockIn(){
   document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
   document.getElementById('clkStatus').style.color='var(--green)';
   loadAtt();
+  
+  // Sync to Supabase
+  try {
+    const branchId = getBranch() || 'main';
+    if(_sb && eid) {
+      const {error} = await _sb.from('time_clock').upsert({
+        employee_id: eid, 
+        branch_id: branchId, 
+        date: td, 
+        time_in: nowStr,
+        status: 'clocked_in', 
+        validation_status: 'valid',
+        hours: 0,
+        ot_hours: 0,
+        nd_hours: 0,
+        break_hours: 0,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString()
+      }, {onConflict: 'employee_id,branch_id,date'});
+      if(error) console.warn('Sync warning:', error);
+    }
+  } catch(e) {
+    console.warn('Clock in sync failed:', e.message);
+  }
 }
 
 async function clockOut(){
@@ -2538,6 +2562,25 @@ async function clockOut(){
   document.getElementById('clkStatus').textContent=`🔴 Clocked OUT at ${nowStr} (${existing.hours}h)`;
   document.getElementById('clkStatus').style.color='var(--red)';
   loadAtt();
+  
+  // Sync to Supabase
+  try {
+    const branchId = getBranch() || 'main';
+    if(_sb && eid) {
+      const {error} = await _sb.from('time_clock').update({
+        time_out: nowStr,
+        status: 'clocked_out',
+        hours: existing.hours,
+        ot_hours: existing.ot_hours,
+        nd_hours: existing.nd_hours,
+        validation_status: 'valid',
+        updated_at: now.toISOString()
+      }).eq('employee_id', eid).eq('branch_id', branchId).eq('date', td);
+      if(error) console.warn('Sync warning:', error);
+    }
+  } catch(e) {
+    console.warn('Clock out sync failed:', e.message);
+  }
 }
 
 function showWeeklyAttendance(){
@@ -7617,8 +7660,7 @@ async function save201(){
   }
   try{
     let {data: result, error} = await _sb.from('employees_201')
-      .upsert(data, {onConflict: 'employee_id,branch_id'})
-      .select();
+      .upsert(data, {onConflict: 'employee_id,branch_id'});
     if(error) throw error;
     toast('✅ 201 file saved');
     close201();
@@ -8119,12 +8161,23 @@ async function clockIn(empId, branchId) {
       throw new Error('Already clocked in at ' + existing.data.time_in);
     }
     const {data, error} = await _sb.from('time_clock').upsert({
-      employee_id: empId, branch_id: branchId, date: today, time_in: timeIn, 
-      status: 'clocked_in', validation_status: 'valid', created_at: now.toISOString()
-    }, {onConflict: 'employee_id,branch_id,date'}).select();
+      employee_id: empId, 
+      branch_id: branchId, 
+      date: today, 
+      time_in: timeIn,
+      time_out: null,
+      status: 'clocked_in', 
+      validation_status: 'valid',
+      hours: 0,
+      ot_hours: 0,
+      nd_hours: 0,
+      break_hours: 0,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString()
+    }, {onConflict: 'employee_id,branch_id,date'});
     if(error) throw error;
     toast(`✅ Clocked in at ${timeIn}`);
-    return data[0];
+    return data;
   } catch(e) {
     console.error(e);
     toast(`❌ ${e.message}`);
