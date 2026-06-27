@@ -1790,6 +1790,74 @@ function computeTax(t){
   return 200833.33+(t-666667)*0.35;
 }
 
+// Period-specific payroll calculation
+function computeNetPayWithPeriod(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}, period={isFirstHalf:false, isSecondHalf:false, isFullMonth:false}){
+  const fullMonthly = dailyRate * WORKING_DAYS;
+  const hourlyRate  = dailyRate / 8;
+
+  let gross;
+  if(daysWorked !== null){
+    gross = dailyRate * daysWorked;
+  } else {
+    const absentDays = absences + (halfDays * 0.5);
+    gross = dailyRate * Math.max(WORKING_DAYS - absentDays, 0);
+  }
+  gross = Math.max(gross, 0);
+
+  const otPay = hourlyRate * OT_MULTIPLIER * (otHours||0);
+  const ndPay = hourlyRate * ND_RATE * (ndHours||0);
+  const regHolPay = dailyRate * (REG_HOL - 1) * ((holidayDays.regular)||0);
+  const speHolPay = dailyRate * (SPE_HOL - 1) * ((holidayDays.special)||0);
+
+  const totalAllow = totalAllowances(allowances);
+  gross = gross + otPay + ndPay + regHolPay + speHolPay + totalAllow;
+
+  // ── PERIOD-SPECIFIC DEDUCTIONS ─────────────────────────────────────────────
+  let sss=0, ph=0, pi=0, tax=0;
+  
+  if(period.isFirstHalf){
+    // 1st HALF: SSS, Pag-ibig, PhilHealth only (government contributions)
+    sss = computeSSS(gross);
+    ph  = computePH(gross);
+    pi  = computePagibig(gross);
+    tax = 0; // No BIR tax in 1st half
+  } else if(period.isSecondHalf){
+    // 2nd HALF: BIR tax only
+    sss = 0; // No SSS in 2nd half
+    ph  = 0; // No PhilHealth in 2nd half
+    pi  = 0; // No Pag-ibig in 2nd half
+    tax = computeTax(Math.max(gross - totalAllow, 0)); // BIR tax only
+  } else {
+    // FULL MONTH: All deductions
+    sss = computeSSS(gross);
+    ph  = computePH(gross);
+    pi  = computePagibig(gross);
+    tax = computeTax(Math.max(gross - sss - ph - pi - totalAllow, 0));
+  }
+  
+  const totalDed = sss + ph + pi + tax + loanDeduction;
+
+  return {
+    dailyRate:       Math.round(dailyRate*100)/100,
+    hourlyRate:      Math.round(hourlyRate*100)/100,
+    fullMonthly:     Math.round(fullMonthly*100)/100,
+    gross:           Math.round(gross*100)/100,
+    otPay:           Math.round(otPay*100)/100,
+    ndPay:           Math.round(ndPay*100)/100,
+    regHolPay:       Math.round(regHolPay*100)/100,
+    speHolPay:       Math.round(speHolPay*100)/100,
+    totalAllow:      Math.round(totalAllow*100)/100,
+    allowBreakdown:  allowances,
+    sss:             Math.round(sss*100)/100,
+    ph:              Math.round(ph*100)/100,
+    pi:              Math.round(pi*100)/100,
+    tax:             Math.round(tax*100)/100,
+    loanDeduction:   Math.round(loanDeduction*100)/100,
+    totalDeductions: Math.round(totalDed*100)/100,
+    net:             Math.round((gross - totalDed)*100)/100,
+  };
+}
+
 function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}){
   const fullMonthly = dailyRate * WORKING_DAYS;
   const hourlyRate  = dailyRate / 8;
@@ -1818,9 +1886,10 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
 
   gross = gross + otPay + ndPay + regHolPay + speHolPay + totalAllow;
 
-  const sss = computeSSS(fullMonthly);
-  const ph  = computePH(fullMonthly);
-  const pi  = computePagibig(fullMonthly);
+  // ── FIXED: Calculate deductions based on ACTUAL gross, not full month
+  const sss = computeSSS(gross);
+  const ph  = computePH(gross);
+  const pi  = computePagibig(gross);
   const tax = computeTax(Math.max(gross - sss - ph - pi - totalAllow, 0)); // allowances not taxable
   const totalDed = sss + ph + pi + tax + loanDeduction;
 
@@ -4196,7 +4265,7 @@ function generateSlip(){
   if(!fromDate||!toDate){toast('⚠️ Set date range');return;}
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const e=emps[eid], rate=parseFloat(e.daily_rate||0);
-  const recs=Object.values(att[eid]||[]).filter(r=>r.date>=fromDate&&r.date<=toDate);
+  const recs=(att[eid]||[]).filter(r=>r.date>=fromDate&&r.date<=toDate);
   const daysPresent= recs.filter(r=>r.status==='Present'||r.status==='Late').length;
   const absences   = recs.filter(r=>r.status==='Absent').length;
   const halfDays   = recs.filter(r=>r.status==='Half-day').length;
@@ -4208,9 +4277,15 @@ function generateSlip(){
   const hasAtt     = daysPresent+absences+halfDays>0;
   const daysWorked = hasAtt?daysPresent+(halfDays*0.5):null;
   const allowances = e.allowances || {};
-  const totalAllow = totalAllowances(allowances);
-  const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances);
-  const dw         = daysWorked!==null?daysWorked.toFixed(2):WORKING_DAYS.toFixed(2);
+  
+  // Determine which period (1st half, 2nd half, or full month)
+  const month = fromDate.slice(0,7);
+  const isFirstHalf = fromDate.includes('-01') && toDate.includes('-15');
+  const isSecondHalf = fromDate.includes('-16') && !toDate.includes('-15');
+  const isFullMonth = fromDate.includes('-01') && (toDate.includes('-28')||toDate.includes('-29')||toDate.includes('-30')||toDate.includes('-31'));
+  
+  const pay = computeNetPayWithPeriod(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, {isFirstHalf, isSecondHalf, isFullMonth});
+  const dw  = daysWorked!==null?daysWorked.toFixed(2):WORKING_DAYS.toFixed(2);
   const loans      = load(KEYS.loans);
   const activeLoans= (loans[eid]||[]).filter(l=>l.status==='Active');
   const loanLines  = activeLoans.length
