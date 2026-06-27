@@ -2704,6 +2704,7 @@ function showLeave(){
       <td>
         <button class="btn btn-success btn-sm admin-only" onclick="setLeave('${eid}',${i},'Approved')">✔</button>
         <button class="btn btn-danger btn-sm admin-only" onclick="setLeave('${eid}',${i},'Rejected')">✖</button>
+        <button class="btn btn-danger btn-sm admin-only" onclick="deleteLeave('${eid}',${i})">🗑</button>
       </td>
     </tr>`;
   })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No leave records</td></tr>`;
@@ -2805,6 +2806,52 @@ function setLeave(eid,idx,status){
     toast(`✅ ${status}!`);
   }
   showLeave();
+}
+
+async function deleteLeave(eid,idx){
+  const leaves=load(KEYS.leaves);
+  
+  if(!leaves[eid]){
+    toast('❌ Employee not found');
+    return;
+  }
+  
+  if(!Number.isInteger(idx) || idx < 0 || idx >= leaves[eid].length){
+    toast(`❌ Invalid leave record`);
+    return;
+  }
+  
+  const leaveRecord = leaves[eid][idx];
+  
+  _confirm(`Delete leave record?<br><br>Type: ${leaveRecord.type || '—'} | Status: ${leaveRecord.status || 'Pending'}`, 
+    {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'})
+    .then(async ok=>{ 
+      if(!ok) return;
+      
+      leaves[eid].splice(idx, 1);
+      if(leaves[eid].length === 0) delete leaves[eid];
+      
+      try{
+        save(KEYS.leaves, leaves);
+      }catch(err){
+        toast(`❌ Save failed: ${err.message}`);
+        return;
+      }
+      
+      try{
+        if(_sb){
+          await _sb.from('payroll_data').upsert(
+            {branch_key: getBranch(), data_type: 'pr_leaves', data: JSON.stringify(leaves), updated_at: new Date().toISOString()},
+            {onConflict: 'branch_key,data_type'}
+          );
+        }
+      }catch(err){
+        console.warn('Cloud sync warning:', err);
+      }
+      
+      toast('✅ Leave record deleted');
+      showLeave();
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
