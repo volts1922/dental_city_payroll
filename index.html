@@ -2769,10 +2769,15 @@ function showAttendanceTracker(period='week'){
   }else if(period==='week'){
     const sun=new Date(now);
     sun.setDate(sun.getDate()-sun.getDay());
+    const td = today(); // Today's date
     for(let i=0;i<7;i++){
       const d=new Date(sun);
       d.setDate(d.getDate()+i);
-      dates.push(d.toISOString().split('T')[0]);
+      const dateStr = d.toISOString().split('T')[0];
+      // Only include dates from today onwards
+      if(dateStr <= td) {
+        dates.push(dateStr);
+      }
     }
     title=`Weekly Attendance Report`;
   }else if(period==='month'){
