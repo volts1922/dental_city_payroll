@@ -1,23 +1,69 @@
 {
-  "name": "Dental City Payroll",
+  "name": "DC Payroll - Dental City Payroll System",
   "short_name": "DC Payroll",
-  "description": "Multi-branch dental clinic payroll management system",
+  "description": "Complete offline-first payroll management system for Philippine clinics",
   "start_url": "/dental_city_payroll/",
   "scope": "/dental_city_payroll/",
   "display": "standalone",
-  "orientation": "portrait",
-  "theme_color": "#0078d4",
+  "orientation": "any",
   "background_color": "#ffffff",
-  "prefer_related_applications": false,
-  "screenshots": [
+  "theme_color": "#1E293B",
+  "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230078d4' width='192' height='192'/><text x='50%' y='50%' font-size='48' fill='white' text-anchor='middle' dominant-baseline='middle' font-family='Arial'>DC</text></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%231E293B' width='192' height='192'/><text x='96' y='120' font-size='100' font-weight='bold' fill='white' text-anchor='middle' font-family='Arial'>💰</text></svg>",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%231E293B' width='512' height='512'/><text x='256' y='340' font-size='280' fill='white' text-anchor='middle' font-family='Arial'>💰</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect fill='%23F8FAFC' width='540' height='720'/><text x='270' y='100' font-size='40' font-weight='bold' fill='%231E293B' text-anchor='middle'>DC Payroll</text><text x='270' y='360' font-size='60' fill='%233B82F6' text-anchor='middle'>📊</text></svg>",
+      "sizes": "540x720",
+      "type": "image/svg+xml",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View payroll dashboard",
+      "url": "/dental_city_payroll/?tab=dashboard",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><text x='48' y='70' font-size='60' text-anchor='middle'>📊</text></svg>", "sizes": "96x96" }]
+    },
+    {
+      "name": "Attendance",
+      "short_name": "Attendance",
+      "description": "Mark attendance",
+      "url": "/dental_city_payroll/?tab=attendance",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><text x='48' y='70' font-size='60' text-anchor='middle'>📋</text></svg>", "sizes": "96x96" }]
+    },
+    {
+      "name": "Payroll",
+      "short_name": "Payroll",
+      "description": "Compute payroll",
+      "url": "/dental_city_payroll/?tab=payroll",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><text x='48' y='70' font-size='60' text-anchor='middle'>💰</text></svg>", "sizes": "96x96" }]
     }
   ],
   "categories": ["business", "productivity"],
-  "version": "30.44",
-  "last_updated": "2026-06-26"
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "share_target": {
+    "action": "/dental_city_payroll/",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
