@@ -2519,12 +2519,6 @@ async function clockIn(){
         date: td, 
         time_in: nowStr,
         status: 'clocked_in', 
-        validation_status: 'valid',
-        hours: 0,
-        ot_hours: 0,
-        nd_hours: 0,
-        break_hours: 0,
-        created_at: now.toISOString(),
         updated_at: now.toISOString()
       }, {onConflict: 'employee_id,branch_id,date'});
       if(error) console.warn('Sync warning:', error);
@@ -2570,10 +2564,6 @@ async function clockOut(){
       const {error} = await _sb.from('time_clock').update({
         time_out: nowStr,
         status: 'clocked_out',
-        hours: existing.hours,
-        ot_hours: existing.ot_hours,
-        nd_hours: existing.nd_hours,
-        validation_status: 'valid',
         updated_at: now.toISOString()
       }).eq('employee_id', eid).eq('branch_id', branchId).eq('date', td);
       if(error) console.warn('Sync warning:', error);
