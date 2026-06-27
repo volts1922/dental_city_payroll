@@ -2716,19 +2716,24 @@ function showAdminLiveTracker(){
     else groups['No Record'].push([eid, emp]);
   });
   
-  const colors = { 'Present': 'var(--green)', 'Late': 'var(--orange)', 'Absent': 'var(--red)', 'On Leave': 'var(--purple)', 'No Record': 'var(--gray)' };
+  const colors = { 'Present': '#22c55e', 'Late': '#f97316', 'Absent': '#ef4444', 'On Leave': '#a855f7', 'No Record': '#64748b' };
   const emoji = { 'Present': '✅', 'Late': '⏰', 'Absent': '❌', 'On Leave': '🌴', 'No Record': '❓' };
   
   let html = '<div style="display:grid;gap:16px">';
   Object.entries(groups).forEach(([status, empsInStatus]) => {
-    if(empsInStatus.length === 0) return;
+    // Always show tab, even if empty
     html += `<div><span style="display:inline-block;background:${colors[status]};color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:12px">${emoji[status]} ${status}: ${empsInStatus.length}</span>`;
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
-    empsInStatus.forEach(([eid, emp]) => {
-      const t = getTimes(eid);
-      html += `<div style="border:1.5px solid ${colors[status]};border-radius:8px;padding:10px;background:#fafafa"><div style="font-weight:700;font-size:12px;color:${colors[status]};margin-bottom:4px">${_esc(emp.name)}</div><div style="font-size:10px;color:#555;margin-bottom:8px">${emp.branch||'—'} • ${emp.role||'Staff'}</div><div style="font-size:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px"><div><strong>In:</strong> ${t.in}</div><div><strong>Out:</strong> ${t.out}</div><div style="grid-column:1/-1"><strong>Hrs:</strong> ${t.hrs > 0 ? t.hrs : '—'}</div></div></div>`;
-    });
-    html += '</div></div>';
+    if(empsInStatus.length > 0){
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
+      empsInStatus.forEach(([eid, emp]) => {
+        const t = getTimes(eid);
+        html += `<div style="border:1.5px solid ${colors[status]};border-radius:8px;padding:10px;background:#ffffff"><div style="font-weight:700;font-size:12px;color:${colors[status]};margin-bottom:4px">${_esc(emp.name)}</div><div style="font-size:10px;color:#888;margin-bottom:8px">${emp.branch||'—'} • ${emp.role||'Staff'}</div><div style="font-size:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px"><div><strong style="color:#666">In:</strong> <span style="color:#888">${t.in}</span></div><div><strong style="color:#666">Out:</strong> <span style="color:#888">${t.out}</span></div><div style="grid-column:1/-1"><strong style="color:#666">Hrs:</strong> <span style="color:#888">${t.hrs > 0 ? t.hrs : '—'}</span></div></div></div>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="color:#999;font-size:11px;padding:12px;background:#f5f5f5;border-radius:4px">— No employees</div>';
+    }
+    html += '</div>';
   });
   html += '</div>';
   
@@ -2737,12 +2742,12 @@ function showAdminLiveTracker(){
       <div class="section-title">🔴 Live Tracker — ${today_str}</div>
       <button class="btn btn-secondary btn-sm" onclick="showAdminLiveTracker()">🔄 Refresh</button>
     </div>
-    <div style="padding:12px;background:#f0f0f0;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;font-size:12px;font-weight:700;text-align:center">
-      <div style="background:var(--green);color:white;padding:8px;border-radius:4px">✅ ${groups['Present'].length}</div>
-      <div style="background:var(--orange);color:white;padding:8px;border-radius:4px">⏰ ${groups['Late'].length}</div>
-      <div style="background:var(--red);color:white;padding:8px;border-radius:4px">❌ ${groups['Absent'].length}</div>
-      <div style="background:var(--purple);color:white;padding:8px;border-radius:4px">🌴 ${groups['On Leave'].length}</div>
-      <div style="background:var(--gray);color:white;padding:8px;border-radius:4px">❓ ${groups['No Record'].length}</div>
+    <div style="padding:12px;background:#f5f5f5;border-radius:8px;margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;font-size:12px;font-weight:700;text-align:center">
+      <div style="background:#22c55e;color:white;padding:8px;border-radius:4px">✅ ${groups['Present'].length}</div>
+      <div style="background:#f97316;color:white;padding:8px;border-radius:4px">⏰ ${groups['Late'].length}</div>
+      <div style="background:#ef4444;color:white;padding:8px;border-radius:4px">❌ ${groups['Absent'].length}</div>
+      <div style="background:#a855f7;color:white;padding:8px;border-radius:4px">🌴 ${groups['On Leave'].length}</div>
+      <div style="background:#64748b;color:white;padding:8px;border-radius:4px">❓ ${groups['No Record'].length}</div>
     </div>
     ${html}
   `;
@@ -7384,19 +7389,14 @@ async function comprehensiveSystemAudit(){
 // ── MOBILE FALLBACK: Ensure login button click works ──────────────────────────
 // ── PWA Install Prompt Handler ────────────────────────────────────────────────
 let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  const installBtn = document.getElementById('installBtn');
-  if(installBtn) installBtn.style.display = 'inline-block';
-});
+// Removed duplicate - using the one above with _deferredPrompt instead
 
 document.getElementById('installBtn')?.addEventListener('click', async () => {
-  if(deferredPrompt){
-    deferredPrompt.prompt();
-    const {outcome} = await deferredPrompt.userChoice;
+  if(_deferredPrompt){
+    _deferredPrompt.prompt();
+    const {outcome} = await _deferredPrompt.userChoice;
     console.log(`User response: ${outcome}`);
-    deferredPrompt = null;
+    _deferredPrompt = null;
     document.getElementById('installBtn').style.display = 'none';
     if(outcome === 'accepted') toast('✅ App installed!');
   }
