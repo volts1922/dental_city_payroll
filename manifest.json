@@ -1,7 +1,7 @@
 {
-  "name": "DC Payroll - Time Management System v30.53",
+  "name": "DC Payroll - Time Management System v30.54",
   "short_name": "DC Payroll",
-  "description": "Complete time tracking (12-HR, accurate OT/ND), employee management, bulk sync, analytics & payroll automation for Philippine clinics",
+  "description": "Time tracking (12-HR), period-specific payslips (1st/2nd half deductions), employee records, analytics & payroll for Philippine clinics",
   "start_url": "/dental_city_payroll/",
   "scope": "/dental_city_payroll/",
   "display": "standalone",
