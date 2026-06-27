@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v30.50
-// Fixed: Timezone handling, 12-hour time format, employee_name field
+// DC PAYROLL SERVICE WORKER v30.51
+// Fixed: parseTime 12-hour AM/PM format handling
 
-const CACHE_VERSION = 'dental-city-payroll-v30.50-tz-12hr';
+const CACHE_VERSION = 'dental-city-payroll-v30.51-parseTime-fix';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v30.50')) {
+          if (!cacheName.includes('v30.51')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -95,4 +95,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v30.50');
+console.log('[SW] Service Worker loaded v30.51');
