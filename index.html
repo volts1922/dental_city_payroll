@@ -6374,6 +6374,45 @@ function getShiftHours(empId){
 // ══════════════════════════════════════════════════════════════════════════════
 // DEVELOPER DASHBOARD (v29.8.1)
 // ══════════════════════════════════════════════════════════════════════════════
+
+async function syncAllEmployeesToSupabase(){
+  const employees = load(KEYS.employees) || [];
+  if(employees.length === 0) {
+    toast('⚠️ No employees to sync');
+    return;
+  }
+  
+  toast(`☁️ Syncing ${employees.length} employees...`);
+  console.log(`🔄 Starting sync of ${employees.length} employees to Supabase`);
+  
+  let syncedCount = 0;
+  let failedCount = 0;
+  
+  for(const emp of employees) {
+    try {
+      const {error} = await _sb.from('employees_201').insert({
+        employee_id: emp.id,
+        full_name: emp.name,
+        branch_id: emp.branch || 'main'
+      });
+      
+      if(error && error.code !== '23505') { // 23505 = duplicate
+        console.error(`❌ Failed to sync ${emp.name}:`, error);
+        failedCount++;
+      } else {
+        console.log(`✅ Synced: ${emp.name}`);
+        syncedCount++;
+      }
+    } catch(e) {
+      console.error(`❌ Error syncing ${emp.name}:`, e.message);
+      failedCount++;
+    }
+  }
+  
+  toast(`✅ Sync complete: ${syncedCount} synced, ${failedCount} failed`);
+  console.log(`📊 Sync complete: ${syncedCount}/${employees.length} synced`);
+}
+
 function showDeveloperDashboard(){
   const branches = JSON.parse(localStorage.getItem('pr_branches') || '[]');
   const employees = JSON.parse(localStorage.getItem('pr_employees') || '[]');
@@ -6397,6 +6436,7 @@ function showDeveloperDashboard(){
       <h4 style="margin-top:20px">Quick Actions</h4>
       <button class="btn btn-primary" onclick="comprehensiveSystemAudit()" style="margin-right:8px">🔍 Run Audit</button>
       <button class="btn btn-secondary" onclick="console.log('LocalStorage:', localStorage); alert('Check DevTools Console (F12)')">📋 View Storage</button>
+      <button class="btn btn-success" onclick="syncAllEmployeesToSupabase()" style="margin-left:8px">☁️ Sync All Employees</button>
       
       <h4 style="margin-top:20px">Operations</h4>
       
