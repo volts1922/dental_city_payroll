@@ -34,7 +34,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .sidebar-logo{padding:20px 16px 14px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1);}
 .sidebar-logo .icon{font-size:28px;display:block;}
 .sidebar-logo h1{font-family:'DM Serif Display',serif;font-size:14px;color:#fff;margin-top:4px;}
-.sidebar-logo p{font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;}
+.sidebar-logo p{font-size:11px;color:rgba(255,255,255,0.8);margin-top:2px;}
 .nav{flex:1;padding:10px 8px;}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;cursor:pointer;color:#1D1D1F;background:#E5E5E7;font-size:13px;font-weight:500;transition:all .2s;margin-bottom:6px;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,0.08);}
 .nav-item:hover{background:#D1D1D6;color:#1D1D1F;box-shadow:0 2px 6px rgba(0,0,0,0.12);}
@@ -46,7 +46,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .topbar{position:fixed;left:var(--sidebar-w);right:0;top:0;height:var(--topbar-h);background:linear-gradient(to right, #FFFFFF 0%, #F8FAFC 100%);border-bottom:1px solid #E2E8F0;display:flex;align-items:center;padding:0 20px;gap:12px;z-index:99;box-shadow:0 2px 8px rgba(15,23,42,0.08);}
 .menu-btn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--navy);padding:4px;}
 .topbar-title{font-family:'DM Serif Display',serif;font-size:19px;color:var(--text);flex:1;}
-.topbar-clock{font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap;}
+.topbar-clock{font-size:12px;color:#555;font-weight:500;white-space:nowrap;}
 
 /* Main */
 .main{margin-left:var(--sidebar-w);margin-top:var(--topbar-h);padding:20px;min-height:calc(100vh - var(--topbar-h));}
@@ -55,7 +55,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
 .card{background:var(--white);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);border-left:4px solid transparent;}
 .card-val{font-family:'DM Serif Display',serif;font-size:26px;}
-.card-lbl{font-size:11px;color:var(--muted);margin-top:3px;}
+.card-lbl{font-size:11px;color:#555;margin-top:3px;}
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;touch-action:manipulation;-webkit-user-select:none;user-select:none;}
@@ -105,14 +105,14 @@ tbody td{padding:9px 12px;color:var(--text);white-space:nowrap;}
 @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 .modal-header{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .modal-title{font-family:'DM Serif Display',serif;font-size:17px;}
-.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:#555;}
 .modal-body{padding:18px 22px;overflow-y:auto;flex:1;}
 .modal-footer{padding:14px 22px;border-top:1px solid var(--border);}
 .modal-footer .btn{width:100%;justify-content:center;padding:11px;}
 
 /* Form */
 .form-group{margin-bottom:12px;}
-.form-label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;}
+.form-label{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;}
 .form-control{width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border .2s;background:var(--white);touch-action:manipulation;}
 .form-control:focus{border-color:var(--blue);}
 
@@ -120,7 +120,7 @@ tbody td{padding:9px 12px;color:var(--text);white-space:nowrap;}
 .summary-strip{display:flex;gap:10px;background:var(--white);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;box-shadow:var(--shadow);flex-wrap:wrap;}
 .summary-item{display:flex;flex-direction:column;gap:2px;}
 .summary-val{font-size:15px;font-weight:700;}
-.summary-lbl{font-size:11px;color:var(--muted);}
+.summary-lbl{font-size:11px;color:#555;}
 .summary-div{width:1px;background:var(--border);}
 
 /* Toast */
@@ -214,16 +214,16 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <div style="padding:26px;">
       <div style="font-family:'DM Serif Display',serif;font-size:17px;margin-bottom:16px">Sign In</div>
       <div style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Username</label>
+        <label style="display:block;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Username</label>
         <input id="loginUser" class="form-control" type="text" placeholder="Enter username" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div style="margin-bottom:6px">
-        <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Password</label>
+        <label style="display:block;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Password</label>
         <input id="loginPass" class="form-control" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div id="loginErr" style="color:var(--red);font-size:12px;margin:6px 0;min-height:16px;"></div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px" onclick="doLogin()">Sign In</button>
-      <div style="margin-top:14px;padding:10px;background:var(--bg);border-radius:8px;font-size:11px;color:var(--muted);">
+      <div style="margin-top:14px;padding:10px;background:var(--bg);border-radius:8px;font-size:11px;color:#555;">
         Use your <b>username</b> &amp; <b>password</b>. <span style="color:var(--blue);cursor:pointer" onclick="showSetupHelp()">Setup help →</span>
       </div>
     </div>
@@ -243,7 +243,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   <div class="nav" id="nav"></div>
   <div class="sidebar-footer">
     <div id="syncBar" class="offline">☁ Not connected</div>
-    <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-bottom:6px">Branch Backup</div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:6px">Branch Backup</div>
     <button onclick="exportBackup()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">💾 Export Backup</button>
     <label style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;display:block;text-align:center;box-sizing:border-box;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">
       📂 Import Backup
@@ -251,7 +251,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     </label>
     <button id="devCloudRestoreBtn" onclick="showCloudBackups()" style="display:none;width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">☁️ Restore from Cloud</button>
     <button onclick="sendToMain()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">📤 Send to Main Branch</button>
-    <div style="border-top:1px solid rgba(255,255,255,0.1);margin:6px 0;padding-top:6px;font-size:10px;color:rgba(255,255,255,0.4);margin-bottom:4px">Employee Transfer</div>
+    <div style="border-top:1px solid rgba(255,255,255,0.1);margin:6px 0;padding-top:6px;font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:4px">Employee Transfer</div>
     <button onclick="exportEmployeesForBranch()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">👥 Export Employees</button>
     <label style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;display:block;text-align:center;box-sizing:border-box;margin-bottom:8px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">
       📥 Import Employees
@@ -266,7 +266,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       onmouseout="this.style.background='rgba(220,38,38,0.15)'">
       ⏻ Logout
     </button>
-    <div style="font-size:10px;color:rgba(255,255,255,0.3);text-align:center;">© 2026 Dental City Payroll</div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.7);text-align:center;">© 2026 Dental City Payroll</div>
   </div>
 </nav>
 
@@ -276,10 +276,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   <div class="topbar-title" id="topbarTitle">Dashboard</div>
   <div id="branchBadge" style="display:none;align-items:center;gap:6px;margin-right:8px">
     <span id="branchBadgeText" style="background:var(--navy);color:#fff;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:600;"></span>
-    <button onclick="changeBranch()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted)">✏</button>
+    <button onclick="changeBranch()" style="background:none;border:none;cursor:pointer;font-size:11px;color:#555">✏</button>
   </div>
   <div id="ownerBranchPicker" style="display:none;align-items:center;gap:6px;margin-right:8px">
-    <span style="font-size:11px;color:var(--muted);font-weight:600">🏢 Branch:</span>
+    <span style="font-size:11px;color:#555;font-weight:600">🏢 Branch:</span>
     <select id="ownerBranchSel" onchange="ownerSwitchBranch(this.value)"
       style="padding:4px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;color:var(--navy);outline:none;background:var(--sky)">
     </select>
@@ -1722,7 +1722,7 @@ function showDashboard(){
   const todayRows=Object.entries(att).flatMap(([eid,recs])=>recs.filter(r=>r.date===td).map(r=>({eid,r}))).map(({eid,r})=>{
     const name=(emps[eid]||{}).name||eid;
     return `<tr><td>${eid}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
-  }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No attendance records today</td></tr>`;
+  }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
     if(!e || e.status!=='Active') return false;
@@ -1764,22 +1764,22 @@ function showDashboard(){
       <div class="card" style="border-color:var(--green);text-align:center">
         <div class="card-val" style="color:var(--green);font-size:24px">${branchStats.present}</div>
         <div class="card-lbl">✅ Present</div>
-        <div style="font-size:11px;color:var(--muted)">of ${branchStats.total}</div>
+        <div style="font-size:11px;color:#555">of ${branchStats.total}</div>
       </div>
       <div class="card" style="border-color:var(--red);text-align:center">
         <div class="card-val" style="color:var(--red);font-size:24px">${branchStats.absent}</div>
         <div class="card-lbl">❌ Absent</div>
-        <div style="font-size:11px;color:var(--muted)">of ${branchStats.total}</div>
+        <div style="font-size:11px;color:#555">of ${branchStats.total}</div>
       </div>
       <div class="card" style="border-color:var(--purple);text-align:center">
         <div class="card-val" style="color:var(--purple);font-size:24px">${branchStats.onLeave}</div>
         <div class="card-lbl">🌴 On Leave</div>
-        <div style="font-size:11px;color:var(--muted)">of ${branchStats.total}</div>
+        <div style="font-size:11px;color:#555">of ${branchStats.total}</div>
       </div>
       <div class="card" style="border-color:var(--blue);text-align:center">
         <div class="card-val" style="color:var(--blue);font-size:24px">${Math.round((branchStats.present/branchStats.total)*100)}%</div>
         <div class="card-lbl">📈 Attendance</div>
-        <div style="font-size:11px;color:var(--muted)">rate today</div>
+        <div style="font-size:11px;color:#555">rate today</div>
       </div>
     </div>
     ` : `
@@ -1796,15 +1796,15 @@ function showDashboard(){
       <div class="card" style="border-color:var(--purple);cursor:pointer;transition:transform .15s" onclick="filterDashboard('OnLeave')"
         onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
         <div class="card-val" style="color:var(--purple)">${onLeave}</div><div class="card-lbl">🌴 On Leave</div></div>
-      <div class="card" style="border-color:var(--muted);cursor:pointer;transition:transform .15s" onclick="filterDashboard('HalfDay')"
+      <div class="card" style="border-color:#555;cursor:pointer;transition:transform .15s" onclick="filterDashboard('HalfDay')"
         onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
-        <div class="card-val" style="color:var(--muted)">${Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Half-day').length,0)}</div>
+        <div class="card-val" style="color:#555">${Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Half-day').length,0)}</div>
         <div class="card-lbl">🌗 Half-day</div></div>
     </div>
     `}
     ${alertBanner}
     <div class="section-header" id="dashAttHeader">
-      <div class="section-title">Today's Attendance <span id="dashFilterLabel" style="font-size:12px;color:var(--muted);font-weight:400"></span></div>
+      <div class="section-title">Today's Attendance <span id="dashFilterLabel" style="font-size:12px;color:#555;font-weight:400"></span></div>
       <div class="btn-row">
         <button class="btn btn-sm" style="background:var(--sky);color:var(--navy)" onclick="filterDashboard('All')">Show All</button>
         <button class="btn btn-success btn-sm" onclick="navigate('Attendance','showAttendance')">Go to Attendance →</button>
@@ -1847,7 +1847,7 @@ function filterDashboard(filter){
       const name=(emps[eid]||{}).name||eid;
       return `<tr><td>${eid}</td><td><b>${name}</b></td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-blue">On Leave</span></td></tr>`;
     }).join('');
-    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No employees on leave today</td></tr>`;
+    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No employees on leave today</td></tr>`;
   } else if(filter==='NoRecord'){
     const noRecEids = Object.entries(emps).filter(([eid,e])=>{
       if(e.status!=='Active') return false;
@@ -1858,7 +1858,7 @@ function filterDashboard(filter){
     rows = noRecEids.map(([eid,e])=>`
       <tr><td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>—</td><td>—</td><td>—</td>
       <td><span class="badge badge-gray">No Record</span></td></tr>`).join('');
-    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">All employees have records today 🎉</td></tr>`;
+    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">All employees have records today 🎉</td></tr>`;
   } else {
     const filtered = filter==='All' ? todayAll
       : filter==='HalfDay' ? todayAll.filter(({r})=>r.status==='Half-day')
@@ -1867,7 +1867,7 @@ function filterDashboard(filter){
       const name=(emps[eid]||{}).name||eid;
       return `<tr><td>${eid}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
     }).join('');
-    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No records for this filter</td></tr>`;
+    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No records for this filter</td></tr>`;
   }
   document.getElementById('dashAttBody').innerHTML = rows;
 }
@@ -1904,7 +1904,7 @@ function showEmployees(q=''){
     .map(([id,e])=>{
       const allow = totalAllowances(e.allowances||{});
       const empTypeBadge = e.emp_type ? `<span class="badge ${e.emp_type==='Regular'?'badge-blue':e.emp_type==='Probationary'?'badge-yellow':e.emp_type==='Contractual'?'badge-gray':'badge-gray'}">${e.emp_type}</span>` : '—';
-      const los = e.date_hired ? `<span style="font-size:11px;color:var(--muted)">${e.date_hired}</span><br><span style="font-size:11px;color:var(--blue);font-weight:600">${lengthOfService(e.date_hired)}</span>` : '—';
+      const los = e.date_hired ? `<span style="font-size:11px;color:#555">${e.date_hired}</span><br><span style="font-size:11px;color:var(--blue);font-weight:600">${lengthOfService(e.date_hired)}</span>` : '—';
       return `<tr>
         <td>${id}</td><td><b>${_esc(e.name)}</b></td><td>${e.role||'—'}</td>
         <td>${e.branch||'—'}</td>
@@ -1919,7 +1919,7 @@ function showEmployees(q=''){
           <button class="btn btn-danger btn-sm admin-only" onclick="deleteEmp('${id}')">🗑</button>
         </td>
       </tr>`;
-    }).join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted)">No employees found</td></tr>`;
+    }).join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">No employees found</td></tr>`;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -1948,14 +1948,14 @@ function empForm(d={}){
     ? `<div class="form-group">
         <label class="form-label">Branch</label>
         <input class="form-control" id="f_branch" value="${myBranch}" readonly
-          style="background:var(--sky);color:var(--muted);cursor:not-allowed;">
-        <div style="font-size:11px;color:var(--muted);margin-top:3px">🔒 Locked to your branch</div>
+          style="background:var(--sky);color:#555;cursor:not-allowed;">
+        <div style="font-size:11px;color:#555;margin-top:3px">🔒 Locked to your branch</div>
        </div>`
     : `<div class="form-group">
         <label class="form-label">Branch *</label>
         <input class="form-control" id="f_branch" value="${d.branch||myBranch}" readonly
-          style="background:var(--sky);color:var(--muted);cursor:not-allowed;">
-        <div style="font-size:11px;color:var(--muted);margin-top:3px">🔒 Set automatically to the branch you're currently viewing. To move an employee to another branch, switch to that branch first, then re-add them there.</div>
+          style="background:var(--sky);color:#555;cursor:not-allowed;">
+        <div style="font-size:11px;color:#555;margin-top:3px">🔒 Set automatically to the branch you're currently viewing. To move an employee to another branch, switch to that branch first, then re-add them there.</div>
        </div>`;
 
   return `
@@ -2260,7 +2260,7 @@ function showAttendance(){
       </select>
       <button class="btn btn-success" onclick="clockIn()">⏵ Clock In</button>
       <button class="btn btn-danger" onclick="clockOut()">⏹ Clock Out</button>
-      <span id="clkStatus" style="font-size:12px;font-weight:600;color:var(--muted)"></span>
+      <span id="clkStatus" style="font-size:12px;font-weight:600;color:#555"></span>
     </div>
 
     <div class="table-wrap" id="attTable"><div class="table-scroll">
@@ -2297,7 +2297,7 @@ function loadAtt(){
       </tr>`);
     });
   });
-  document.getElementById('attBody').innerHTML=rows.join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted)">No records for this date</td></tr>`;
+  document.getElementById('attBody').innerHTML=rows.join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">No records for this date</td></tr>`;
 }
 
 async function clearAllAtt(){
@@ -2335,7 +2335,7 @@ function editAttRecord(eid, date){
   const rec  = (att[eid]||[]).find(r=>r.date===date);
   if(!rec){toast('Record not found');return;}
   openModal(`✏ Edit Attendance — ${name}`,`
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Date: <b>${date}</b></div>
+    <div style="font-size:12px;color:#555;margin-bottom:12px">Date: <b>${date}</b></div>
     ${formRow('Status','att_status',rec.status||'Present',null,['Present','Absent','Late','Half-day','Rest Day','On Leave'])}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group">
@@ -2432,11 +2432,25 @@ function showWeeklyAttendance(){
   showAttendanceTracker('week');
 }
 
+
 let _attTrackerPeriod='week';
 function showAttendanceTracker(period='week'){
   _attTrackerPeriod=period;
-  const emps=load(KEYS.employees), att=load(KEYS.attendance);
-  const attData = typeof att === 'string' ? JSON.parse(att) : (att || {});
+  const emps=load(KEYS.employees);
+  const att=load(KEYS.attendance);
+  
+  let attData = {};
+  if(typeof att === 'string') {
+    try {
+      attData = JSON.parse(att);
+    } catch(e) {
+      console.error('JSON parse error:', e);
+      attData = {};
+    }
+  } else if(att && typeof att === 'object') {
+    attData = att;
+  }
+  
   const activeEmps=Object.entries(emps||{})
     .filter(([,e])=>e.status!=='Resigned')
     .map(([id,e])=>({id,name:e.name||id}));
@@ -2499,16 +2513,16 @@ function showAttendanceTracker(period='week'){
   if(period==='day'){
     header='';
   }else if(period==='week'){
-    header=dates.map((d,i)=>`<th>${dayNames[i]}<br>${d.split('-')[2]}</th>`).join('');
+    header=dates.map((d,i)=>`<th style="color:#1E293B;font-weight:700">${dayNames[i]}<br>${d.split('-')[2]}</th>`).join('');
   }else if(period==='month'){
-    header=dates.map(d=>`<th>${d.split('-')[2]}</th>`).join('');
+    header=dates.map(d=>`<th style="color:#1E293B;font-weight:700">${d.split('-')[2]}</th>`).join('');
   }else if(period==='year'){
-    header=dates.map((d,i)=>`<th>${monthNames[i]}</th>`).join('');
+    header=dates.map((d,i)=>`<th style="color:#1E293B;font-weight:700">${monthNames[i]}</th>`).join('');
   }
   
   document.getElementById('main').innerHTML=`
     <div class="section-header">
-      <div class="section-title">${title}</div>
+      <div class="section-title" style="color:#1E293B">${title}</div>
       <div class="btn-row">
         <button class="btn ${_attTrackerPeriod==='day'?'btn-primary':'btn-secondary'}" onclick="showAttendanceTracker('day')">Daily</button>
         <button class="btn ${_attTrackerPeriod==='week'?'btn-primary':'btn-secondary'}" onclick="showAttendanceTracker('week')">Weekly</button>
@@ -2517,50 +2531,51 @@ function showAttendanceTracker(period='week'){
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px">
-      <div style="background:#d4edda;padding:10px;border-radius:6px;text-align:center">
+      <div style="background:#d4edda;padding:10px;border-radius:6px;text-align:center;border:1px solid #c3e6cb">
         <div style="font-size:18px;font-weight:700;color:#155724">${totals.present}</div>
-        <div style="font-size:11px;color:#666">Present</div>
+        <div style="font-size:12px;color:#155724;font-weight:700">Present</div>
       </div>
-      <div style="background:#f8d7da;padding:10px;border-radius:6px;text-align:center">
+      <div style="background:#f8d7da;padding:10px;border-radius:6px;text-align:center;border:1px solid #f5c6cb">
         <div style="font-size:18px;font-weight:700;color:#721c24">${totals.absent}</div>
-        <div style="font-size:11px;color:#666">Absent</div>
+        <div style="font-size:12px;color:#721c24;font-weight:700">Absent</div>
       </div>
-      <div style="background:#fff3cd;padding:10px;border-radius:6px;text-align:center">
+      <div style="background:#fff3cd;padding:10px;border-radius:6px;text-align:center;border:1px solid #ffeeba">
         <div style="font-size:18px;font-weight:700;color:#856404">${totals.leave}</div>
-        <div style="font-size:11px;color:#666">On Leave</div>
+        <div style="font-size:12px;color:#856404;font-weight:700">On Leave</div>
       </div>
-      <div style="background:#e7e7e7;padding:10px;border-radius:6px;text-align:center">
-        <div style="font-size:18px;font-weight:700;color:#666">${totals.holiday}</div>
-        <div style="font-size:11px;color:#666">Holiday</div>
+      <div style="background:#e2e3e5;padding:10px;border-radius:6px;text-align:center;border:1px solid #d6d8db">
+        <div style="font-size:18px;font-weight:700;color:#383d41">${totals.holiday}</div>
+        <div style="font-size:12px;color:#383d41;font-weight:700">Holiday</div>
       </div>
-      <div style="background:#cce5ff;padding:10px;border-radius:6px;text-align:center">
+      <div style="background:#cce5ff;padding:10px;border-radius:6px;text-align:center;border:1px solid #b6d4fe">
         <div style="font-size:18px;font-weight:700;color:#0066cc">${rows.length}</div>
-        <div style="font-size:11px;color:#666">Employees</div>
+        <div style="font-size:12px;color:#0066cc;font-weight:700">Employees</div>
       </div>
     </div>
     <div class="table-wrap"><div class="table-scroll">
-      <table><thead><tr><th>Name</th>${header}<th>✓</th><th>✗</th><th>~</th><th>%</th></tr></thead>
+      <table><thead><tr><th style="color:#1E293B;font-weight:700;background:#f8fafc">Name</th>${header}<th style="color:#1E293B;font-weight:700;background:#f8fafc">✓</th><th style="color:#1E293B;font-weight:700;background:#f8fafc">✗</th><th style="color:#1E293B;font-weight:700;background:#f8fafc">~</th><th style="color:#1E293B;font-weight:700;background:#f8fafc">%</th></tr></thead>
       <tbody>${rows.map(r=>`<tr>
-        <td style="min-width:120px"><b>${r.emp.name}</b></td>
-        ${r.cells.map(c=>`<td class="att-${c.status}" style="text-align:center;font-weight:600;min-width:30px">${c.text}</td>`).join('')}
-        <td style="text-align:center;font-weight:600">${r.p}</td>
-        <td style="text-align:center;font-weight:600">${r.a}</td>
-        <td style="text-align:center;font-weight:600">${r.l}</td>
-        <td style="text-align:center;font-weight:700;color:${r.pct>=80?'#155724':r.pct>=60?'#856404':'#721c24'}">${r.pct}%</td>
+        <td style="min-width:120px;color:#1E293B;font-weight:700">${r.emp.name}</td>
+        ${r.cells.map(c=>`<td class="att-${c.status}" style="text-align:center;font-weight:700;min-width:30px;color:inherit">${c.text}</td>`).join('')}
+        <td style="text-align:center;font-weight:700;color:#1E293B">${r.p}</td>
+        <td style="text-align:center;font-weight:700;color:#1E293B">${r.a}</td>
+        <td style="text-align:center;font-weight:700;color:#1E293B">${r.l}</td>
+        <td style="text-align:center;font-weight:700;color:${r.pct>=80?'#155724':r.pct>=60?'#856404':'#721c24'};background:${r.pct>=80?'#d4edda':r.pct>=60?'#fff3cd':'#f8d7da'};border-radius:4px;padding:4px">${r.pct}%</td>
       </tr>`).join('')}
       </tbody></table>
     </div></div>
     <style>
-    .att-present{background:#d4edda!important;color:#155724}
-    .att-absent{background:#f8d7da!important;color:#721c24}
-    .att-leave{background:#fff3cd!important;color:#856404}
-    .att-holiday{background:#e7e7e7!important;color:#666}
-    .btn-secondary{background:#999}
+    .att-present{background:#d4edda!important;color:#155724!important;font-weight:700!important}
+    .att-absent{background:#f8d7da!important;color:#721c24!important;font-weight:700!important}
+    .att-leave{background:#fff3cd!important;color:#856404!important;font-weight:700!important}
+    .att-holiday{background:#e2e3e5!important;color:#383d41!important;font-weight:700!important}
+    .btn-secondary{background:#999;color:#fff}
     .btn-secondary:hover{background:#777}
     </style>
   `;
   applyRole();
 }
+
 
 function markAttModal(){
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
@@ -2572,16 +2587,16 @@ function markAttModal(){
        </div>` : '';
   const rows=active.map(([id,e])=>`
     <div style="border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
-      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">${_esc(e.name)} <span style="color:var(--muted);font-weight:400">(${e.role||'—'})</span></div>
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">${_esc(e.name)} <span style="color:#555;font-weight:400">(${e.role||'—'})</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <div>
-          <label style="font-size:10px;font-weight:700;color:var(--muted)">STATUS</label>
+          <label style="font-size:10px;font-weight:700;color:#555">STATUS</label>
           <select id="ms_${id}" style="width:100%;padding:5px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
             ${['Present','Absent','Half-day','Late','Rest Day'].map(s=>`<option>${s}</option>`).join('')}
           </select>
         </div>
         <div>
-          <label style="font-size:10px;font-weight:700;color:var(--muted)">HOLIDAY</label>
+          <label style="font-size:10px;font-weight:700;color:#555">HOLIDAY</label>
           <select id="hol_${id}" style="width:100%;padding:5px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
             <option value="">None</option>
             <option value="Regular Holiday"${holType==='Regular Holiday'?' selected':''}>Regular Holiday (200%)</option>
@@ -2589,11 +2604,11 @@ function markAttModal(){
           </select>
         </div>
         <div>
-          <label style="font-size:10px;font-weight:700;color:var(--muted)">TIME IN</label>
+          <label style="font-size:10px;font-weight:700;color:#555">TIME IN</label>
           <input id="ti_${id}" type="time" value="08:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
         </div>
         <div>
-          <label style="font-size:10px;font-weight:700;color:var(--muted)">TIME OUT</label>
+          <label style="font-size:10px;font-weight:700;color:#555">TIME OUT</label>
           <input id="to_${id}" type="time" value="17:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
         </div>
       </div>
@@ -2658,7 +2673,7 @@ function showLeave(){
         <button class="btn btn-danger btn-sm admin-only" onclick="setLeave('${eid}',${i},'Rejected')">✖</button>
       </td>
     </tr>`;
-  })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No leave records</td></tr>`;
+  })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No leave records</td></tr>`;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -2786,7 +2801,7 @@ function showLoans(){
         <button class="btn btn-danger btn-sm admin-only" onclick="deleteLoan('${eid}',${i})">🗑</button>
       </td>
     </tr>`;
-  })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No loan records</td></tr>`;
+  })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No loan records</td></tr>`;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -2951,7 +2966,7 @@ function computePayroll(){
       <td>${fmt(pay.pi)}</td><td>${fmt(pay.tax)}</td><td>${fmt(pay.loanDeduction)}</td>
       <td>${fmt(pay.totalDeductions)}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="16" style="text-align:center;padding:20px;color:var(--muted)">No active employees</td></tr>`;
+  }).join('')||`<tr><td colspan="16" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
   document.getElementById('payBody').innerHTML=rows;
 }
 
@@ -3099,7 +3114,7 @@ function showGovReports(){
     <div id="gTab1">
       <div style="background:#EFF6FF;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:var(--blue)">
         📋 <b>SSS R3 Contribution List</b> — Employee share + Employer share (2× employee share)<br>
-        <span style="color:var(--muted)">Monthly Salary Credit × Employee Rate = Employee Share · Employer matches 2× employee share</span>
+        <span style="color:#555">Monthly Salary Credit × Employee Rate = Employee Share · Employer matches 2× employee share</span>
       </div>
       <div style="margin-bottom:8px;display:flex;gap:8px">
         <button class="btn btn-teal btn-sm" onclick="exportGov('sss')">📥 Export SSS CSV</button>
@@ -3110,7 +3125,7 @@ function showGovReports(){
           <th>Monthly Salary</th><th>SS Number</th>
           <th>Employee Share</th><th>Employer Share</th><th>Total</th>
         </tr></thead><tbody id="sssBody">
-          <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">Click Generate</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:20px;color:#555">Click Generate</td></tr>
         </tbody></table>
       </div></div>
       <div id="sssSummary" style="margin-top:12px"></div>
@@ -3120,7 +3135,7 @@ function showGovReports(){
     <div id="gTab2" style="display:none">
       <div style="background:#DCFCE7;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:var(--green)">
         📋 <b>PhilHealth RF-1 Premium Contribution</b><br>
-        <span style="color:var(--muted)">Premium Rate: 5% of Monthly Basic Salary · Split 50/50 between employee and employer · Min ₱500 · Max ₱5,000 each</span>
+        <span style="color:#555">Premium Rate: 5% of Monthly Basic Salary · Split 50/50 between employee and employer · Min ₱500 · Max ₱5,000 each</span>
       </div>
       <div style="margin-bottom:8px">
         <button class="btn btn-teal btn-sm" onclick="exportGov('ph')">📥 Export PhilHealth CSV</button>
@@ -3131,7 +3146,7 @@ function showGovReports(){
           <th>Monthly Basic</th><th>PhilHealth No.</th>
           <th>Employee Share</th><th>Employer Share</th><th>Total Premium</th>
         </tr></thead><tbody id="phBody">
-          <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">Click Generate</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:20px;color:#555">Click Generate</td></tr>
         </tbody></table>
       </div></div>
       <div id="phSummary" style="margin-top:12px"></div>
@@ -3141,7 +3156,7 @@ function showGovReports(){
     <div id="gTab3" style="display:none">
       <div style="background:#FEF3C7;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:var(--yellow)">
         📋 <b>Pag-IBIG MCRF Contribution List</b><br>
-        <span style="color:var(--muted)">1% if salary ≤ ₱1,500 · 2% if salary &gt; ₱1,500 (max ₱100 employee) · Employer matches employee share</span>
+        <span style="color:#555">1% if salary ≤ ₱1,500 · 2% if salary &gt; ₱1,500 (max ₱100 employee) · Employer matches employee share</span>
       </div>
       <div style="margin-bottom:8px">
         <button class="btn btn-teal btn-sm" onclick="exportGov('pi')">📥 Export Pag-IBIG CSV</button>
@@ -3152,7 +3167,7 @@ function showGovReports(){
           <th>Monthly Salary</th><th>Pag-IBIG No.</th>
           <th>Employee Share</th><th>Employer Share</th><th>Total</th>
         </tr></thead><tbody id="piBody">
-          <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">Click Generate</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:20px;color:#555">Click Generate</td></tr>
         </tbody></table>
       </div></div>
       <div id="piSummary" style="margin-top:12px"></div>
@@ -3238,7 +3253,7 @@ function computeGovReports(){
     </tr>`);
   });
 
-  const noData = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No active employees</td></tr>`;
+  const noData = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
 
   document.getElementById('sssBody').innerHTML = sssRows.join('')||noData;
   document.getElementById('phBody').innerHTML  = phRows.join('')||noData;
@@ -3249,15 +3264,15 @@ function computeGovReports(){
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:var(--shadow);border-top:3px solid ${color};text-align:center">
         <div style="font-size:18px;font-weight:700;color:${color}">${fmt(empT)}</div>
-        <div style="font-size:11px;color:var(--muted)">Employee Share Total</div>
+        <div style="font-size:11px;color:#555">Employee Share Total</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:var(--shadow);border-top:3px solid var(--navy);text-align:center">
         <div style="font-size:18px;font-weight:700;color:var(--navy)">${fmt(erT)}</div>
-        <div style="font-size:11px;color:var(--muted)">Employer Share Total</div>
+        <div style="font-size:11px;color:#555">Employer Share Total</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:var(--shadow);border-top:3px solid var(--green);text-align:center">
         <div style="font-size:18px;font-weight:700;color:var(--green)">${fmt(empT+erT)}</div>
-        <div style="font-size:11px;color:var(--muted)">Grand Total Remittance</div>
+        <div style="font-size:11px;color:#555">Grand Total Remittance</div>
       </div>
     </div>`;
 
@@ -3329,7 +3344,7 @@ function show13thMonth(){
     <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px">
       📋 <b>PD 851 — 13th Month Pay Law:</b>
       13th Month = Total Basic Salary Earned in a Year ÷ 12
-      <span style="color:var(--muted);font-size:11px;display:block;margin-top:4px">
+      <span style="color:#555;font-size:11px;display:block;margin-top:4px">
         ✅ Tax exempt up to ₱90,000 &nbsp;·&nbsp; Must be paid on or before December 24
       </span>
     </div>
@@ -3340,7 +3355,7 @@ function show13thMonth(){
         <th>Months Worked</th><th>Total Basic Earned</th>
         <th>13th Month Pay</th><th>Tax Exempt?</th>
       </tr></thead><tbody id="thirteenBody">
-        <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">
+        <tr><td colspan="8" style="text-align:center;padding:20px;color:#555">
           Click <b>Compute</b> to calculate 13th month pay
         </td></tr>
       </tbody></table>
@@ -3405,7 +3420,7 @@ function compute13th(){
       const thirteenth  = Math.round((totalBasic / 12)*100)/100;
       const taxExempt   = thirteenth <= 90000;
       const empTypeTag  = e.emp_type ? `<span style="font-size:10px;background:var(--sky);color:var(--blue);padding:2px 7px;border-radius:10px;font-weight:600">${e.emp_type}</span>` : '';
-      const hiredNote   = e.date_hired ? `<div style="font-size:10px;color:var(--muted)">Hired: ${e.date_hired}</div>` : '';
+      const hiredNote   = e.date_hired ? `<div style="font-size:10px;color:#555">Hired: ${e.date_hired}</div>` : '';
 
       _13thData.push({eid, name:e.name, branch:e.branch||'—',
         dailyRate:rate, monthsWorked:effectiveMo, empType:e.emp_type||'—',
@@ -3425,7 +3440,7 @@ function compute13th(){
           : `<span style="background:#FEE2E2;color:#DC2626;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">⚠ Taxable excess</span>`}
         </td>
       </tr>`;
-    }).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No employees found</td></tr>`;
+    }).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No employees found</td></tr>`;
 
   document.getElementById('thirteenBody').innerHTML = rows;
 
@@ -3438,15 +3453,15 @@ function compute13th(){
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
       <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:var(--shadow);border-top:3px solid var(--green)">
         <div style="font-size:24px;font-weight:700;color:var(--green)">${fmt(total13th)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">💰 Total 13th Month Payable</div>
+        <div style="font-size:11px;color:#555;margin-top:4px">💰 Total 13th Month Payable</div>
       </div>
       <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:var(--shadow);border-top:3px solid var(--blue)">
         <div style="font-size:24px;font-weight:700;color:var(--blue)">${totalEmployees}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">👤 Eligible Employees</div>
+        <div style="font-size:11px;color:#555;margin-top:4px">👤 Eligible Employees</div>
       </div>
       <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:var(--shadow);border-top:3px solid var(--yellow)">
         <div style="font-size:24px;font-weight:700;color:var(--yellow)">${fmt(avgAmount)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">📊 Average per Employee</div>
+        <div style="font-size:11px;color:#555;margin-top:4px">📊 Average per Employee</div>
       </div>
     </div>
     <div style="background:#EFF6FF;border-radius:10px;padding:12px 16px;margin-top:12px;font-size:12px;color:var(--blue)">
@@ -3523,7 +3538,7 @@ function showBIR2316(){
 
     <div style="background:#EFF6FF;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:var(--blue)">
       📋 <b>BIR Form 2316</b> — Certificate of Compensation Payment/Tax Withheld<br>
-      <span style="color:var(--muted)">Must be issued to employees on or before January 31 of the following year · Used for annual ITR filing</span>
+      <span style="color:#555">Must be issued to employees on or before January 31 of the following year · Used for annual ITR filing</span>
     </div>
 
     <div class="table-wrap"><div class="table-scroll">
@@ -3532,7 +3547,7 @@ function showBIR2316(){
         <th>Gross Compensation</th><th>Non-Taxable</th>
         <th>Taxable Compensation</th><th>Tax Withheld</th><th>Actions</th>
       </tr></thead><tbody id="birBody">
-        <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Click Generate List</td></tr>
+        <tr><td colspan="9" style="text-align:center;padding:24px;color:#555">Click Generate List</td></tr>
       </tbody></table>
     </div></div>
     <div id="birSummary" style="margin-top:14px"></div>`;
@@ -3600,7 +3615,7 @@ function generateBIR2316List(){
       <td><button class="btn btn-sm" style="background:var(--navy);color:#fff"
         onclick="printBIR2316('${eid}')">🖨 Print</button></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No employees</td></tr>`;
+  }).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No employees</td></tr>`;
 
   document.getElementById('birBody').innerHTML=rows;
   document.getElementById('birSummary').innerHTML=`
@@ -3610,7 +3625,7 @@ function generateBIR2316List(){
         ].map(([lbl,c,v])=>`
         <div style="background:#fff;border-radius:12px;padding:14px;box-shadow:var(--shadow);border-top:3px solid ${c};text-align:center">
           <div style="font-size:16px;font-weight:700;color:${c}">${v}</div>
-          <div style="font-size:11px;color:var(--muted)">${lbl}</div>
+          <div style="font-size:11px;color:#555">${lbl}</div>
         </div>`).join('')}
     </div>
     <div style="background:#FEF3C7;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12px;color:var(--yellow)">
@@ -3632,7 +3647,7 @@ function printBIR2316(eid){
   .st{background:#1A3C5E;color:#fff;padding:4px 10px;font-weight:bold;font-size:10px}
   .row{display:flex;border-bottom:1px solid #ccc}.row:last-child{border-bottom:none}
   .cell{flex:1;padding:5px 8px;border-right:1px solid #ccc}.cell:last-child{border-right:none}
-  .lbl{font-size:9px;color:#666;display:block}.val{font-size:12px;font-weight:bold}
+  .lbl{font-size:9px;color:#333;display:block}.val{font-size:12px;font-weight:bold}
   .tot{background:#f5f5f5;font-weight:bold}.amt{text-align:right;display:block}
   .sig{flex:1;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:10px}
   .np button{background:#0B3D6E;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;display:block;margin:14px auto}
@@ -3733,11 +3748,11 @@ function showPayslip(){
     </div>
     <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
       <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;font-weight:700;color:var(--muted)">FROM</label>
+        <label style="font-size:12px;font-weight:700;color:#555">FROM</label>
         <input type="date" id="slipFrom" value="${defFrom}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
       </div>
       <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;font-weight:700;color:var(--muted)">TO</label>
+        <label style="font-size:12px;font-weight:700;color:#555">TO</label>
         <input type="date" id="slipTo" value="${defTo}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
       </div>
       <button class="btn btn-primary" onclick="generateSlip()">Generate Payslip</button>
@@ -3855,11 +3870,11 @@ function showConsolidate(){
     const attCount=Object.values(b.attendance||{}).reduce((s,r)=>s+r.length,0);
     return `<div class="branch-card" style="border-color:${col};min-width:160px">
       <div style="font-weight:700;color:${col};font-size:14px">${b.branch_name||bid}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">${empCount} employees</div>
-      <div style="font-size:12px;color:var(--muted)">${attCount} records</div>
+      <div style="font-size:12px;color:#555;margin-top:4px">${empCount} employees</div>
+      <div style="font-size:12px;color:#555">${attCount} records</div>
       <button class="btn btn-sm" style="background:var(--red-bg);color:var(--red);margin-top:8px" onclick="removeBranch('${bid}')">✖ Remove</button>
     </div>`;
-  }).join(''):`<div style="color:var(--muted);font-size:13px;padding:12px 0">No branches imported yet. Click '📂 Import Branch Backup' to add.</div>`;
+  }).join(''):`<div style="color:#555;font-size:13px;padding:12px 0">No branches imported yet. Click '📂 Import Branch Backup' to add.</div>`;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -3920,7 +3935,7 @@ function loadConsolidated(){
 
   rows.sort((a,b)=>a[0].localeCompare(b[0])||a[3].localeCompare(b[3]));
   document.getElementById('conBody').innerHTML=rows.map((r,i)=>`<tr>${r.map(v=>`<td>${v}</td>`).join('')}</tr>`).join('')
-    ||`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No records found for selected filter</td></tr>`;
+    ||`<tr><td colspan="8" style="text-align:center;padding:20px;color:#555">No records found for selected filter</td></tr>`;
   window._conRows=rows;
 }
 
@@ -4013,7 +4028,7 @@ async function showCloudBackups(){
   openModal('☁️ Cloud Backups', `
     <div style="text-align:center;padding:20px">
       <div style="font-size:32px">⏳</div>
-      <div style="font-size:13px;color:var(--muted);margin-top:8px">Loading cloud backups…</div>
+      <div style="font-size:13px;color:#555;margin-top:8px">Loading cloud backups…</div>
     </div>`, null, '✕ Close');
 
   try{
@@ -4026,7 +4041,7 @@ async function showCloudBackups(){
 
     if(!folders.length){
       document.getElementById('modalBody').innerHTML = `
-        <div style="text-align:center;padding:32px;color:var(--muted)">
+        <div style="text-align:center;padding:32px;color:#555">
           <div style="font-size:32px">📭</div>
           <div style="margin-top:8px;font-size:13px">No cloud backups found.</div>
         </div>`;
@@ -4047,7 +4062,7 @@ async function showCloudBackups(){
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg);border-radius:10px;margin-bottom:8px;border:1px solid var(--border)">
           <div>
             <div style="font-weight:700;font-size:13px;color:var(--navy)">🏢 ${_esc(branchLabel)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">📅 ${date}</div>
+            <div style="font-size:11px;color:#555;margin-top:2px">📅 ${date}</div>
           </div>
           <button class="btn btn-primary btn-sm" onclick="_restoreCloudPayrollBackup('${f.folder}','${f.name}')">↩ Restore</button>
         </div>`;
@@ -4324,7 +4339,7 @@ function exportEmployeesForBranch(){
   if(!Object.keys(emps).length){ toast('❌ No employees to export!'); return; }
 
   openModal('👥 Export Employees for Branch',`
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+    <p style="font-size:13px;color:#555;margin-bottom:14px">
       Select employees to export. The receiving branch imports this CSV to get their employee list.
     </p>
     <div class="form-group">
@@ -4619,33 +4634,33 @@ function showOwnerDashboard(){
         onmouseout="this.style.transform='';this.style.boxShadow='var(--shadow)'">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-weight:700;font-size:14px;color:${col}">🏢 ${b}</div>
-          <div style="font-size:10px;color:var(--muted);background:var(--sky);padding:3px 8px;border-radius:20px">Click to view →</div>
+          <div style="font-size:10px;color:#555;background:var(--sky);padding:3px 8px;border-radius:20px">Click to view →</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div onclick="showOwnerAttFilter('Present','${benc}')" style="background:var(--sky);border-radius:8px;padding:10px;text-align:center;cursor:pointer" title="View Present">
             <div style="font-size:22px;font-weight:700;color:var(--blue)">${active}</div>
-            <div style="font-size:10px;color:var(--muted)">Employees</div>
+            <div style="font-size:10px;color:#555">Employees</div>
           </div>
           <div onclick="showOwnerAttFilter('Present','${benc}')" style="background:var(--green-bg);border-radius:8px;padding:10px;text-align:center;cursor:pointer" title="View Present">
             <div style="font-size:22px;font-weight:700;color:var(--green)">${present}</div>
-            <div style="font-size:10px;color:var(--muted)">Present Today</div>
+            <div style="font-size:10px;color:#555">Present Today</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
           <div onclick="showOwnerAttFilter('Late','${benc}')" style="background:#FEF3C7;border-radius:8px;padding:8px;text-align:center;cursor:pointer" title="View Late">
             <div style="font-size:16px;font-weight:700;color:#D97706">${late}</div>
-            <div style="font-size:10px;color:var(--muted)">Late ⏰</div>
+            <div style="font-size:10px;color:#555">Late ⏰</div>
           </div>
           <div onclick="showOwnerAttFilter('Absent','${benc}')" style="background:#FEE2E2;border-radius:8px;padding:8px;text-align:center;cursor:pointer" title="View Absent">
             <div style="font-size:16px;font-weight:700;color:#DC2626">${absent}</div>
-            <div style="font-size:10px;color:var(--muted)">Absent ❌</div>
+            <div style="font-size:10px;color:#555">Absent ❌</div>
           </div>
         </div>
         <div style="margin-top:10px;padding:8px 12px;background:#F8FAFC;border-radius:8px;text-align:center">
           <div style="font-size:13px;font-weight:700;color:var(--teal)">${fmt(netPay)}</div>
-          <div style="font-size:10px;color:var(--muted)">Est. Net Payroll</div>
+          <div style="font-size:10px;color:#555">Est. Net Payroll</div>
         </div>
-        ${!hasData?`<div style="margin-top:8px;font-size:11px;color:var(--muted);text-align:center">No data yet</div>`:''}
+        ${!hasData?`<div style="margin-top:8px;font-size:11px;color:#555;text-align:center">No data yet</div>`:''}
       </div>`;
   }).join('');
 
@@ -4773,7 +4788,7 @@ function showOwnerDashboard(){
     </div>
     ${leaveAlert}${payrollAlert}${loanAlert}${noAlerts}
     <div class="section-header">
-      <div class="section-title">All Branches Overview <span style="font-size:12px;color:var(--muted);font-weight:400">— click any branch to see today's attendance</span></div>
+      <div class="section-title">All Branches Overview <span style="font-size:12px;color:#555;font-weight:400">— click any branch to see today's attendance</span></div>
       <button class="btn btn-primary btn-sm" onclick="ownerRefresh()">🔄 Refresh</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">${branchCards}</div>`;
@@ -4820,13 +4835,13 @@ function showBranchPresent(branchEnc, filterDate=''){
 
   const tableRows = rows.map(r=>`<tr>
     <td><b>${_esc(r.name)}</b></td>
-    <td style="color:var(--muted)">${r.role}</td>
+    <td style="color:#555">${r.role}</td>
     <td>${badge(r.status)}</td>
     <td>${r.time_in}</td>
     <td>${r.time_out}</td>
     <td>${r.hours}</td>
     <td>${r.ot!=='0'?`<span style="color:var(--blue);font-weight:700">+${r.ot}h</span>`:'—'}</td>
-  </tr>`).join('')||`<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No attendance records for this date</td></tr>`;
+  </tr>`).join('')||`<tr><td colspan="7" style="text-align:center;padding:20px;color:#555">No attendance records for this date</td></tr>`;
 
   const COLS=['#2A7FBF','#16A34A','#D97706','#DC2626','#7C3AED','#0D9488','#B45309','#1D4ED8','#BE185D'];
   const col = COLS[ALL_BRANCHES.indexOf(branch)%COLS.length];
@@ -4850,7 +4865,7 @@ function showBranchPresent(branchEnc, filterDate=''){
       <div class="card" style="border-color:var(--yellow)"><div class="card-val" style="color:var(--yellow)">${late}</div><div class="card-lbl">⏰ Late</div></div>
       <div class="card" style="border-color:#F97316"><div class="card-val" style="color:#F97316">${halfday}</div><div class="card-lbl">🌓 Half Day</div></div>
       <div class="card" style="border-color:var(--red)"><div class="card-val" style="color:var(--red)">${absent}</div><div class="card-lbl">❌ Absent</div></div>
-      <div class="card" style="border-color:var(--muted)"><div class="card-val" style="color:var(--muted)">${noRecord}</div><div class="card-lbl">— No Record</div></div>
+      <div class="card" style="border-color:#555"><div class="card-val" style="color:#555">${noRecord}</div><div class="card-lbl">— No Record</div></div>
     </div>
 
     <div class="table-wrap"><div class="table-scroll">
@@ -4883,7 +4898,7 @@ function showAllEmployees(q='', filterBranch='All'){
 
   const rows = filtered.map(e=>{
     const empTypeBadge = e.emp_type ? `<span class="badge ${e.emp_type==='Regular'?'badge-blue':e.emp_type==='Probationary'?'badge-yellow':'badge-gray'}">${e.emp_type}</span>` : '—';
-    const los = e.date_hired ? `<span style="font-size:11px;color:var(--muted)">${e.date_hired}</span><br><span style="font-size:11px;color:var(--blue);font-weight:600">${lengthOfService(e.date_hired)}</span>` : '—';
+    const los = e.date_hired ? `<span style="font-size:11px;color:#555">${e.date_hired}</span><br><span style="font-size:11px;color:var(--blue);font-weight:600">${lengthOfService(e.date_hired)}</span>` : '—';
     const safeName = (e.name||'').replace(/'/g,'&#39;');
     return `<tr>
     <td>${e._id}</td>
@@ -4900,7 +4915,7 @@ function showAllEmployees(q='', filterBranch='All'){
       <button class="btn btn-danger btn-sm" onclick="ownerDeleteEmp('${e._branch}','${e._id}','${safeName}')">🗑</button>
     </td>
   </tr>`;
-  }).join('')||`<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--muted)">No employees found</td></tr>`;
+  }).join('')||`<tr><td colspan="10" style="text-align:center;padding:20px;color:#555">No employees found</td></tr>`;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -5111,7 +5126,7 @@ function showAllAttendance(filterBranch='All', filterDate=''){
     <td>${r.time_out||'—'}</td>
     <td>${r.hours||'—'}</td>
     <td>${badge(r.status||'—')}</td>
-  </tr>`).join('')||`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No attendance records for this date</td></tr>`;
+  </tr>`).join('')||`<tr><td colspan="8" style="text-align:center;padding:20px;color:#555">No attendance records for this date</td></tr>`;
 
   const branches = getBranchOptions();
   document.getElementById('main').innerHTML=`
@@ -5194,7 +5209,7 @@ function loadPayrollSummary(){
       style="cursor:pointer;transition:background .12s"
       onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background=''">
       <td><span style="font-weight:700;color:${COLS[i%COLS.length]}">🏢 ${b}</span>
-        <span style="font-size:11px;color:var(--muted);margin-left:6px">👆 tap for details</span></td>
+        <span style="font-size:11px;color:#555;margin-left:6px">👆 tap for details</span></td>
       <td style="text-align:center">${active.length}</td>
       <td style="text-align:right">${fmt(bGross)}</td>
       <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(bNet)}</td>
@@ -5253,14 +5268,14 @@ function showBranchPayrollDetail(branch, month){
     const pay   = computeNetPay(rate,dw,abs,hd,lDed,otH,ndH);
     bGross+=pay.gross; bNet+=pay.net; bDed+=(pay.gross-pay.net);
     return `<tr>
-      <td><b>${_esc(e.name)}</b><div style="font-size:11px;color:var(--muted)">${e.role||'—'}</div></td>
-      <td style="text-align:center">${hasAtt?dw:'<span style=\'color:var(--muted)\'>full</span>'}</td>
+      <td><b>${_esc(e.name)}</b><div style="font-size:11px;color:#555">${e.role||'—'}</div></td>
+      <td style="text-align:center">${hasAtt?dw:'<span style=\'color:#555\'>full</span>'}</td>
       <td style="text-align:center">${otH||'—'}</td>
       <td style="text-align:right">${fmt(pay.gross)}</td>
       <td style="text-align:right;color:var(--red)">${fmt(pay.gross-pay.net)}</td>
       <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(pay.net)}</td>
     </tr>`;
-  }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No active employees</td></tr>`;
+  }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
 
   const panel = document.getElementById('branchDetailPanel');
   panel.innerHTML = `
@@ -5269,7 +5284,7 @@ function showBranchPayrollDetail(branch, month){
         <div style="font-weight:700;font-size:15px;color:var(--navy)">🏢 ${branch} — Employee Breakdown</div>
         <div style="display:flex;gap:8px;align-items:center">
           <span style="background:#fff;color:var(--navy);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">${active.length} employees</span>
-          <button class="btn btn-sm" style="background:#fff;border:1px solid var(--border);color:var(--muted)" onclick="document.getElementById('branchDetailPanel').innerHTML=''">✕ Close</button>
+          <button class="btn btn-sm" style="background:#fff;border:1px solid var(--border);color:#555" onclick="document.getElementById('branchDetailPanel').innerHTML=''">✕ Close</button>
         </div>
       </div>
       <div class="table-wrap"><div class="table-scroll">
@@ -5350,7 +5365,7 @@ function showOwnerApprovals(){
         <th style="color:var(--purple)">📅 Leave</th>
         <th>Action</th>
       </tr></thead>
-      <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No pending approvals</td></tr>'}</tbody>
+      <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No pending approvals</td></tr>'}</tbody>
       </table>
     </div></div>
     <div id="attDetailPanel" style="margin-top:20px"></div>`;
@@ -5476,9 +5491,9 @@ function showOwnerLeave(filterBranch='All', filterStatus='All'){
       ${lv.status==='Pending'?`
         <button class="btn btn-success btn-sm" onclick="ownerSetLeaveStatus('${lv._branch}','${lv._eid}',${lv._idx},'Approved')">✅ Approve</button>
         <button class="btn btn-danger btn-sm" onclick="ownerSetLeaveStatus('${lv._branch}','${lv._eid}',${lv._idx},'Rejected')">❌ Reject</button>
-      `:`<span style="font-size:11px;color:var(--muted)">${lv.status}</span>`}
+      `:`<span style="font-size:11px;color:#555">${lv.status}</span>`}
     </td>
-  </tr>`).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No leave records found</td></tr>`;
+  </tr>`).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No leave records found</td></tr>`;
 
   document.getElementById('main').innerHTML=`
     <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
@@ -5552,7 +5567,7 @@ function showOwnerApprovals(){
       <td>${lv.start}</td>
       <td>${lv.end}</td>
       <td style="text-align:center">${lv.days}</td>
-      <td style="font-size:12px;color:var(--muted)">${lv.reason}</td>
+      <td style="font-size:12px;color:#555">${lv.reason}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-success btn-sm" onclick="ownerSetLeaveStatus('${lv.branch}','${lv.eid}',${lv.idx},'Approved')">✅ Approve</button>
@@ -5560,7 +5575,7 @@ function showOwnerApprovals(){
         </div>
       </td>
     </tr>`).join('')
-  : `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">✅ No pending leave requests</td></tr>`;
+  : `<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">✅ No pending leave requests</td></tr>`;
 
   // ── Loan rows ─────────────────────────────────────────────────────────────
   const loanRows = activeLoans.length ? activeLoans.map(l=>`
@@ -5572,9 +5587,9 @@ function showOwnerApprovals(){
       <td><b style="color:var(--navy)">${fmt(parseFloat(l.amount)||0)}</b></td>
       <td>${fmt(parseFloat(l.monthly_amort))}/mo</td>
       <td><b style="color:var(--teal)">${fmt(parseFloat(l.balance)||0)}</b></td>
-      <td style="font-size:12px;color:var(--muted)">${l.date}</td>
+      <td style="font-size:12px;color:#555">${l.date}</td>
     </tr>`).join('')
-  : `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">✅ No active loans on record</td></tr>`;
+  : `<tr><td colspan="8" style="text-align:center;padding:20px;color:#555">✅ No active loans on record</td></tr>`;
 
   document.getElementById('main').innerHTML = `
     <div class="section-header">
@@ -5684,10 +5699,10 @@ function showOwnerAttFilter(status='Present', branchEnc=''){
   const tableRows = rows.map(r=>`<tr>
     <td><span class="badge badge-blue">${r.branch}</span></td>
     <td><b>${_esc(r.name)}</b></td>
-    <td style="color:var(--muted)">${r.role}</td>
+    <td style="color:#555">${r.role}</td>
     <td>${r.time_in}</td><td>${r.time_out}</td><td>${r.hours}</td>
     <td>${r.ot!=='0'?`<span style="color:var(--blue);font-weight:700">+${r.ot}h</span>`:'—'}</td>
-  </tr>`).join('')||`<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">No ${status} employees today</td></tr>`;
+  </tr>`).join('')||`<tr><td colspan="7" style="text-align:center;padding:24px;color:#555">No ${status} employees today</td></tr>`;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header">
@@ -5703,7 +5718,7 @@ function showOwnerAttFilter(status='Present', branchEnc=''){
       </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${tabs}</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+    <div style="font-size:12px;color:#555;margin-bottom:10px">
       Showing <b style="color:${col}">${rows.length} ${status}</b>
       ${filterBranch!=='All'?`in <b>${filterBranch}</b>`:'across all branches'} — ${td}
     </div>
@@ -6229,7 +6244,7 @@ function showAccountManager(){
     const rows = list.map(([u,d])=>`<tr>
       <td><span style="font-family:monospace;background:var(--sky);padding:3px 8px;border-radius:6px;font-size:12px">${u}</span></td>
       <td><b>${d.name}</b></td>
-      <td>${d.branch?`<span class="badge badge-blue">${d.branch}</span>`:'<span style="color:var(--muted);font-size:12px">All branches</span>'}</td>
+      <td>${d.branch?`<span class="badge badge-blue">${d.branch}</span>`:'<span style="color:#555;font-size:12px">All branches</span>'}</td>
       <td><span style="color:${roleColors[d.role]||'var(--muted)'};font-weight:700">${d.role}</span></td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="editAccount('${u}')">✏ Edit</button>
@@ -6460,7 +6475,7 @@ function showBranchManager(){
       <td><span style="font-weight:700;color:${COLS[i%COLS.length]}">🏢 ${b}</span></td>
       <td style="text-align:center">${emps}</td>
       <td>${users.map(([u,d])=>`<span style="background:var(--sky);padding:2px 8px;border-radius:12px;font-size:11px;margin:2px;display:inline-block">
-        ${u} <span style="color:var(--muted)">(${d.role})</span></span>`).join('')||'<span style="color:var(--muted);font-size:12px">No accounts yet</span>'}</td>
+        ${u} <span style="color:#555">(${d.role})</span></span>`).join('')||'<span style="color:#555;font-size:12px">No accounts yet</span>'}</td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="renameBranch(${i},'${b}')">✏ Rename</button>
         <button class="btn btn-danger btn-sm" onclick="deleteBranch(${i},'${b}')">🗑</button>
@@ -6496,7 +6511,7 @@ async function _deleteCloudBranchRows(branchKey){
 
 function renameBranch(idx, oldName){
   openModal('✏ Rename Branch',`
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Current: <b>${oldName}</b></div>
+    <div style="font-size:12px;color:#555;margin-bottom:12px">Current: <b>${oldName}</b></div>
     ${formRow('New Name *','branch_name', oldName)}`, async ()=>{
     const newName = fval('branch_name').trim();
     if(!newName){ toast('⚠️ Name required'); return; }
@@ -6795,7 +6810,7 @@ function showBackupManager(){
   const fmtDate = d => d ? new Date(d).toLocaleString('en-PH') : 'Never';
 
   openModal('💾 Backup Manager', `
-    <div style="margin-bottom:14px;padding:12px;background:var(--sky);border-radius:10px;font-size:12px;color:var(--muted)">
+    <div style="margin-bottom:14px;padding:12px;background:var(--sky);border-radius:10px;font-size:12px;color:#555">
       Backups download a CSV of employees, recent attendance &amp; loans. 
       A 🔴 badge on the Backup menu means a backup is due — no more auto-downloads!<br>
       <b>Daily</b>: once/day &nbsp;·&nbsp; <b>Bi-monthly</b>: 1st &amp; 16th &nbsp;·&nbsp; <b>Monthly</b>: each new month
@@ -6806,7 +6821,7 @@ function showBackupManager(){
           <div style="font-weight:700;color:var(--navy)">📅 Daily Backup</div>
           <span style="font-size:10px;background:${_backupDue.daily?'#FEE2E2':'#DCFCE7'};color:${_backupDue.daily?'#DC2626':'#16A34A'};padding:2px 8px;border-radius:20px;font-weight:700">${_backupDue.daily?'⚠ DUE':'✅ OK'}</span>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Last run: <b>${fmtDate(lastDa)}</b></div>
+        <div style="font-size:12px;color:#555;margin-bottom:10px">Last run: <b>${fmtDate(lastDa)}</b></div>
         <button class="btn btn-primary btn-sm" onclick="generateBackupCSV();_markBackupDone('daily');toast('💾 Daily backup saved!');closeModal()">⬇ Run Now</button>
       </div>
       <div style="background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:14px">
@@ -6814,7 +6829,7 @@ function showBackupManager(){
           <div style="font-weight:700;color:var(--navy)">📆 Bi-monthly Backup</div>
           <span style="font-size:10px;background:${_backupDue.bimonthly?'#FEE2E2':'#DCFCE7'};color:${_backupDue.bimonthly?'#DC2626':'#16A34A'};padding:2px 8px;border-radius:20px;font-weight:700">${_backupDue.bimonthly?'⚠ DUE':'✅ OK'}</span>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Runs on the <b>1st</b> and <b>16th</b> of each month &nbsp;·&nbsp; Last run: <b>${fmtDate(lastBm)}</b></div>
+        <div style="font-size:12px;color:#555;margin-bottom:10px">Runs on the <b>1st</b> and <b>16th</b> of each month &nbsp;·&nbsp; Last run: <b>${fmtDate(lastBm)}</b></div>
         <button class="btn btn-secondary btn-sm" onclick="generateBackupCSV();_markBackupDone('bimonthly');toast('💾 Bi-monthly backup saved!');closeModal()">⬇ Run Now</button>
       </div>
       <div style="background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:14px">
@@ -6822,12 +6837,12 @@ function showBackupManager(){
           <div style="font-weight:700;color:var(--navy)">🗓 Monthly Backup</div>
           <span style="font-size:10px;background:${_backupDue.monthly?'#FEE2E2':'#DCFCE7'};color:${_backupDue.monthly?'#DC2626':'#16A34A'};padding:2px 8px;border-radius:20px;font-weight:700">${_backupDue.monthly?'⚠ DUE':'✅ OK'}</span>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Runs on first login of each new month &nbsp;·&nbsp; Last run: <b>${fmtDate(lastMo)}</b></div>
+        <div style="font-size:12px;color:#555;margin-bottom:10px">Runs on first login of each new month &nbsp;·&nbsp; Last run: <b>${fmtDate(lastMo)}</b></div>
         <button class="btn btn-success btn-sm" onclick="generateBackupCSV();_markBackupDone('monthly');toast('💾 Monthly backup saved!');closeModal()">⬇ Run Now</button>
       </div>
       <div style="background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-weight:700;color:var(--navy);margin-bottom:4px">📥 Manual Backup</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Download a full backup right now anytime</div>
+        <div style="font-size:12px;color:#555;margin-bottom:10px">Download a full backup right now anytime</div>
         <button class="btn btn-teal btn-sm" onclick="generateBackupCSV();toast('📥 Backup downloaded!');closeModal()">⬇ Download Now</button>
       </div>
     </div>`, null, null
@@ -7022,7 +7037,7 @@ async function auditBranchSystem(){
     const html = `<div style="max-height:85vh;overflow-y:auto;padding:20px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
         <div style="font-size:24px">${statusEmoji}</div>
-        <div><h3 style="margin:0">Branch Audit</h3><div style="font-size:11px;color:var(--muted)">${audit.timestamp}</div></div>
+        <div><h3 style="margin:0">Branch Audit</h3><div style="font-size:11px;color:#555">${audit.timestamp}</div></div>
       </div>
       ${audit.issues.length ? `<div style="background:#FEE2E2;border-left:4px solid #DC2626;padding:12px;margin-bottom:12px;border-radius:4px">
         <div style="font-weight:700;color:#DC2626;margin-bottom:6px">⛔ Issues:</div>
@@ -7135,7 +7150,7 @@ async function comprehensiveSystemAudit(){
         
         <div style="background:var(--white);padding:16px;border-radius:8px;margin-bottom:12px;border-left:4px solid var(--blue)">
           <div style="font-weight:700;margin-bottom:8px">📊 DATA OVERVIEW</div>
-          <div style="font-size:13px;color:var(--muted);line-height:1.8">
+          <div style="font-size:13px;color:#555;line-height:1.8">
             Branches: ${branchCount} | Employees: ${empCount} | Attendance Records: ${attCount}
             <br>Cache Size: ${(cacheSize/1024).toFixed(1)}KB | Active Loans: ${activeLoans}
             <br>Total Loan Balance: ₱${totalLoanBalance.toFixed(2)} | Govt Deductions: ₱${totalGovDed.toFixed(2)}
@@ -7144,7 +7159,7 @@ async function comprehensiveSystemAudit(){
         
         <div style="background:var(--white);padding:16px;border-radius:8px;margin-bottom:12px;border-left:4px solid var(--green)">
           <div style="font-weight:700;margin-bottom:8px">💰 PAYROLL STATUS</div>
-          <div style="font-size:13px;color:var(--muted)">
+          <div style="font-size:13px;color:#555">
             ⏳ Pending: ${pendingPayrolls} | ✅ Approved: ${approvedPayrolls}
           </div>
         </div>
@@ -7165,7 +7180,7 @@ async function comprehensiveSystemAudit(){
         
         <div style="background:var(--white);padding:16px;border-radius:8px;border-left:4px solid var(--purple)">
           <div style="font-weight:700;margin-bottom:8px">✅ AUDIT COMPLETE</div>
-          <div style="font-size:12px;color:var(--muted)">
+          <div style="font-size:12px;color:#555">
             Audited: ${now} | Status: ${issues.length===0?'🟢 HEALTHY':'🔴 NEEDS ATTENTION'}
           </div>
         </div>
@@ -7208,6 +7223,20 @@ window.addEventListener('appinstalled', () => {
   console.log('✅ PWA installed successfully');
   deferredPrompt = null;
 });
+
+
+// Hide Attendance Tracker nav button from Staff
+if(getRole() === 'Staff') {
+  setTimeout(() => {
+    const attButtons = document.querySelectorAll('button');
+    attButtons.forEach(btn => {
+      if(btn.innerHTML.includes('Attendance') || btn.innerHTML.includes('Analytics')) {
+        btn.style.display = 'none';
+      }
+    });
+  }, 500);
+}
+
 
 document.addEventListener('DOMContentLoaded', ()=>{
 
@@ -7269,7 +7298,7 @@ function open201(empId){
       <summary style="cursor:pointer;font-weight:bold;padding:8px;background:var(--sky);border-radius:4px;">${section}</summary>
       <div style="padding:10px;">
         ${fields.map(f=>`<div style="margin-bottom:8px;">
-          <label style="display:block;font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:3px;">${f.replace(/_/g,' ')}</label>
+          <label style="display:block;font-size:11px;color:#555;text-transform:uppercase;margin-bottom:3px;">${f.replace(/_/g,' ')}</label>
           <input type="text" id="f_${f}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;box-sizing:border-box;" ${isReadOnly?'readonly style="background:var(--sky);cursor:not-allowed"':''}>
         </div>`).join('')}
       </div>
@@ -7320,7 +7349,7 @@ async function showPayrollApprovals(){
       <div class="section-title">💰 Payroll Approvals</div>
       <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
     </div>
-    <div style="text-align:center;padding:40px;color:var(--muted)">⏳ Loading approvals...</div>`;
+    <div style="text-align:center;padding:40px;color:#555">⏳ Loading approvals...</div>`;
   
   let approvals = {};
   
@@ -7410,7 +7439,7 @@ function renderPayrollApprovals(approvals){
       <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
     </div>
     ${pendingRuns.length===0?`<div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:16px;text-align:center;color:#16A34A">✅ No pending payroll approvals</div>`:`
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px"><b>${pendingRuns.length}</b> payroll run${pendingRuns.length>1?'s':''} awaiting your approval</div>
+    <div style="font-size:13px;color:#555;margin-bottom:10px"><b>${pendingRuns.length}</b> payroll run${pendingRuns.length>1?'s':''} awaiting your approval</div>
     <div class="table-wrap"><table class="table" style="font-size:13px">
       <thead><tr style="border-bottom:2px solid var(--border)">
         <th>Branch</th>
@@ -7515,18 +7544,18 @@ function showNotificationCenter(){
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-weight:600;font-size:13px">${n.type.toUpperCase()} - ${n.branch}</div>
-          <div style="font-size:12px;color:var(--muted)">Payroll: ${n.payrollId}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">${new Date(n.timestamp).toLocaleString()}</div>
+          <div style="font-size:12px;color:#555">Payroll: ${n.payrollId}</div>
+          <div style="font-size:11px;color:#555;margin-top:4px">${new Date(n.timestamp).toLocaleString()}</div>
         </div>
         <button class="btn btn-sm" style="background:#EEE;border:none" onclick="dismissNotification('${n.id}')">✕</button>
       </div>
     </div>`).join('');
   
   openModal('📬 Notifications', `
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+    <div style="font-size:13px;color:#555;margin-bottom:10px">
       <b>${notifs.length}</b> notification${notifs.length!==1?'s':''} for <b>${branchDisplay}</b>
     </div>
-    ${notifs.length===0?`<div style="text-align:center;color:var(--muted);padding:20px">No notifications yet</div>`:rows}
+    ${notifs.length===0?`<div style="text-align:center;color:#555;padding:20px">No notifications yet</div>`:rows}
   `, async()=>{
     // Mark all as read
     notifs.forEach(n => n.read = true);
@@ -7542,6 +7571,20 @@ function dismissNotification(id){
 }
 
 // Initialize badge on page load
+
+// Hide Attendance Tracker nav button from Staff
+if(getRole() === 'Staff') {
+  setTimeout(() => {
+    const attButtons = document.querySelectorAll('button');
+    attButtons.forEach(btn => {
+      if(btn.innerHTML.includes('Attendance') || btn.innerHTML.includes('Analytics')) {
+        btn.style.display = 'none';
+      }
+    });
+  }, 500);
+}
+
+
 document.addEventListener('DOMContentLoaded', ()=>{
   updateNotificationBadge();
 });
@@ -7960,6 +8003,82 @@ async function showPayrollPreview(empId, branchId) {
 }
 
 console.log('✅ Time Management System v1.0 Ready');
+
+
+// ════════════════════════════════════════════════════════════════
+// ROLE-BASED ACCESS CONTROL
+// ════════════════════════════════════════════════════════════════
+
+
+// ════════════════════════════════════════════════════════════════
+// GET CURRENT USER ROLE (FIXED - Added missing function)
+// ════════════════════════════════════════════════════════════════
+
+function getRole() {
+  // Check if role is stored globally
+  if(typeof currentRole !== 'undefined' && currentRole) {
+    return currentRole;
+  }
+  
+  // Check USERS object for current user
+  if(typeof _currentUser !== 'undefined' && _currentUser && typeof USERS !== 'undefined') {
+    let user = USERS[_currentUser];
+    if(user && user.role) {
+      return user.role;
+    }
+  }
+  
+  // Fallback to sessionStorage
+  let storedRole = sessionStorage?.getItem('userRole');
+  if(storedRole) {
+    return storedRole;
+  }
+  
+  // Default to Staff if no role found
+  return 'Staff';
+}
+
+function checkAdminAccess(feature) {
+  const role = getRole();
+  const staffOnly = ['showAttendanceTracker', 'showAnalyticsDashboard'];
+  
+  if(staffOnly.includes(feature) && role === 'Staff') {
+    document.getElementById('main').innerHTML = `
+      <div style="padding:40px;text-align:center;background:#FEF2F2;border-radius:12px;margin:20px">
+        <div style="font-size:48px;margin-bottom:15px">🔒</div>
+        <h2 style="color:#DC2626;margin-bottom:10px;font-size:24px">Access Denied</h2>
+        <p style="color:#555;font-size:14px;margin-bottom:10px">
+          <strong>${feature.replace('show', '')}</strong> is only available for managers and administrators.
+        </p>
+        <p style="color:#999;font-size:13px;margin-top:15px;line-height:1.6">
+          ✅ You can view your personal <strong>Payroll Preview</strong> in the dashboard.<br>
+          ✅ Clock in/out to track your time.<br>
+          📞 Contact your manager for more information.
+        </p>
+      </div>
+    `;
+    applyRole();
+    return false;
+  }
+  return true;
+}
+
+// Wrapper for Attendance Tracker
+const _originalShowAttendanceTracker = showAttendanceTracker;
+window.showAttendanceTracker = function(period='week') {
+  if(!checkAdminAccess('showAttendanceTracker')) return;
+  _originalShowAttendanceTracker(period);
+};
+
+// Wrapper for Analytics Dashboard
+const _originalShowAnalyticsDashboard = showAnalyticsDashboard;
+window.showAnalyticsDashboard = function(branchId, startDate, endDate) {
+  if(!checkAdminAccess('showAnalyticsDashboard')) return;
+  _originalShowAnalyticsDashboard(branchId, startDate, endDate);
+};
+
+console.log('✅ Role-based access control activated');
+
 </script>
 
 </body>
