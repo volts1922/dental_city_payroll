@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v30.47
-// Fixed: Response clone issue
+// DC PAYROLL SERVICE WORKER v30.50
+// Fixed: Timezone handling, 12-hour time format, employee_name field
 
-const CACHE_VERSION = 'dental-city-payroll-v30.47-time';
+const CACHE_VERSION = 'dental-city-payroll-v30.50-tz-12hr';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v30.47')) {
+          if (!cacheName.includes('v30.50')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -95,4 +95,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v30.47');
+console.log('[SW] Service Worker loaded v30.50');
