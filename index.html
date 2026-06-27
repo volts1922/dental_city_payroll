@@ -355,13 +355,19 @@ class SupabaseTable {
     this.key = key;
     this.table = table;
     this.filters = [];
+    this.cols = '*';
+    this.isSingle = false;
   }
   eq(col, val) {
-    this.filters.push(`${col}=eq.${val}`);
+    this.filters.push(`${col}=eq.${encodeURIComponent(val)}`);
     return this;
   }
   select(cols = '*') {
     this.cols = cols;
+    return this;
+  }
+  single() {
+    this.isSingle = true;
     return this;
   }
   async execute(method = 'GET', body = null) {
@@ -370,29 +376,44 @@ class SupabaseTable {
       method,
       headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' }
     };
+    if (method === 'GET' && this.cols !== '*') opts.headers['select'] = this.cols;
     if (body) opts.body = JSON.stringify(body);
     try {
       const res = await fetch(`${this.url}/rest/v1/${this.table}${query}`, opts);
+      if (!res.ok) {
+        const err = await res.text();
+        console.error(`Supabase ${method} error:`, res.status, err);
+        return { data: null, error: { status: res.status, message: err } };
+      }
       const data = await res.json();
-      return { data, error: null };
+      return { data: this.isSingle ? data[0] : data, error: null };
     } catch (e) {
+      console.error('Supabase fetch error:', e);
       return { data: null, error: e };
     }
   }
   then(cb) { return this.execute().then(r => cb(r)); }
-  async insert(data) { return this.execute('POST', data); }
+  async insert(data) { return this.execute('POST', Array.isArray(data) ? data : [data]); }
   async update(data) { return this.execute('PATCH', data); }
-  async upsert(data) { 
+  async upsert(data, options = {}) {
+    const { onConflict } = options;
+    const query = onConflict ? `?on_conflict=${encodeURIComponent(onConflict)}` : '';
     const opts = {
       method: 'POST',
       headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(Array.isArray(data) ? data : [data])
     };
     try {
-      const res = await fetch(`${this.url}/rest/v1/${this.table}`, opts);
+      const res = await fetch(`${this.url}/rest/v1/${this.table}${query}`, opts);
+      if (!res.ok) {
+        const err = await res.text();
+        console.error('Supabase upsert error:', res.status, err);
+        return { data: null, error: { status: res.status, message: err } };
+      }
       const json = await res.json();
       return { data: json, error: null };
     } catch (e) {
+      console.error('Supabase upsert error:', e);
       return { data: null, error: e };
     }
   }
@@ -573,13 +594,17 @@ async function syncToCloud(dataType, data){
       {branch_key: bkey, data_type: dataType, data, updated_at: new Date().toISOString()},
       {onConflict: 'branch_key,data_type'}
     );
-    if(error) throw error;
+    // Ignore 409 conflicts - data is already there
+    if(error && error.status !== 409) throw error;
     setSyncBar('ok','✅ Saved to cloud');
     setTimeout(()=>setSyncBar('ok','☁ Cloud connected'),2500);
   }catch(e){
     console.error('Sync error:', e.message || JSON.stringify(e));
     setSyncBar('err','⚠ Sync failed');
-    toast('⚠ Save failed: '+(e.message||'check connection'), 5000);
+    // Don't block login on sync errors
+    if(!window.location.href.includes('login')) {
+      toast('⚠ Save failed: '+(e.message||'check connection'), 5000);
+    }
   }
 }
 
@@ -8016,6 +8041,10 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
       try {
         const {data: result, error} = await _sb.from(tableName).upsert(data, {onConflict});
         if(error) {
+          if(error.status === 409) {
+            console.log(`ℹ️ [${tableName}] Conflict (409) - data already exists, continuing`);
+            return {data: null, error: null};
+          }
           lastError = error;
           if(attempt < retries){
             console.warn(`⚠️ ${tableName} attempt ${attempt + 1}/${retries + 1} failed, retrying...`, error.message);
