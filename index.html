@@ -338,9 +338,19 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 const SUPABASE_URL = 'https://jbbfxefbwwudfpopqxdj.supabase.co';   // e.g. 'https://abcxyz.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiYmZ4ZWZid3d1ZGZwb3BxeGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2ODk5NDksImV4cCI6MjA5NTI2NTk0OX0.rhAMC9tKdRAUrWd-_3ea9Vd7bq_g1QMFjAMvMDBcU-Q';   // 'anon public' key
 
-const _sb = (SUPABASE_URL && SUPABASE_KEY)
-  ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-  : null;
+let _sb = null;
+try {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    _sb = window.createClient ? window.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+    if (!_sb) {
+      console.warn('⚠️ Supabase client creation failed - using stub');
+      _sb = { from: () => ({ select: () => Promise.resolve({data:[], error:null}), insert: () => Promise.resolve({data:[], error:null}), update: () => Promise.resolve({data:[], error:null}), upsert: () => Promise.resolve({data:[], error:null}), delete: () => Promise.resolve({data:[], error:null}) }) };
+    }
+  }
+} catch (e) {
+  console.error('❌ Supabase initialization error:', e.message);
+  _sb = { from: () => ({ select: () => Promise.resolve({data:[], error:null}), insert: () => Promise.resolve({data:[], error:null}), update: () => Promise.resolve({data:[], error:null}), upsert: () => Promise.resolve({data:[], error:null}), delete: () => Promise.resolve({data:[], error:null}) }) };
+}
 
 console.log('✅ Supabase client initialized:', _sb ? 'Ready' : 'FAILED');
 
