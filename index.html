@@ -2532,9 +2532,14 @@ async function clockOut(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,8), td=today();
+  const nowStr=now.toTimeString().slice(0,5), td=today(); // Changed to slice(0,5) for HH:MM format
+  console.log('🔍 clockOut debug:', {sel, eid, td, attKeys: Object.keys(att), empAtt: att[eid]});
   const existing=(att[eid]||[]).find(r=>r.date===td);
-  if(!existing||!existing.time_in||existing.time_in==='—'){toast('⚠️ Not clocked in yet. Please clock in first.');return;}
+  if(!existing||!existing.time_in||existing.time_in==='—'){
+    console.log('❌ Not found:', {existing, time_in: existing?.time_in});
+    toast('⚠️ Not clocked in yet. Please clock in first.');
+    return;
+  }
   if(existing.time_out&&existing.time_out!=='—'&&existing.time_out.split(':').length===3){toast(`⚠️ Already clocked out at ${existing.time_out}`);return;}
   const empName = sel.split(' (')[0];
   if(!(await _confirm(`Clock OUT "${empName}" at ${nowStr}?<br>Clocked in at: ${existing.time_in}`, {ok:'Clock Out', cancel:'Cancel', icon:'⏹'}))) return;
