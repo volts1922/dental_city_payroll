@@ -2518,6 +2518,7 @@ async function clockIn(){
         branch_id: branchId, 
         date: td, 
         time_in: nowStr,
+        employee_name: empName,
         status: 'clocked_in', 
         updated_at: now.toISOString()
       }, {onConflict: 'employee_id,branch_id,date'});
@@ -2568,6 +2569,7 @@ async function clockOut(){
     if(_sb && eid) {
       const {error} = await _sb.from('time_clock').update({
         time_out: nowStr,
+        employee_name: empName,
         status: 'clocked_out',
         updated_at: now.toISOString()
       }).eq('employee_id', eid).eq('branch_id', branchId).eq('date', td);
@@ -8187,38 +8189,6 @@ async function endBreak(empId, branchId) {
   }
 }
 
-async function clockOut(empId, branchId) {
-  try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const timeOut = now.toTimeString().slice(0, 5);
-    const {data: clock} = await _sb.from('time_clock').select('*')
-      .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
-    if(!clock || !clock.time_in) throw new Error('Not clocked in');
-    const grossMins = _calcTime(clock.time_in, timeOut);
-    const grossHours = (grossMins / 60).toFixed(2);
-    const {data: breaks} = await _sb.from('time_breaks').select('break_in, break_out')
-      .eq('employee_id', empId).eq('date', today);
-    let totalBreakMins = 0;
-    if(breaks) breaks.forEach(b => {
-      if(b.break_in && b.break_out) totalBreakMins += _calcTime(b.break_in, b.break_out);
-    });
-    const totalBreakHours = (totalBreakMins / 60).toFixed(2);
-    const netHours = (grossHours - totalBreakHours).toFixed(2);
-    const otHours = Math.max(0, netHours - 8).toFixed(2);
-    await _sb.from('time_clock').update({
-      time_out: timeOut, status: 'clocked_out', hours_gross: grossHours, 
-      break_hours: totalBreakHours, hours_net: netHours, ot_hours: otHours, 
-      validation_status: 'valid', updated_at: now.toISOString()
-    }).eq('id', clock.id);
-    await _syncPayroll(empId, branchId, today, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
-    toast(`✅ Clocked out at ${timeOut}\nNet: ${netHours}h | OT: ${otHours}h`);
-    return {gross: grossHours, break: totalBreakHours, net: netHours, ot: otHours};
-  } catch(e) {
-    console.error(e);
-    toast(`❌ ${e.message}`);
-  }
-}
 
 function _calcTime(timeIn, timeOut) {
   const [inHr, inMin] = timeIn.split(':').map(Number);
