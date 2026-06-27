@@ -1,85 +1,98 @@
-// Service Worker v30.45 - DC Payroll Time Management
-// Offline-first PWA with time tracking support
+// DC PAYROLL SERVICE WORKER v30.47
+// Fixed: Response clone issue
 
-const CACHE_VERSION = 'dental-city-payroll-v30.45-time';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+const CACHE_VERSION = 'dental-city-payroll-v30.47-time';
+const CACHE_NAME = CACHE_VERSION;
+
+// Files to cache
+const urlsToCache = [
+  '/dental_city_payroll/',
+  '/dental_city_payroll/index.html',
+  '/dental_city_payroll/manifest.json'
 ];
 
-// Install - cache assets
-self.addEventListener('install', event => {
+// Install event - cache files
+self.addEventListener('install', (event) => {
+  console.log('[SW] Installing...');
   event.waitUntil(
-    caches.open(CACHE_VERSION).then(cache => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(err => {
-        console.log('Cache add error (non-critical):', err);
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('[SW] Caching app shell');
+      return cache.addAll(urlsToCache).catch(e => {
+        console.warn('[SW] Cache addAll failed (expected for offline install):', e);
       });
     })
   );
   self.skipWaiting();
 });
 
-// Activate - clean old caches
-self.addEventListener('activate', event => {
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating...');
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames
-          .filter(name => !name.includes('v30.45'))
-          .map(name => {
-            console.log('Deleting old cache:', name);
-            return caches.delete(name);
-          })
+        cacheNames.map((cacheName) => {
+          if (!cacheName.includes('v30.47')) {
+            console.log('[SW] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
       );
     })
   );
   self.clients.claim();
 });
 
-// Fetch - Network first, fallback to cache (perfect for time tracking)
-self.addEventListener('fetch', event => {
-  const { request } = event;
-  const url = new URL(request.url);
-
+// Fetch event - network first, cache fallback
+self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
-  if (request.method !== 'GET') {
+  if (event.request.method !== 'GET') {
     return;
   }
 
-  // Skip external APIs (Supabase, CDN)
-  if (!url.origin.includes(location.origin)) {
+  // Skip non-http(s) requests
+  if (!event.request.url.startsWith('http')) {
     return;
   }
 
   event.respondWith(
-    fetch(request)
-      .then(response => {
-        // Cache successful responses
-        if (response && response.status === 200) {
-          const cache = caches.open(CACHE_VERSION);
-          cache.then(c => c.put(request, response.clone()));
+    fetch(event.request)
+      .then((response) => {
+        // Don't cache if not ok
+        if (!response || response.status !== 200) {
+          return response;
         }
+
+        // Clone response BEFORE using it
+        const responseToCache = response.clone();
+
+        // Cache the response
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache).catch(e => {
+            // Silently fail cache put
+          });
+        });
+
         return response;
       })
       .catch(() => {
-        // Fallback to cache (crucial for time tracking - app must work offline!)
-        return caches.match(request).then(response => {
-          if (response) return response;
-          // Offline fallback
-          if (request.destination === 'document') {
-            return caches.match('/index.html');
-          }
+        // Return cached version if offline
+        return caches.match(event.request).then((response) => {
+          return response || new Response('Offline - cached version not available', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({'Content-Type': 'text/plain'})
+          });
         });
       })
   );
 });
 
-// Message handler for cache clearing
-self.addEventListener('message', event => {
+// Handle messages
+self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-console.log('✅ Service Worker v30.45 - Time Management Ready');
+console.log('[SW] Service Worker loaded v30.47');

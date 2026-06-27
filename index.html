@@ -2438,7 +2438,179 @@ let _attTrackerPeriod='week';
 // Clean, Enterprise-Grade Design
 // No garish colors - just professional elegance
 
-function markAttModal(){
+function showAttendanceTracker(period='week'){
+  // Role-based access check
+  if(!checkAdminAccess('showAttendanceTracker')) return;
+  
+  _attTrackerPeriod=period;
+  const emps=load(KEYS.employees);
+  const att=load(KEYS.attendance);
+  
+  // Safe JSON parse
+  let attData = {};
+  if(typeof att === 'string') {
+    try {
+      attData = JSON.parse(att);
+    } catch(e) {
+      attData = {};
+    }
+  } else if(att && typeof att === 'object') {
+    attData = att;
+  }
+  
+  const activeEmps=Object.entries(emps||{})
+    .filter(([,e])=>e.status!=='Resigned')
+    .map(([id,e])=>({id,name:e.name||id}));
+  
+  let dates=[], title='';
+  const now=new Date();
+  
+  if(period==='day'){
+    const td=today();
+    dates=[td];
+    title=`Daily Attendance Report`;
+  }else if(period==='week'){
+    const sun=new Date(now);
+    sun.setDate(sun.getDate()-sun.getDay());
+    for(let i=0;i<7;i++){
+      const d=new Date(sun);
+      d.setDate(d.getDate()+i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    title=`Weekly Attendance Report`;
+  }else if(period==='month'){
+    const yr=now.getFullYear(), mo=now.getMonth();
+    const fd=new Date(yr,mo,1);
+    const ld=new Date(yr,mo+1,0);
+    for(let d=new Date(fd);d<=ld;d.setDate(d.getDate()+1)){
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    title=`Monthly Attendance Report`;
+  }else if(period==='year'){
+    const yr=now.getFullYear();
+    for(let mo=0;mo<12;mo++){
+      const d=new Date(yr,mo,15);
+      dates.push(d.toISOString().slice(0,7));
+    }
+    title=`Annual Attendance Report`;
+  }
+  
+  let totals={present:0,absent:0,leave:0,holiday:0};
+  const rows=activeEmps.map(emp=>{
+    const recs=attData[emp.id]||[];
+    const cells=dates.map(d=>{
+      const r=recs.find(x=>x.date.startsWith(d));
+      if(!r) return {text:'—',status:'absent'};
+      if(r.status==='On Leave') return {text:'L',status:'leave'};
+      if(r.holiday) return {text:'H',status:'holiday'};
+      return {text:'P',status:'present'};
+    });
+    cells.forEach(c=>totals[c.status]++);
+    const p=cells.filter(c=>c.status==='present').length;
+    const a=cells.filter(c=>c.status==='absent').length;
+    const l=cells.filter(c=>c.status==='leave').length;
+    const pct=dates.length>0?Math.round((p/dates.length)*100):0;
+    return {emp,cells,p,a,l,pct};
+  }).sort((a,b)=>b.pct-a.pct);
+  
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  
+  let header='';
+  if(period==='day'){
+    header='';
+  }else if(period==='week'){
+    header=dates.map((d,i)=>`<th style="padding:12px;font-size:12px;font-weight:600;color:#475569;text-align:center;border-bottom:2px solid #E2E8F0">${dayNames[i]}<br><span style="font-size:11px;color:#94A3B8">${d.split('-')[2]}</span></th>`).join('');
+  }else if(period==='month'){
+    header=dates.map(d=>`<th style="padding:12px;font-size:11px;font-weight:600;color:#475569;text-align:center;border-bottom:2px solid #E2E8F0">${d.split('-')[2]}</th>`).join('');
+  }else if(period==='year'){
+    header=dates.map((d,i)=>`<th style="padding:12px;font-size:12px;font-weight:600;color:#475569;text-align:center;border-bottom:2px solid #E2E8F0">${monthNames[i]}</th>`).join('');
+  }
+  
+  document.getElementById('main').innerHTML=`
+    <div style="padding:20px;background:#F8FAFC;min-height:100vh">
+      <!-- HEADER -->
+      <div style="margin-bottom:24px">
+        <h1 style="font-size:28px;font-weight:700;color:#1E293B;margin:0 0 8px 0">${title}</h1>
+        <p style="font-size:14px;color:#64748B;margin:0">Period: ${dates.length > 0 ? dates[0] + ' to ' + dates[dates.length-1] : 'N/A'}</p>
+      </div>
+
+      <!-- PERIOD SELECTOR -->
+      <div style="display:flex;gap:8px;margin-bottom:24px;background:white;padding:12px;border-radius:8px;border:1px solid #E2E8F0">
+        <button onclick="showAttendanceTracker('day')" style="padding:8px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='day'?'background:#1E293B;color:white':'background:#E2E8F0;color:#475569'} hover {opacity:0.9}">Daily</button>
+        <button onclick="showAttendanceTracker('week')" style="padding:8px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='week'?'background:#1E293B;color:white':'background:#E2E8F0;color:#475569'}">Weekly</button>
+        <button onclick="showAttendanceTracker('month')" style="padding:8px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='month'?'background:#1E293B;color:white':'background:#E2E8F0;color:#475569'}">Monthly</button>
+        <button onclick="showAttendanceTracker('year')" style="padding:8px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='year'?'background:#1E293B;color:white':'background:#E2E8F0;color:#475569'}">Annual</button>
+      </div>
+
+      <!-- SUMMARY STATS -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+        <div style="background:white;padding:16px;border-radius:8px;border-left:4px solid #3B82F6">
+          <div style="font-size:12px;font-weight:600;color:#FFFFFF;margin-bottom:6px;text-transform:uppercase">Present</div>
+          <div style="font-size:28px;font-weight:700;color:#FFFFFF">${totals.present}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:4px">Days recorded</div>
+        </div>
+        <div style="background:white;padding:16px;border-radius:8px;border-left:4px solid #EF4444">
+          <div style="font-size:12px;font-weight:600;color:#FFFFFF;margin-bottom:6px;text-transform:uppercase">Absent</div>
+          <div style="font-size:28px;font-weight:700;color:#FFFFFF">${totals.absent}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:4px">Days missed</div>
+        </div>
+        <div style="background:white;padding:16px;border-radius:8px;border-left:4px solid #8B5CF6">
+          <div style="font-size:12px;font-weight:600;color:#FFFFFF;margin-bottom:6px;text-transform:uppercase">On Leave</div>
+          <div style="font-size:28px;font-weight:700;color:#FFFFFF">${totals.leave}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:4px">Approved</div>
+        </div>
+        <div style="background:white;padding:16px;border-radius:8px;border-left:4px solid #6366F1">
+          <div style="font-size:12px;font-weight:600;color:#FFFFFF;margin-bottom:6px;text-transform:uppercase">Holiday</div>
+          <div style="font-size:28px;font-weight:700;color:#FFFFFF">${totals.holiday}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:4px">Official</div>
+        </div>
+      </div>
+
+      <!-- ATTENDANCE TABLE -->
+      <div style="background:white;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="background:#F1F5F9;border-bottom:2px solid #E2E8F0">
+                <th style="padding:14px;text-align:left;font-size:12px;font-weight:700;color:#FFFFFF">Employee Name</th>
+                ${header}
+                <th style="padding:14px;text-align:center;font-size:12px;font-weight:700;color:#FFFFFF;border-bottom:2px solid #E2E8F0">Present</th>
+                <th style="padding:14px;text-align:center;font-size:12px;font-weight:700;color:#FFFFFF;border-bottom:2px solid #E2E8F0">Absent</th>
+                <th style="padding:14px;text-align:center;font-size:12px;font-weight:700;color:#FFFFFF;border-bottom:2px solid #E2E8F0">Leave</th>
+                <th style="padding:14px;text-align:center;font-size:12px;font-weight:700;color:#FFFFFF;border-bottom:2px solid #E2E8F0">Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r,idx)=>`<tr style="border-bottom:1px solid #E2E8F0;${idx%2===0?'background:#F8FAFC':'background:white'} transition:background 0.2s hover {background:#EFF6FF}">
+                <td style="padding:14px;font-size:13px;font-weight:600;color:#1E293B">${r.emp.name}</td>
+                ${r.cells.map(c=>`<td style="padding:14px;text-align:center;font-size:12px;font-weight:500;color:#475569">${c.text}</td>`).join('')}
+                <td style="padding:14px;text-align:center;font-size:13px;font-weight:600;color:#1E293B">${r.p}</td>
+                <td style="padding:14px;text-align:center;font-size:13px;font-weight:600;color:#1E293B">${r.a}</td>
+                <td style="padding:14px;text-align:center;font-size:13px;font-weight:600;color:#1E293B">${r.l}</td>
+                <td style="padding:14px;text-align:center">
+                  <div style="display:inline-block;padding:6px 12px;background:#F1F5F9;border-radius:6px;font-size:12px;font-weight:700;color:#1E293B">${r.pct}%</div>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- LEGEND -->
+      <div style="margin-top:24px;padding:14px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:8px">Legend:</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+          <div style="font-size:12px;color:#64748B"><span style="font-weight:700;color:#1E293B">P</span> = Present</div>
+          <div style="font-size:12px;color:#64748B"><span style="font-weight:700;color:#1E293B">—</span> = Absent</div>
+          <div style="font-size:12px;color:#64748B"><span style="font-weight:700;color:#1E293B">L</span> = On Leave</div>
+          <div style="font-size:12px;color:#64748B"><span style="font-weight:700;color:#1E293B">H</span> = Holiday</div>
+        </div>
+      </div>
+    </div>
+  `;
+  applyRole();
+}function markAttModal(){
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const active=Object.entries(emps).filter(([,e])=>e.status!=='Resigned');
   const holType = getHolidayType(_attDate);
@@ -2713,7 +2885,63 @@ function markLoanPaid(eid,idx){
   save(KEYS.loans,loans); toast('✅ Marked Paid!'); showLoans();
 }
 
-async function showPayroll(){
+async function deleteLoan(eid,idx){
+  const loans=load(KEYS.loans);
+  
+  // Validate employee exists
+  if(!loans[eid]){
+    toast('❌ Employee not found');
+    return;
+  }
+  
+  // Validate index before showing confirmation
+  if(!Number.isInteger(idx) || idx < 0 || idx >= loans[eid].length){
+    toast(`❌ Invalid loan record index: ${idx}`);
+    return;
+  }
+  
+  const loanRecord = loans[eid][idx];
+  
+  _confirm(`Delete loan record?<br><br>Amount: ₱${loanRecord.amount || 0} | Status: ${loanRecord.status || 'Active'}`, 
+    {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'})
+    .then(async ok=>{ 
+      if(!ok) return;
+      
+      // Use safe delete
+      const result = _safeArrayDelete(loans[eid], idx, 'LOAN', loanRecord);
+      
+      if(!result.success){
+        toast(`❌ ${result.error}`);
+        return;
+      }
+      
+      // Save to localStorage
+      try{
+        save(KEYS.loans, loans);
+      }catch(err){
+        toast(`❌ Save failed: ${err.message}`);
+        return;
+      }
+      
+      // Sync to cloud
+      try{
+        if(_sb){
+          await _sb.from('loans').delete().eq('id', loanRecord.id);
+        }
+      }catch(err){
+        console.warn('Cloud sync warning:', err);
+      }
+      
+      toast('✅ Loan record deleted');
+      showLoans();
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PAYROLL
+// ══════════════════════════════════════════════════════════════════════════════
+let _payrollData=[];
+function showPayroll(){
   const now=new Date();
   const defMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   document.getElementById('main').innerHTML=`
@@ -7885,318 +8113,6 @@ window.showAnalyticsDashboard = function(branchId, startDate, endDate) {
 console.log('✅ Role-based access control activated');
 
 </script>
-
-// PROFESSIONAL ATTENDANCE TRACKER v30.47
-// SUPER READABLE: Highlighted labels + Dark text
-
-function showAttendanceTracker(period='week'){
-  if(!checkAdminAccess('showAttendanceTracker')) return;
-  
-  _attTrackerPeriod=period;
-  const emps=load(KEYS.employees);
-  const att=load(KEYS.attendance);
-  
-  let attData = {};
-  if(typeof att === 'string') {
-    try { attData = JSON.parse(att); }
-    catch(e) { attData = {}; }
-  } else if(att && typeof att === 'object') {
-    attData = att;
-  }
-  
-  const activeEmps=Object.entries(emps||{})
-    .filter(([,e])=>e.status!=='Resigned')
-    .map(([id,e])=>({id,name:e.name||id}));
-  
-  let dates=[], title='';
-  const now=new Date();
-  
-  if(period==='day'){
-    dates=[today()];
-    title=`Daily Attendance Report`;
-  }else if(period==='week'){
-    const sun=new Date(now);
-    sun.setDate(sun.getDate()-sun.getDay());
-    for(let i=0;i<7;i++){
-      const d=new Date(sun);
-      d.setDate(d.getDate()+i);
-      dates.push(d.toISOString().split('T')[0]);
-    }
-    title=`Weekly Attendance Report`;
-  }else if(period==='month'){
-    const yr=now.getFullYear(), mo=now.getMonth();
-    const fd=new Date(yr,mo,1);
-    const ld=new Date(yr,mo+1,0);
-    for(let d=new Date(fd);d<=ld;d.setDate(d.getDate()+1)){
-      dates.push(d.toISOString().split('T')[0]);
-    }
-    title=`Monthly Attendance Report`;
-  }else if(period==='year'){
-    const yr=now.getFullYear();
-    for(let mo=0;mo<12;mo++){
-      const d=new Date(yr,mo,15);
-      dates.push(d.toISOString().slice(0,7));
-    }
-    title=`Annual Attendance Report`;
-  }
-  
-  let totals={present:0,absent:0,leave:0,holiday:0};
-  const rows=activeEmps.map(emp=>{
-    const recs=attData[emp.id]||[];
-    const cells=dates.map(d=>{
-      const r=recs.find(x=>x.date.startsWith(d));
-      if(!r) return {text:'—',status:'absent'};
-      if(r.status==='On Leave') return {text:'L',status:'leave'};
-      if(r.holiday) return {text:'H',status:'holiday'};
-      return {text:'P',status:'present'};
-    });
-    cells.forEach(c=>totals[c.status]++);
-    const p=cells.filter(c=>c.status==='present').length;
-    const a=cells.filter(c=>c.status==='absent').length;
-    const l=cells.filter(c=>c.status==='leave').length;
-    const pct=dates.length>0?Math.round((p/dates.length)*100):0;
-    return {emp,cells,p,a,l,pct};
-  }).sort((a,b)=>b.pct-a.pct);
-  
-  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  
-  let header='';
-  if(period!=='day'){
-    if(period==='week'){
-      header=dates.map((d,i)=>`<th style="padding:12px;font-size:13px;font-weight:700;color:#1E293B;text-align:center;border-bottom:3px solid #1E293B">${dayNames[i]}<br><span style="font-size:11px;color:#1E293B;font-weight:600">${d.split('-')[2]}</span></th>`).join('');
-    }else if(period==='month'){
-      header=dates.map(d=>`<th style="padding:12px;font-size:12px;font-weight:700;color:#1E293B;text-align:center;border-bottom:3px solid #1E293B">${d.split('-')[2]}</th>`).join('');
-    }else if(period==='year'){
-      header=dates.map((d,i)=>`<th style="padding:12px;font-size:12px;font-weight:700;color:#1E293B;text-align:center;border-bottom:3px solid #1E293B">${monthNames[i]}</th>`).join('');
-    }
-  }
-  
-  document.getElementById('main').innerHTML=`
-    <div style="padding:20px;background:#F8FAFC;min-height:100vh">
-      <!-- HEADER -->
-      <div style="margin-bottom:24px">
-        <h1 style="font-size:28px;font-weight:700;color:#1E293B;margin:0 0 8px 0">${title}</h1>
-        <p style="font-size:14px;color:#475569;margin:0">Period: ${dates.length > 0 ? dates[0] + ' to ' + dates[dates.length-1] : 'N/A'}</p>
-      </div>
-
-      <!-- PERIOD SELECTOR - MAXIMUM CONTRAST -->
-      <div style="display:flex;gap:10px;margin-bottom:24px;background:white;padding:14px;border-radius:8px;border:2px solid #1E293B">
-        <button onclick="showAttendanceTracker('day')" style="padding:12px 18px;border:2px solid ${_attTrackerPeriod==='day'?'#1E293B':'#CBD5E1'};border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='day'?'background:#1E293B;color:white;box-shadow:0 4px 8px rgba(0,0,0,0.2)':'background:white;color:#1E293B'}">📅 Daily</button>
-        <button onclick="showAttendanceTracker('week')" style="padding:12px 18px;border:2px solid ${_attTrackerPeriod==='week'?'#1E293B':'#CBD5E1'};border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='week'?'background:#1E293B;color:white;box-shadow:0 4px 8px rgba(0,0,0,0.2)':'background:white;color:#1E293B'}">📊 Weekly</button>
-        <button onclick="showAttendanceTracker('month')" style="padding:12px 18px;border:2px solid ${_attTrackerPeriod==='month'?'#1E293B':'#CBD5E1'};border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='month'?'background:#1E293B;color:white;box-shadow:0 4px 8px rgba(0,0,0,0.2)':'background:white;color:#1E293B'}">📈 Monthly</button>
-        <button onclick="showAttendanceTracker('year')" style="padding:12px 18px;border:2px solid ${_attTrackerPeriod==='year'?'#1E293B':'#CBD5E1'};border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;${_attTrackerPeriod==='year'?'background:#1E293B;color:white;box-shadow:0 4px 8px rgba(0,0,0,0.2)':'background:white;color:#1E293B'}">📋 Annual</button>
-      </div>
-
-      <!-- SUMMARY STATS - HIGHLIGHTED LABELS -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-bottom:24px">
-        <div style="background:white;padding:18px;border-radius:8px;border:2px solid #3B82F6;box-shadow:0 2px 4px rgba(0,0,0,0.05)">
-          <div style="font-size:12px;font-weight:700;color:white;background:#3B82F6;padding:6px 10px;border-radius:4px;display:inline-block;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Present</div>
-          <div style="font-size:36px;font-weight:700;color:#1E293B">${totals.present}</div>
-          <div style="font-size:13px;color:#1E293B;margin-top:6px;font-weight:600">Days recorded</div>
-        </div>
-        <div style="background:white;padding:18px;border-radius:8px;border:2px solid #EF4444;box-shadow:0 2px 4px rgba(0,0,0,0.05)">
-          <div style="font-size:12px;font-weight:700;color:white;background:#EF4444;padding:6px 10px;border-radius:4px;display:inline-block;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Absent</div>
-          <div style="font-size:36px;font-weight:700;color:#1E293B">${totals.absent}</div>
-          <div style="font-size:13px;color:#1E293B;margin-top:6px;font-weight:600">Days missed</div>
-        </div>
-        <div style="background:white;padding:18px;border-radius:8px;border:2px solid #8B5CF6;box-shadow:0 2px 4px rgba(0,0,0,0.05)">
-          <div style="font-size:12px;font-weight:700;color:white;background:#8B5CF6;padding:6px 10px;border-radius:4px;display:inline-block;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">On Leave</div>
-          <div style="font-size:36px;font-weight:700;color:#1E293B">${totals.leave}</div>
-          <div style="font-size:13px;color:#1E293B;margin-top:6px;font-weight:600">Approved</div>
-        </div>
-        <div style="background:white;padding:18px;border-radius:8px;border:2px solid #6366F1;box-shadow:0 2px 4px rgba(0,0,0,0.05)">
-          <div style="font-size:12px;font-weight:700;color:white;background:#6366F1;padding:6px 10px;border-radius:4px;display:inline-block;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Holiday</div>
-          <div style="font-size:36px;font-weight:700;color:#1E293B">${totals.holiday}</div>
-          <div style="font-size:13px;color:#1E293B;margin-top:6px;font-weight:600">Official</div>
-        </div>
-      </div>
-
-      <!-- ATTENDANCE TABLE -->
-      <div style="background:white;border-radius:8px;border:2px solid #E2E8F0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse">
-            <thead>
-              <tr style="background:#1E293B;border-bottom:3px solid #1E293B">
-                <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Employee Name</th>
-                ${header}
-                <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Present</th>
-                <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Absent</th>
-                <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Leave</th>
-                <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((r,idx)=>`<tr style="border-bottom:1px solid #E2E8F0;${idx%2===0?'background:#F8FAFC':'background:white'};transition:all 0.2s" onmouseover="this.style.background='#EFF6FF'" onmouseout="this.style.background='${idx%2===0?'#F8FAFC':'white'}'">
-                <td style="padding:16px;font-size:13px;font-weight:600;color:#1E293B">${r.emp.name}</td>
-                ${r.cells.map(c=>`<td style="padding:16px;text-align:center;font-size:14px;font-weight:700;color:#1E293B">${c.text}</td>`).join('')}
-                <td style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:#1E293B">${r.p}</td>
-                <td style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:#1E293B">${r.a}</td>
-                <td style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:#1E293B">${r.l}</td>
-                <td style="padding:16px;text-align:center">
-                  <div style="display:inline-block;padding:8px 14px;background:#1E293B;border-radius:6px;font-size:13px;font-weight:700;color:white">${r.pct}%</div>
-                </td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- LEGEND - READABLE -->
-      <div style="margin-top:24px;padding:16px;background:white;border-radius:8px;border:2px solid #E2E8F0">
-        <div style="font-size:12px;font-weight:700;color:white;background:#1E293B;padding:6px 10px;border-radius:4px;display:inline-block;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Legend</div>
-        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px">
-          <div style="font-size:13px;color:#1E293B"><span style="font-weight:700;color:white;background:#1E293B;padding:4px 8px;border-radius:4px;font-size:14px">P</span> = Present</div>
-          <div style="font-size:13px;color:#1E293B"><span style="font-weight:700;color:white;background:#1E293B;padding:4px 8px;border-radius:4px;font-size:14px">—</span> = Absent</div>
-          <div style="font-size:13px;color:#1E293B"><span style="font-weight:700;color:white;background:#1E293B;padding:4px 8px;border-radius:4px;font-size:14px">L</span> = On Leave</div>
-          <div style="font-size:13px;color:#1E293B"><span style="font-weight:700;color:white;background:#1E293B;padding:4px 8px;border-radius:4px;font-size:14px">H</span> = Holiday</div>
-        </div>
-      </div>
-    </div>
-  `;
-  applyRole();
-}
-
-// ════════════════════════════════════════════════════════════════
-// LEAVE MANAGEMENT WITH DELETE BUTTONS
-// ════════════════════════════════════════════════════════════════
-
-function showLeaveManagement(){
-  const leaves = load('LEAVES') || {};
-  
-  if(Object.keys(leaves).length === 0){
-    document.getElementById('main').innerHTML = `
-      <div style="padding:20px;background:#F8FAFC;min-height:100vh">
-        <h1 style="font-size:28px;font-weight:700;color:#1E293B;margin:0 0 24px 0">Leave Management</h1>
-        <div style="background:white;padding:32px;border-radius:8px;text-align:center">
-          <p style="font-size:16px;color:#475569">No leave records found</p>
-        </div>
-      </div>
-    `;
-    return;
-  }
-  
-  const rows = Object.entries(leaves).map(([id, leave]) => `
-    <tr style="border-bottom:1px solid #E2E8F0;background:white;transition:all 0.2s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='white'">
-      <td style="padding:16px;font-size:13px;font-weight:600;color:#1E293B">${leave.employeeName}</td>
-      <td style="padding:16px;font-size:13px;color:#1E293B">${leave.startDate}</td>
-      <td style="padding:16px;font-size:13px;color:#1E293B">${leave.endDate}</td>
-      <td style="padding:16px;font-size:13px;color:#1E293B">${leave.reason}</td>
-      <td style="padding:16px;text-align:center">
-        <span style="padding:6px 12px;background:${leave.status==='Approved'?'#D1FAE5':'leave.status==='Denied'?'#FEE2E2':'#FEF3C7'};color:${leave.status==='Approved'?'#065F46':'leave.status==='Denied'?'#7F1D1D':'#92400E'};border-radius:4px;font-size:12px;font-weight:700">${leave.status}</span>
-      </td>
-      <td style="padding:16px;text-align:center">
-        <button onclick="deleteLeave('${id}')" style="padding:8px 14px;background:#EF4444;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='#DC2626'" onmouseout="this.style.background='#EF4444'">
-          🗑️ Delete
-        </button>
-      </td>
-    </tr>
-  `).join('');
-
-  document.getElementById('main').innerHTML = `
-    <div style="padding:20px;background:#F8FAFC;min-height:100vh">
-      <h1 style="font-size:28px;font-weight:700;color:#1E293B;margin:0 0 24px 0">Leave Management</h1>
-      
-      <div style="background:white;border-radius:8px;border:2px solid #E2E8F0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="background:#1E293B">
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Employee</th>
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Start Date</th>
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">End Date</th>
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Reason</th>
-              <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Status</th>
-              <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Action</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
-  applyRole();
-}
-
-function deleteLeave(leaveId){
-  if(confirm('⚠️ Delete this leave record? This cannot be undone.')){
-    let leaves = load('LEAVES') || {};
-    delete leaves[leaveId];
-    save('LEAVES', leaves);
-    toast('✅ Leave record deleted');
-    showLeaveManagement();
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-// LOAN MANAGEMENT WITH DELETE BUTTONS
-// ════════════════════════════════════════════════════════════════
-
-function showLoanManagement(){
-  const loans = load('LOANS') || {};
-  
-  if(Object.keys(loans).length === 0){
-    document.getElementById('main').innerHTML = `
-      <div style="padding:20px;background:#F8FAFC;min-height:100vh">
-        <h1 style="font-size:28px;font-weight:700;color:#1E293B;margin:0 0 24px 0">Loan Management</h1>
-        <div style="background:white;padding:32px;border-radius:8px;text-align:center">
-          <p style="font-size:16px;color:#475569">No loan records found</p>
-        </div>
-      </div>
-    `;
-    return;
-  }
-  
-  const rows = Object.entries(loans).map(([id, loan]) => `
-    <tr style="border-bottom:1px solid #E2E8F0;background:white;transition:all 0.2s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='white'">
-      <td style="padding:16px;font-size:13px;font-weight:600;color:#1E293B">${loan.employeeName}</td>
-      <td style="padding:16px;font-size:13px;color:#1E293B">₱${parseFloat(loan.amount).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      <td style="padding:16px;font-size:13px;color:#1E293B">${loan.months} months</td>
-      <td style="padding:16px;font-size:13px;color:#1E293B">₱${parseFloat(loan.monthlyDeduction).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      <td style="padding:16px;text-align:center">
-        <span style="padding:6px 12px;background:${loan.status==='Active'?'#D1FAE5':'#FEE2E2'};color:${loan.status==='Active'?'#065F46':'#7F1D1D'};border-radius:4px;font-size:12px;font-weight:700">${loan.status}</span>
-      </td>
-      <td style="padding:16px;text-align:center">
-        <button onclick="deleteLoan('${id}')" style="padding:8px 14px;background:#EF4444;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='#DC2626'" onmouseout="this.style.background='#EF4444'">
-          🗑️ Delete
-        </button>
-      </td>
-    </tr>
-  `).join('');
-
-  document.getElementById('main').innerHTML = `
-    <div style="padding:20px;background:#F8FAFC;min-height:100vh">
-      <h1 style="font-size:28px;font-weight:700;color:#1E293B;margin:0 0 24px 0">Loan Management</h1>
-      
-      <div style="background:white;border-radius:8px;border:2px solid #E2E8F0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="background:#1E293B">
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Employee</th>
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Amount</th>
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Months</th>
-              <th style="padding:16px;text-align:left;font-size:13px;font-weight:700;color:white">Monthly Deduction</th>
-              <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Status</th>
-              <th style="padding:16px;text-align:center;font-size:13px;font-weight:700;color:white">Action</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
-  applyRole();
-}
-
-function deleteLoan(loanId){
-  if(confirm('⚠️ Delete this loan record? This cannot be undone.')){
-    let loans = load('LOANS') || {};
-    delete loans[loanId];
-    save('LOANS', loans);
-    toast('✅ Loan record deleted');
-    showLoanManagement();
-  }
-}
-
 
 </body>
 </html>
