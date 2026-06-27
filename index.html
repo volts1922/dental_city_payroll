@@ -335,24 +335,72 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUPABASE CONFIG — PASTE YOUR VALUES FROM supabase.com → Project → Settings → API
 // ═══════════════════════════════════════════════════════════════════════════════
-const SUPABASE_URL = 'https://jbbfxefbwwudfpopqxdj.supabase.co';   // e.g. 'https://abcxyz.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiYmZ4ZWZid3d1ZGZwb3BxeGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2ODk5NDksImV4cCI6MjA5NTI2NTk0OX0.rhAMC9tKdRAUrWd-_3ea9Vd7bq_g1QMFjAMvMDBcU-Q';   // 'anon public' key
+const SUPABASE_URL = 'https://jbbfxefbwwudfpopqxdj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiYmZ4ZWZid3d1ZGZwb3BxeGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2ODk5NDksImV4cCI6MjA5NTI2NTk0OX0.rhAMC9tKdRAUrWd-_3ea9Vd7bq_g1QMFjAMvMDBcU-Q';
 
-let _sb = null;
-try {
-  if (SUPABASE_URL && SUPABASE_KEY) {
-    _sb = window.createClient ? window.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-    if (!_sb) {
-      console.warn('⚠️ Supabase client creation failed - using stub');
-      _sb = { from: () => ({ select: () => Promise.resolve({data:[], error:null}), insert: () => Promise.resolve({data:[], error:null}), update: () => Promise.resolve({data:[], error:null}), upsert: () => Promise.resolve({data:[], error:null}), delete: () => Promise.resolve({data:[], error:null}) }) };
-    }
+// Pure REST-based Supabase client (no SDK)
+class SupabaseREST {
+  constructor(url, key) {
+    this.url = url.replace(/\/$/, '');
+    this.key = key;
   }
-} catch (e) {
-  console.error('❌ Supabase initialization error:', e.message);
-  _sb = { from: () => ({ select: () => Promise.resolve({data:[], error:null}), insert: () => Promise.resolve({data:[], error:null}), update: () => Promise.resolve({data:[], error:null}), upsert: () => Promise.resolve({data:[], error:null}), delete: () => Promise.resolve({data:[], error:null}) }) };
+  from(table) {
+    return new SupabaseTable(this.url, this.key, table);
+  }
 }
 
-console.log('✅ Supabase client initialized:', _sb ? 'Ready' : 'FAILED');
+class SupabaseTable {
+  constructor(url, key, table) {
+    this.url = url;
+    this.key = key;
+    this.table = table;
+    this.filters = [];
+  }
+  eq(col, val) {
+    this.filters.push(`${col}=eq.${val}`);
+    return this;
+  }
+  select(cols = '*') {
+    this.cols = cols;
+    return this;
+  }
+  async execute(method = 'GET', body = null) {
+    const query = this.filters.length ? '?' + this.filters.join('&') : '';
+    const opts = {
+      method,
+      headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' }
+    };
+    if (body) opts.body = JSON.stringify(body);
+    try {
+      const res = await fetch(`${this.url}/rest/v1/${this.table}${query}`, opts);
+      const data = await res.json();
+      return { data, error: null };
+    } catch (e) {
+      return { data: null, error: e };
+    }
+  }
+  then(cb) { return this.execute().then(r => cb(r)); }
+  async insert(data) { return this.execute('POST', data); }
+  async update(data) { return this.execute('PATCH', data); }
+  async upsert(data) { 
+    const opts = {
+      method: 'POST',
+      headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(data)
+    };
+    try {
+      const res = await fetch(`${this.url}/rest/v1/${this.table}`, opts);
+      const json = await res.json();
+      return { data: json, error: null };
+    } catch (e) {
+      return { data: null, error: e };
+    }
+  }
+  async delete() { return this.execute('DELETE'); }
+}
+
+const _sb = new SupabaseREST(SUPABASE_URL, SUPABASE_KEY);
+console.log('✅ Supabase REST client ready');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // v29.8 SECURITY FEATURES: 2FA + Auto-Logout + Audit Log + Password History
