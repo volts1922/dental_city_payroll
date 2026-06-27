@@ -2528,10 +2528,30 @@ function editAttRecord(eid, date){
 }
 
 function parseTime(t){
-  for(const fmt of['%H:%M:%S','%H:%M']){
-    const parts=t?.split(':');
-    if(parts?.length>=2){ try{ return new Date(0,0,0,parseInt(parts[0]),parseInt(parts[1]),parseInt(parts[2]||0)); }catch(e){} }
+  if(!t) return null;
+  
+  // Handle 12-hour format with AM/PM (e.g., "02:41 PM")
+  const ampmMatch = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if(ampmMatch) {
+    let hh = parseInt(ampmMatch[1]);
+    const mm = parseInt(ampmMatch[2]);
+    const ampm = ampmMatch[3].toUpperCase();
+    
+    // Convert to 24-hour format
+    if(ampm === 'PM' && hh !== 12) hh += 12;
+    if(ampm === 'AM' && hh === 12) hh = 0;
+    
+    return new Date(0, 0, 0, hh, mm, 0);
   }
+  
+  // Handle 24-hour format (e.g., "14:41" or "14:41:30")
+  const parts = t.split(':');
+  if(parts?.length >= 2) {
+    try {
+      return new Date(0, 0, 0, parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2] || 0));
+    } catch(e) {}
+  }
+  
   return null;
 }
 
