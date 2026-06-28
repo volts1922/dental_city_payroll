@@ -1762,7 +1762,7 @@ function badge(status){
 }
 function empOptions(sel=''){
   const emps=load(KEYS.employees);
-  return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${id})</option>`).join('');
+  return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${id} - ${e.branch||'main'})</option>`).join('');
 }
 function formRow(lbl,key,val='',type='text',opts=null){
   if(opts) return `<div class="form-group"><label class="form-label">${lbl}</label><select class="form-control" id="f_${key}">${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select></div>`;
@@ -1956,8 +1956,8 @@ function showDashboard(){
   const branchStats = activeBranch==='All' ? null : (() => {
     const bEmps = Object.entries(emps).filter(([,e])=>e&&e.branch===activeBranch&&e.status==='Active').map(([id])=>id);
     const bPresent = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present'&&bEmps.includes(r.employee_id||Object.keys(att).find(eid=>att[eid]===recs))).length,0);
-    const bAbsent = bEmps.length - bPresent - bOnLeave;
     const bOnLeave = Object.values(leaves).reduce((s,recs)=>s+recs.filter(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td&&bEmps.includes(r.employee_id||Object.keys(leaves).find(eid=>leaves[eid]===recs))).length,0);
+    const bAbsent = bEmps.length - bPresent - bOnLeave;
     return {total:bEmps.length, present:bPresent, absent:bAbsent, onLeave:bOnLeave};
   })();
   
@@ -1997,9 +1997,9 @@ function showDashboard(){
   document.getElementById('main').innerHTML=`
     <div class="section-header" style="margin-bottom:12px">
       <div class="section-title">📊 Real-Time Status</div>
-      <select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
+      ${isOwner()||isDev()?'':` <select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
         ${getBranchOptions().map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
-      </select>
+      </select>`}
     </div>
     ${branchStats ? `
     <div class="cards" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
@@ -2760,8 +2760,9 @@ function showAttendanceTracker(period='week'){
     attData = att;
   }
   
+  const activeBranch = isOwner()||isDev() ? null : getBranch();
   const activeEmps=Object.entries(emps||{})
-    .filter(([,e])=>e.status!=='Resigned')
+    .filter(([,e])=>e.status!=='Resigned' && (!activeBranch || e.branch===activeBranch))
     .map(([id,e])=>({id,name:e.name||id}));
   
   let dates=[], title='';
@@ -4244,7 +4245,7 @@ function showPayslip(){
       <div class="btn-row">
         <select id="slipEmp" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;min-width:200px">
           <option value="">-- Select Employee --</option>
-          ${Object.entries(emps).map(([id,e])=>`<option value="${id}">${e.name} (${id})</option>`).join('')}
+          ${Object.entries(emps).map(([id,e])=>`<option value="${id}">${e.name} (${id} - ${e.branch||'main'})</option>`).join('')}
         </select>
         <input type="month" id="slipMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
         <button class="btn btn-secondary btn-sm" onclick="setSlipRange('1st')">1st Half</button>
@@ -6492,6 +6493,75 @@ function getShiftHours(empId){
 // DEVELOPER DASHBOARD (v29.8.1)
 // ══════════════════════════════════════════════════════════════════════════════
 
+async function syncCurrentBranchOnly(){
+  if(!checkAdminAccess('syncCurrentBranchOnly')) return;
+  const branch = getBranch();
+  if(!branch){toast('⚠️ No branch selected');return;}
+  if(!confirm(`🔄 Sync employees from ${branch} only? Local data will be updated.`)) return;
+  
+  toast(`🔄 Syncing ${branch} employees...`);
+  console.log(`🔄 Syncing branch: ${branch}`);
+  
+  try {
+    // Fetch employees for current branch only
+    const {data: emps, error: empErr} = await _sb.from('employees_201').select('*').eq('branch_id', branch);
+    if(!empErr && emps) {
+      const localEmps = load(KEYS.employees) || {};
+      let syncCount = 0;
+      emps.forEach(e => {
+        localEmps[e.employee_id] = {
+          id: e.employee_id,
+          name: e.full_name,
+          branch: e.branch_id || branch,
+          daily_rate: e.daily_rate || 0,
+          allowances: e.allowances ? JSON.parse(e.allowances) : {},
+          position: e.position || '',
+          email: e.email || '',
+          phone: e.phone || ''
+        };
+        syncCount++;
+      });
+      save(KEYS.employees, localEmps);
+      console.log(`✅ Synced ${syncCount} employees from ${branch}`);
+    }
+    
+    // Fetch attendance for current branch only
+    const {data: tc, error: tcErr} = await _sb.from('time_clock').select('*').eq('branch_id', branch);
+    if(!tcErr && tc) {
+      const localAtt = load(KEYS.attendance) || {};
+      let attCount = 0;
+      tc.forEach(r => {
+        if(!localAtt[r.employee_id]) localAtt[r.employee_id] = [];
+        localAtt[r.employee_id].push({
+          date: r.date,
+          time_in: r.time_in,
+          time_out: r.time_out,
+          status: r.status,
+          ot_hours: r.ot_hours || 0,
+          nd_hours: r.nd_hours || 0,
+          holiday: r.holiday || '',
+          branch_id: r.branch_id
+        });
+        attCount++;
+      });
+      save(KEYS.attendance, localAtt);
+      console.log(`✅ Synced ${attCount} attendance records from ${branch}`);
+    }
+    
+    toast(`✅ ${branch} data synced!`);
+    console.log(`✅ Branch sync complete!`);
+    
+    // Refresh UI
+    setTimeout(() => {
+      if(document.getElementById('dashboardContent')) showDashboard();
+    }, 500);
+    
+  } catch(err) {
+    console.error('❌ Branch sync error:', err);
+    toast('❌ Sync failed - check console');
+  }
+}
+
 async function forceSyncAllData(){
   if(!checkAdminAccess('forceSyncAllData')) return;
   if(!confirm('🔄 Force sync ALL data from Supabase? This will overwrite local data.')) return;
@@ -6692,7 +6762,8 @@ function showDeveloperDashboard(){
       <button class="btn btn-primary" onclick="comprehensiveSystemAudit()" style="margin-right:8px">🔍 Run Audit</button>
       <button class="btn btn-secondary" onclick="console.log('LocalStorage:', localStorage); alert('Check DevTools Console (F12)')">📋 View Storage</button>
       <button class="btn btn-success" onclick="syncAllEmployeesToSupabase()" style="margin-left:8px">☁️ Sync All Employees</button>
-      <button class="btn btn-info" onclick="forceSyncAllData()" style="margin-left:8px">🔄 Force Sync from Cloud</button>
+      <button class="btn btn-info" onclick="syncCurrentBranchOnly()" style="margin-left:8px">🏥 Sync Branch Only</button>
+      <button class="btn btn-warning" onclick="forceSyncAllData()" style="margin-left:8px">🔄 Force Sync All</button>
       
       <h4 style="margin-top:20px">Operations</h4>
       
