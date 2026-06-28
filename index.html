@@ -974,7 +974,7 @@ const USERS = {
 async function _loadAccountsFromCloud(){
   if(!_sb) return;
   try{
-    const { data, error } = await _sb.from('payroll_accounts').select('*');
+    const { data, error } = await _sb.from('pr_accounts').select('*');
     if(error || !data) return;
     data.forEach(row=>{
       USERS[row.username] = { password: row.password, role: row.role, name: row.name, ...(row.branch?{branch:row.branch}:{}) };
@@ -986,7 +986,7 @@ async function _loadAccountsFromCloud(){
 async function _saveAccountToCloud(username, acc){
   if(!_sb) return;
   try{
-    await _sb.from('payroll_accounts').upsert({
+    await _sb.from('pr_accounts').upsert({
       username, password: acc.password, role: acc.role, name: acc.name, branch: acc.branch||null
     }, { onConflict: 'username' });
   }catch(e){ console.log('Account save error:', e.message); }
@@ -995,7 +995,7 @@ async function _saveAccountToCloud(username, acc){
 async function _deleteAccountFromCloud(username){
   if(!_sb) return;
   try {
-    const {error} = await _sb.from('payroll_accounts').delete().eq('username', username);
+    const {error} = await _sb.from('pr_accounts').delete().eq('username', username);
     if(error) console.error('[Account] Delete failed:', username, error.message);
   } catch(e) {
     console.error('[Account] Delete exception:', username, e.message);
@@ -1005,7 +1005,7 @@ async function _deleteAccountFromCloud(username){
 async function _renameBranchInCloudAccounts(oldName, newName){
   if(!_sb) return;
   try {
-    const {error} = await _sb.from('payroll_accounts').update({ branch: newName }).eq('branch', oldName);
+    const {error} = await _sb.from('pr_accounts').update({ branch: newName }).eq('branch', oldName);
     if(error) console.error('[Branch] Rename accounts failed:', oldName, error.message);
   } catch(e) {
     console.error('[Branch] Rename accounts exception:', oldName, e.message);
@@ -6918,7 +6918,7 @@ async function changePassword(){
     // Sync to Supabase with retry
     if(_sb) {
       _queueSyncOperation(`pwd_${_currentUser}`, () => 
-        _sb.from('payroll_accounts').upsert({
+        _sb.from('pr_accounts').upsert({
           username: _currentUser,
           password: u.password,
           role: u.role,
@@ -6966,7 +6966,7 @@ async function changeUsername(){
     // Sync to Supabase with retry
     if(_sb) {
       _queueSyncOperation(`user_${_currentUser}`, () => 
-        _sb.from('payroll_accounts').upsert({
+        _sb.from('pr_accounts').upsert({
           username: newU,
           password: u.password,
           role: u.role,
@@ -7398,7 +7398,7 @@ async function cleanupDuplicateBranches(){
       // Move accounts pointing to the duplicate over to the keeper
       if(_sb){
         try {
-          const {error} = await _sb.from('payroll_accounts').update({branch:keep}).eq('branch', b);
+          const {error} = await _sb.from('pr_accounts').update({branch:keep}).eq('branch', b);
           if(error) console.error('[Merge] Account update failed:', b, '->', keep, error.message);
         } catch(e) {
           console.error('[Merge] Account update exception:', b, '->', keep, e.message);
@@ -7481,7 +7481,7 @@ async function deleteBranch(idx, name){
     // Clean up Supabase
     if(_sb){ 
       try{ 
-        await _sb.from('payroll_accounts')
+        await _sb.from('pr_accounts')
           .update({data: {branch: null}})
           .eq('data->>branch', name);
       }catch(e){
@@ -8570,7 +8570,7 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
     let onConflict = 'id';
     if(tableName === 'employees_201') onConflict = null; // No unique constraint, just insert
     if(tableName === 'pr_payroll_approvals') onConflict = 'run_id';
-    if(tableName === 'payroll_accounts') onConflict = 'username';
+    if(tableName === 'pr_accounts') onConflict = 'username';
     
     let lastError = null;
     for(let attempt = 0; attempt <= retries; attempt++){
