@@ -1820,12 +1820,9 @@ function computeNetPayWithPeriod(dailyRate, daysWorked=null, absences=0, halfDay
   // ── PERIOD-SPECIFIC DEDUCTIONS ─────────────────────────────────────────────
   // IMPORTANT: All deductions calculated on FULL MONTH salary
   // 1st Half: SSS+PhilHealth+Pag-ibig (no tax)
-  // 2nd Half: BIR Tax only
-  // Full Month: SSS+PhilHealth+Pag-ibig+BIR Tax
+  // 2nd Half: BIR Tax only (on full month - allowances)
+  // Full Month: SSS+PhilHealth+Pag-ibig+BIR Tax (tax on fullMonth - govt - allowances)
   let sss=0, ph=0, pi=0, tax=0;
-  
-  // Calculate tax base (same for all periods)
-  const taxableIncome = Math.max(fullMonthly - totalAllow, 0);
   
   if(period.isFirstHalf){
     // 1st HALF: Government contributions only
@@ -1834,17 +1831,18 @@ function computeNetPayWithPeriod(dailyRate, daysWorked=null, absences=0, halfDay
     pi  = computePagibig(fullMonthly);
     tax = 0; // No BIR tax in 1st half
   } else if(period.isSecondHalf){
-    // 2nd HALF: BIR tax only (same calculation as full month)
+    // 2nd HALF: BIR tax only (on full month - allowances)
     sss = 0;
     ph  = 0;
     pi  = 0;
-    tax = computeTax(taxableIncome); // Same tax base as full month
+    tax = computeTax(Math.max(fullMonthly - totalAllow, 0));
   } else {
     // FULL MONTH: All deductions
     sss = computeSSS(fullMonthly);
     ph  = computePH(fullMonthly);
     pi  = computePagibig(fullMonthly);
-    tax = computeTax(taxableIncome); // Same tax base as 2nd half
+    // Tax calculated on: full month - govt contributions - allowances
+    tax = computeTax(Math.max(fullMonthly - sss - ph - pi - totalAllow, 0));
   }
   
   const totalDed = sss + ph + pi + tax + loanDeduction;
