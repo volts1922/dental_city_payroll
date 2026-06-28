@@ -2813,12 +2813,13 @@ function showAttendanceTracker(period='week'){
     const recs=attData[emp.id]||[];
     const cells=dates.map(d=>{
       const r=recs.find(x=>x.date.startsWith(d));
-      if(!r) return {text:'—',status:'absent'};
+      if(!r) return {text:'—',status:'no_data'};  // Don't count as absent!
       if(r.status==='On Leave') return {text:'L',status:'leave'};
       if(r.holiday) return {text:'H',status:'holiday'};
       return {text:'P',status:'present'};
     });
-    cells.forEach(c=>totals[c.status]++);
+    // Only count cells with actual data (not "no_data")
+    cells.forEach(c=>{ if(c.status !== 'no_data') totals[c.status]++; });
     const p=cells.filter(c=>c.status==='present').length;
     const a=cells.filter(c=>c.status==='absent').length;
     const l=cells.filter(c=>c.status==='leave').length;
