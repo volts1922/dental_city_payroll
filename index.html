@@ -1940,7 +1940,7 @@ function showDashboard(){
   
   // Branch selector
   const branchList = Object.keys(branches).filter(b=>b);
-  const activeBranch = window._dashBranch || branchList[0] || 'All';
+  const activeBranch = isOwner()||isDev() ? 'All' : (window._dashBranch || branchList[0] || 'All');
   
   // Filtered by branch
   const filterByBranch = (arr, bid) => Object.entries(arr).filter(([eid,_])=>(emps[eid]||{}).branch===bid);
@@ -1997,9 +1997,9 @@ function showDashboard(){
   document.getElementById('main').innerHTML=`
     <div class="section-header" style="margin-bottom:12px">
       <div class="section-title">📊 Real-Time Status</div>
-      ${isOwner()||isDev()?'':` <select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
-        ${getBranchOptions().map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
-      </select>`}
+      ${!isOwner()&&!isDev()?`<select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
+        ${getBranchOptions().map(b=>'<option value="'+b+'" '+( b===activeBranch?'selected':'')+'>'+b+'</option>').join('')}
+      </select>`:''}
     </div>
     ${branchStats ? `
     <div class="cards" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
