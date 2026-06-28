@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.68
-const VERSION = 'v30.68-critical-dashboard-fix';
-const CACHE = 'dcpayroll-v30.68';
+// DC Payroll Service Worker v30.70
+const VERSION = 'v30.70-fix-isDev-error';
+const CACHE = 'dcpayroll-v30.70';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.68')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.70')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.68 ready');
+console.log('[SW] v30.70 ready');
