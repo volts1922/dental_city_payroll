@@ -1384,50 +1384,51 @@ function updateBranchUI(n){
 function showBranchModal(){
   openModal('🏢 Create Branch',`
     <div class="form-group"><label class="form-label">Branch Name *</label>
-    <input class="form-control" id="f_bname" placeholder="e.g. Manila, Cebu..." style="font-size:14px;padding:10px"></div>`,
-    async ()=>{ 
-      const n=document.getElementById('f_bname').value.trim(); 
-      if(!n){toast('⚠️ Branch name required');return;} 
-      
-      if(!_sb){
-        toast('❌ Database not connected');
+    <input class="form-control" id="f_bname" placeholder="e.g. Manila, Cebu..." style="font-size:14px;padding:10px;margin-bottom:10px">
+    <small style="color:#666">Branch ID will be auto-generated from name</small></div>`,
+    ()=>{ 
+      const n=document.getElementById('f_bname')?.value?.trim();
+      if(!n){
+        toast('⚠️ Branch name required');
         return;
       }
       
-      // Save to Supabase
-      try {
-        const branchId = n.toLowerCase().replace(/\\s+/g,'_').replace(/[^a-z0-9_]/g,'');
-        console.log(`📝 Creating branch: ${branchId} (${n})`);
-        
-        const {error} = await _sb.from('pr_branches').insert({
-          id: branchId, 
-          branch_name: n
-        });
-        
-        if(error){
-          if(error.code === '23505'){
-            toast('⚠️ Branch already exists');
-          } else {
-            console.error('DB error:', error);
-            toast(`❌ Error: ${error.message}`);
-          }
-          return;
-        }
-        
-        toast('✅ Branch created!');
-        closeModal();
-        
-        // Reload branches
-        ALL_BRANCHES = await loadAllBranchesFromCloud();
-        
-      } catch(e) {
-        console.error('Branch save error:', e);
-        toast('❌ Error creating branch');
+      if(!_sb){
+        toast('❌ Not connected to database');
+        return;
       }
+      
+      // Async save without awaiting in callback
+      (async ()=>{
+        try {
+          const branchId = n.toLowerCase().replace(/\\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+          console.log(`📝 Creating branch: ${branchId} = ${n}`);
+          
+          const {data, error} = await _sb.from('pr_branches').insert([
+            {id: branchId, branch_name: n}
+          ]);
+          
+          if(error){
+            console.error('❌ Error:', error);
+            toast(`❌ ${error.message}`);
+            return;
+          }
+          
+          console.log('✅ Branch saved!', data);
+          toast('✅ Branch created!');
+          closeModal();
+          
+          // Refresh branches
+          setTimeout(()=>{ window.location.reload(); }, 500);
+          
+        } catch(e) {
+          console.error('💥 Exception:', e);
+          toast('❌ Error: ' + e.message);
+        }
+      })();
     },
     '✅ Create'
   );
-  document.querySelector('.modal-close').style.display='none';
 }
 function changeBranch(){
   openModal('✏ Change Branch',`
