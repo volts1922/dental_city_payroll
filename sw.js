@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.86
-const VERSION = 'v30.86-simplify-branch-save';
-const CACHE = 'dcpayroll-v30.86';
+// DC Payroll Service Worker v30.87
+const VERSION = 'v30.87-add-branch-logging';
+const CACHE = 'dcpayroll-v30.87';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.86')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.87')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.86 ready');
+console.log('[SW] v30.87 ready');
