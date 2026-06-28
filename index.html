@@ -1818,26 +1818,29 @@ function computeNetPayWithPeriod(dailyRate, daysWorked=null, absences=0, halfDay
   gross = gross + otPay + ndPay + regHolPay + speHolPay + totalAllow;
 
   // ── PERIOD-SPECIFIC DEDUCTIONS ─────────────────────────────────────────────
+  // IMPORTANT: All deductions are calculated on FULL MONTH salary
+  // 1st Half: takes SSS+PhilHealth+Pag-ibig
+  // 2nd Half: takes BIR tax
   let sss=0, ph=0, pi=0, tax=0;
   
   if(period.isFirstHalf){
-    // 1st HALF: SSS, Pag-ibig, PhilHealth only (government contributions)
-    sss = computeSSS(gross);
-    ph  = computePH(gross);
-    pi  = computePagibig(gross);
+    // 1st HALF: SSS, Pag-ibig, PhilHealth (based on FULL MONTH)
+    sss = computeSSS(fullMonthly);
+    ph  = computePH(fullMonthly);
+    pi  = computePagibig(fullMonthly);
     tax = 0; // No BIR tax in 1st half
   } else if(period.isSecondHalf){
-    // 2nd HALF: BIR tax only
+    // 2nd HALF: BIR tax only (based on FULL MONTH)
     sss = 0; // No SSS in 2nd half
     ph  = 0; // No PhilHealth in 2nd half
     pi  = 0; // No Pag-ibig in 2nd half
-    tax = computeTax(Math.max(gross - totalAllow, 0)); // BIR tax only
+    tax = computeTax(Math.max(fullMonthly - totalAllow, 0)); // Tax based on full month
   } else {
-    // FULL MONTH: All deductions
-    sss = computeSSS(gross);
-    ph  = computePH(gross);
-    pi  = computePagibig(gross);
-    tax = computeTax(Math.max(gross - sss - ph - pi - totalAllow, 0));
+    // FULL MONTH: All deductions (based on FULL MONTH)
+    sss = computeSSS(fullMonthly);
+    ph  = computePH(fullMonthly);
+    pi  = computePagibig(fullMonthly);
+    tax = computeTax(Math.max(fullMonthly - sss - ph - pi - totalAllow, 0));
   }
   
   const totalDed = sss + ph + pi + tax + loanDeduction;
@@ -4296,8 +4299,22 @@ function generateSlip(){
   const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
   const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
   const loanDed    = getActiveLoanDeduction(eid);
+  
+  // Calculate actual calendar days in the period
+  const fd = new Date(fromDate);
+  const ld = new Date(toDate);
+  const calendarDays = Math.ceil((ld - fd) / (1000*60*60*24)) + 1;
+  
+  // daysWorked: use actual attendance if available, otherwise use calendar days - absences
   const hasAtt     = daysPresent+absences+halfDays>0;
-  const daysWorked = hasAtt?daysPresent+(halfDays*0.5):null;
+  let daysWorked;
+  if(hasAtt){
+    daysWorked = daysPresent + (halfDays*0.5);
+  } else {
+    // No attendance data: assume all days worked (minus holidays)
+    daysWorked = calendarDays - (regHolDays + speHolDays);
+  }
+  
   const allowances = e.allowances || {};
   const totalAllow = totalAllowances(allowances);
   
