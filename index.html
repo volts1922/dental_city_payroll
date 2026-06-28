@@ -1259,8 +1259,8 @@ function _finishLogin(){
   if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='Developer' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
-    // Owner/Dev: Default to All branches
-    setBranch('All');
+    // Owner/Dev: Default to Main branch (allows access to All)
+    setBranch('Main');
     navigate('All Branches','showOwnerDashboard');
   } else {
     navigate('Dashboard','showDashboard');
@@ -1356,8 +1356,11 @@ function _normalizeBranch(n){
   return n.trim().replace(/\s+/g,' ').replace(/\w\S*/g, w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());
 }
 function getBranch(){ 
-  // Owner/Dev always see "All" branches
-  if(isOwner()) return _normalizeBranch(BRANCH_NAME || localStorage.getItem('pr_branch') || 'All');
+  // Owner/Dev default to Main branch
+  if(isOwner()) {
+    const stored = localStorage.getItem('pr_branch');
+    return _normalizeBranch(stored || 'Main');
+  }
   return _normalizeBranch(BRANCH_NAME||localStorage.getItem('pr_branch')||''); 
 }
 
