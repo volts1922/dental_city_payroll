@@ -842,7 +842,7 @@ window.GHOST_TRACKER = {
   checks: [], 
   check() { 
     const e = JSON.parse(localStorage.getItem(KEYS.employees) || '{}'); 
-    const g = Object.entries(e).filter(([id,emp]) => (!emp?.name || String(emp.name).trim() === '' || String(emp.name).trim() === '-') && !emp?.role && !emp?.daily_rate).map(([id,emp]) => ({ id, name: emp.name }));
+    const g = Object.entries(e).filter(([id,emp]) => emp && (!emp?.name || String(emp.name).trim() === '' || String(emp.name).trim() === '-') && !emp?.role && !emp?.daily_rate).map(([id,emp]) => ({ id, name: emp?.name || 'N/A' }));
     this.checks.push({ ts: new Date().toISOString(), count: g.length, ghosts: g }); 
     if(g.length > 0) console.log(`[GHOST] ${g.length} ghost records:`, g);
     return g;
