@@ -522,7 +522,7 @@ async function _auditLog(action, user, details){
     id: Math.random().toString(36).slice(2,9),
     timestamp: nowPH(),  // ✅ Use PH timezone
     action: action,
-    user: user,
+    username: user,
     branch: getBranch?.() || 'main',
     details: details
   };
