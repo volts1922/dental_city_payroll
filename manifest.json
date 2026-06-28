@@ -1,7 +1,7 @@
 {
-  "name": "DC Payroll v30.56",
+  "name": "DC Payroll v30.58",
   "short_name": "DC Payroll",
-  "description": "Time tracking, multi-branch payroll automation for Philippine clinics",
+  "description": "Time tracking, payroll with fixed trackers (weekly/monthly/annual)",
   "start_url": "/dental_city_payroll/",
   "scope": "/dental_city_payroll/",
   "display": "standalone",
