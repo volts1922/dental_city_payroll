@@ -975,7 +975,7 @@ async function _loadAccountsFromCloud(){
     const { data, error } = await _sb.from('pr_accounts').select('*');
     if(error || !data) return;
     data.forEach(row=>{
-      USERS[row.username] = { password: row.password, role: row.role, name: row.username, ...(row.branch_id?{branch:row.branch_id}:{}) };
+      USERS[row.username] = { password: row.password_hash, role: row.role, name: row.username, ...(row.branch_id?{branch:row.branch_id}:{}) };
     });
     console.log('☁️ Loaded', data.length, 'cloud accounts');
   }catch(e){ console.log('Account load error:', e.message); }
