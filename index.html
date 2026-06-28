@@ -1382,62 +1382,58 @@ function updateBranchUI(n){
   }
 }
 function showBranchModal(){
+  const inputId = 'branchInput_' + Date.now();
   openModal('🏢 Create Branch',`
-    <div class="form-group"><label class="form-label">Branch Name *</label>
-    <input class="form-control" id="f_bname" placeholder="e.g. Manila, Cebu..." style="font-size:14px;padding:10px;margin-bottom:10px">
-    <small style="color:#666">Branch ID will be auto-generated from name</small></div>`,
+    <div class="form-group">
+      <label class="form-label">Branch Name *</label>
+      <input class="form-control" id="${inputId}" placeholder="e.g. Manila, Cebu..." style="font-size:14px;padding:10px;margin-bottom:10px">
+      <small style="color:#666">Branch ID will be auto-generated</small>
+    </div>`,
     ()=>{ 
-      const n=document.getElementById('f_bname')?.value?.trim();
-      console.log('🏢 Branch modal save clicked, name:', n);
-      
-      if(!n){
-        toast('⚠️ Branch name required');
-        return;
-      }
-      
-      console.log('_sb exists?', !!_sb);
-      
-      if(!_sb){
-        toast('❌ Not connected to database');
-        return;
-      }
-      
-      // Async save
-      (async ()=>{
-        try {
-          const branchId = n.toLowerCase().replace(/\\s+/g,'_').replace(/[^a-z0-9_]/g,'');
-          console.log(`📝 [Branch] Creating: id=${branchId}, name=${n}`);
-          
-          const {data, error} = await _sb.from('pr_branches').insert([
-            {id: branchId, branch_name: n}
-          ]);
-          
-          console.log('📊 [Branch] Response:', {data, error});
-          
-          if(error){
-            console.error('❌ [Branch] Error:', error);
-            toast(`❌ ${error.message}`);
-            return;
-          }
-          
-          console.log('✅ [Branch] Saved successfully!');
-          toast('✅ Branch created! Refreshing...');
-          closeModal();
-          
-          // Wait then reload
-          setTimeout(()=>{ 
-            console.log('🔄 Reloading page...');
-            window.location.reload(); 
-          }, 1000);
-          
-        } catch(e) {
-          console.error('💥 [Branch] Exception:', e);
-          toast('❌ Error: ' + e.message);
-        }
-      })();
+      console.log('🔴 Modal callback triggered');
     },
     '✅ Create'
   );
+  
+  // MANUAL save button click handler (bypass modal system)
+  const saveBtn = document.getElementById('modalSave');
+  saveBtn.onclick = async function(e){
+    e.preventDefault();
+    console.log('🔵 Manual save clicked');
+    
+    const inputEl = document.getElementById(inputId);
+    const n = inputEl?.value?.trim();
+    console.log('Branch name:', n);
+    
+    if(!n){
+      alert('⚠️ Branch name required');
+      return;
+    }
+    
+    try {
+      const branchId = n.toLowerCase().replace(/\\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+      console.log(`📝 Inserting: id="${branchId}", branch_name="${n}"`);
+      
+      const {data, error} = await _sb.from('pr_branches').insert([
+        {id: branchId, branch_name: n}
+      ]);
+      
+      console.log('Response:', {data, error});
+      
+      if(error){
+        alert('❌ Error: ' + error.message);
+        return;
+      }
+      
+      alert('✅ Branch created!');
+      closeModal();
+      setTimeout(()=>location.reload(), 500);
+      
+    } catch(e) {
+      console.error('Exception:', e);
+      alert('❌ ' + e.message);
+    }
+  };
 }
 function changeBranch(){
   openModal('✏ Change Branch',`
