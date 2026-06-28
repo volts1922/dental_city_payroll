@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.64
-const VERSION = 'v30.64-force-sync-all-data';
-const CACHE = 'dcpayroll-v30.64';
+// DC Payroll Service Worker v30.67
+const VERSION = 'v30.67-tracker-branch-filter';
+const CACHE = 'dcpayroll-v30.67';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.64')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.67')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.64 ready');
+console.log('[SW] v30.67 ready');
