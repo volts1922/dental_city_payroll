@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.58
-const VERSION = 'v30.58-tracker-complete-fix';
-const CACHE = 'dcpayroll-v30.58';
+// DC Payroll Service Worker v30.59
+const VERSION = 'v30.59-tracker-monthly-annual-fix';
+const CACHE = 'dcpayroll-v30.59';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.58')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.59')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.58 ready');
+console.log('[SW] v30.59 ready');
