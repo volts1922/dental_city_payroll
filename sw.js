@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.75
-const VERSION = 'v30.75-fix-table-names';
-const CACHE = 'dcpayroll-v30.75';
+// DC Payroll Service Worker v30.76
+const VERSION = 'v30.76-fix-ghost-tracker-null';
+const CACHE = 'dcpayroll-v30.76';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.75')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.76')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.75 ready');
+console.log('[SW] v30.76 ready');
