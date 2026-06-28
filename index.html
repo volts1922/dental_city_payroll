@@ -1388,41 +1388,50 @@ function showBranchModal(){
     <small style="color:#666">Branch ID will be auto-generated from name</small></div>`,
     ()=>{ 
       const n=document.getElementById('f_bname')?.value?.trim();
+      console.log('🏢 Branch modal save clicked, name:', n);
+      
       if(!n){
         toast('⚠️ Branch name required');
         return;
       }
+      
+      console.log('_sb exists?', !!_sb);
       
       if(!_sb){
         toast('❌ Not connected to database');
         return;
       }
       
-      // Async save without awaiting in callback
+      // Async save
       (async ()=>{
         try {
           const branchId = n.toLowerCase().replace(/\\s+/g,'_').replace(/[^a-z0-9_]/g,'');
-          console.log(`📝 Creating branch: ${branchId} = ${n}`);
+          console.log(`📝 [Branch] Creating: id=${branchId}, name=${n}`);
           
           const {data, error} = await _sb.from('pr_branches').insert([
             {id: branchId, branch_name: n}
           ]);
           
+          console.log('📊 [Branch] Response:', {data, error});
+          
           if(error){
-            console.error('❌ Error:', error);
+            console.error('❌ [Branch] Error:', error);
             toast(`❌ ${error.message}`);
             return;
           }
           
-          console.log('✅ Branch saved!', data);
-          toast('✅ Branch created!');
+          console.log('✅ [Branch] Saved successfully!');
+          toast('✅ Branch created! Refreshing...');
           closeModal();
           
-          // Refresh branches
-          setTimeout(()=>{ window.location.reload(); }, 500);
+          // Wait then reload
+          setTimeout(()=>{ 
+            console.log('🔄 Reloading page...');
+            window.location.reload(); 
+          }, 1000);
           
         } catch(e) {
-          console.error('💥 Exception:', e);
+          console.error('💥 [Branch] Exception:', e);
           toast('❌ Error: ' + e.message);
         }
       })();
