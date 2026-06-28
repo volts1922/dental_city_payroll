@@ -519,12 +519,10 @@ async function _handleInactivityLogout(){
 // Audit logging function
 async function _auditLog(action, user, details){
   const entry = {
-    id: Math.random().toString(36).slice(2,9),
-    timestamp: nowPH(),  // ✅ Use PH timezone
-    action: action,
     username: user,
-    branch: getBranch?.() || 'main',
-    details: details
+    action: action,
+    details: details,
+    timestamp: nowPH()
   };
   
   try {
