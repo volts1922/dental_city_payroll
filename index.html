@@ -2784,15 +2784,26 @@ function showAttendanceTracker(period='week'){
     const yr=now.getFullYear(), mo=now.getMonth();
     const fd=new Date(yr,mo,1);
     const ld=new Date(yr,mo+1,0);
+    const td = today(); // Today's date
     for(let d=new Date(fd);d<=ld;d.setDate(d.getDate()+1)){
-      dates.push(d.toISOString().split('T')[0]);
+      const dateStr = d.toISOString().split('T')[0];
+      // Only include dates from today onwards
+      if(dateStr <= td) {
+        dates.push(dateStr);
+      }
     }
     title=`Monthly Attendance Report`;
   }else if(period==='year'){
     const yr=now.getFullYear();
+    const td = today();
+    const currentMo = new Date().getMonth();
     for(let mo=0;mo<12;mo++){
       const d=new Date(yr,mo,15);
-      dates.push(d.toISOString().slice(0,7));
+      const dateStr = d.toISOString().slice(0,7);
+      // Only include months from today's month onwards
+      if(mo <= currentMo) {
+        dates.push(dateStr);
+      }
     }
     title=`Annual Attendance Report`;
   }
