@@ -1830,14 +1830,12 @@ function computeNetPayWithPeriod(dailyRate, daysWorked=null, absences=0, halfDay
     ph  = computePH(fullMonthly);
     pi  = computePagibig(fullMonthly);
     tax = 0; // No BIR tax in 1st half
-    console.log(`💰 1st HALF: SSS=${sss}, PH=${ph}, PI=${pi}, TAX=${tax}`);
   } else if(period.isSecondHalf){
     // 2nd HALF: BIR tax only (on full month - allowances)
     sss = 0;
     ph  = 0;
     pi  = 0;
     tax = computeTax(Math.max(fullMonthly - totalAllow, 0));
-    console.log(`💰 2nd HALF: SSS=${sss}, PH=${ph}, PI=${pi}, TAX=${tax}`);
   } else {
     // FULL MONTH: All deductions
     sss = computeSSS(fullMonthly);
@@ -1845,7 +1843,6 @@ function computeNetPayWithPeriod(dailyRate, daysWorked=null, absences=0, halfDay
     pi  = computePagibig(fullMonthly);
     // Tax calculated on: full month - govt contributions - allowances
     tax = computeTax(Math.max(fullMonthly - sss - ph - pi - totalAllow, 0));
-    console.log(`💰 FULL MONTH: SSS=${sss}, PH=${ph}, PI=${pi}, TAX=${tax}`);
   }
   
   const totalDed = sss + ph + pi + tax + loanDeduction;
@@ -4251,9 +4248,6 @@ function showPayslip(){
           ${Object.entries(emps).map(([id,e])=>`<option value="${id}">${e.name} (${id} - ${e.branch||'main'})</option>`).join('')}
         </select>
         <input type="month" id="slipMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('1st')">1st Half</button>
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('2nd')">2nd Half</button>
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('full')">Full Month</button>
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
@@ -4292,14 +4286,15 @@ function generateSlip(){
   const eid=document.getElementById('slipEmp')?.value;
   const fromDate=document.getElementById('slipFrom')?.value;
   const toDate=document.getElementById('slipTo')?.value;
+  
   if(!eid){toast('⚠️ Select an employee');return;}
   if(!fromDate||!toDate){toast('⚠️ Set date range');return;}
+  
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const e=emps[eid], rate=parseFloat(e.daily_rate||0);
-  const recs=(att[eid]||[]).filter(r=>r.date>=fromDate&&r.date<=toDate);
   
-  // DEBUG
-  console.log(`📅 Attendance Filter:`, {eid, fromDate, toDate, allRecs: (att[eid]||[]).length, filteredRecs: recs.length, recs: recs.slice(0,5)});
+  // Get attendance records for the date range
+  const recs=(att[eid]||[]).filter(r=>r.date>=fromDate&&r.date<=toDate);
   
   const daysPresent= recs.filter(r=>r.status==='Present'||r.status==='Late').length;
   const absences   = recs.filter(r=>r.status==='Absent').length;
@@ -4325,8 +4320,6 @@ function generateSlip(){
     daysWorked = calendarDays - (regHolDays + speHolDays);
   }
   
-  console.log(`📊 DaysWorked Calc:`, {daysPresent, halfDays, absences, calendarDays, regHolDays, speHolDays, hasAtt, daysWorked});
-  
   const allowances = e.allowances || {};
   const totalAllow = totalAllowances(allowances);
   
@@ -4335,9 +4328,6 @@ function generateSlip(){
   const isFirstHalf = fromDate.includes('-01') && toDate.includes('-15');
   const isSecondHalf = fromDate.includes('-16') && !toDate.includes('-15');
   const isFullMonth = fromDate.includes('-01') && (toDate.includes('-28')||toDate.includes('-29')||toDate.includes('-30')||toDate.includes('-31'));
-  
-  // DEBUG
-  console.log(`📋 Payslip Period Detection:`, {fromDate, toDate, isFirstHalf, isSecondHalf, isFullMonth});
   
   const pay = computeNetPayWithPeriod(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, {isFirstHalf, isSecondHalf, isFullMonth});
   const dw  = daysWorked!==null?daysWorked.toFixed(2):WORKING_DAYS.toFixed(2);
