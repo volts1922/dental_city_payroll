@@ -6492,6 +6492,144 @@ function getShiftHours(empId){
 // DEVELOPER DASHBOARD (v29.8.1)
 // ══════════════════════════════════════════════════════════════════════════════
 
+async function forceSyncAllData(){
+  if(!checkAdminAccess('forceSyncAllData')) return;
+  if(!confirm('🔄 Force sync ALL data from Supabase? This will overwrite local data.')) return;
+  
+  toast('🔄 Syncing all data from cloud...');
+  console.log('🔄 Force syncing ALL data from Supabase');
+  
+  try {
+    // Sync Employees
+    const {data: emps, error: empErr} = await _sb.from('employees_201').select('*');
+    if(!empErr && emps) {
+      const empMap = {};
+      emps.forEach(e => {
+        empMap[e.employee_id] = {
+          id: e.employee_id,
+          name: e.full_name,
+          branch: e.branch_id || 'main',
+          daily_rate: e.daily_rate || 0,
+          allowances: e.allowances ? JSON.parse(e.allowances) : {},
+          position: e.position || '',
+          email: e.email || '',
+          phone: e.phone || ''
+        };
+      });
+      save(KEYS.employees, empMap);
+      console.log(`✅ Synced ${emps.length} employees`);
+    }
+    
+    // Sync Time Clock (Attendance)
+    const {data: tc, error: tcErr} = await _sb.from('time_clock').select('*');
+    if(!tcErr && tc) {
+      const attMap = {};
+      tc.forEach(r => {
+        if(!attMap[r.employee_id]) attMap[r.employee_id] = [];
+        attMap[r.employee_id].push({
+          date: r.date,
+          time_in: r.time_in,
+          time_out: r.time_out,
+          status: r.status,
+          ot_hours: r.ot_hours || 0,
+          nd_hours: r.nd_hours || 0,
+          holiday: r.holiday || '',
+          branch_id: r.branch_id
+        });
+      });
+      save(KEYS.attendance, attMap);
+      console.log(`✅ Synced ${tc.length} attendance records`);
+    }
+    
+    // Sync Payroll Data
+    const {data: payroll, error: payErr} = await _sb.from('payroll_data').select('*');
+    if(!payErr && payroll) {
+      const payMap = {};
+      payroll.forEach(p => {
+        if(!payMap[p.employee_id]) payMap[p.employee_id] = [];
+        payMap[p.employee_id].push({
+          id: p.id,
+          period_from: p.period_from,
+          period_to: p.period_to,
+          gross: p.gross,
+          net: p.net,
+          status: p.status,
+          branch_id: p.branch_id
+        });
+      });
+      save(KEYS.payroll, payMap);
+      console.log(`✅ Synced ${payroll.length} payroll records`);
+    }
+    
+    // Sync Leaves
+    const {data: leaves, error: leaveErr} = await _sb.from('pr_leaves').select('*');
+    if(!leaveErr && leaves) {
+      const leaveMap = {};
+      leaves.forEach(l => {
+        if(!leaveMap[l.employee_id]) leaveMap[l.employee_id] = [];
+        leaveMap[l.employee_id].push({
+          id: l.id,
+          leave_type: l.leave_type,
+          from_date: l.from_date,
+          to_date: l.to_date,
+          days: l.days,
+          status: l.status,
+          branch_id: l.branch_id
+        });
+      });
+      save(KEYS.leaves, leaveMap);
+      console.log(`✅ Synced ${leaves.length} leave records`);
+    }
+    
+    // Sync Loans
+    const {data: loans, error: loanErr} = await _sb.from('pr_loans').select('*');
+    if(!loanErr && loans) {
+      const loanMap = {};
+      loans.forEach(l => {
+        if(!loanMap[l.employee_id]) loanMap[l.employee_id] = [];
+        loanMap[l.employee_id].push({
+          id: l.id,
+          type: l.loan_type,
+          amount: l.amount,
+          monthly_amort: l.monthly_amort,
+          balance: l.balance,
+          status: l.status,
+          branch_id: l.branch_id
+        });
+      });
+      save(KEYS.loans, loanMap);
+      console.log(`✅ Synced ${loans.length} loan records`);
+    }
+    
+    // Sync Branches
+    const {data: branches, error: branchErr} = await _sb.from('pr_branches').select('*');
+    if(!branchErr && branches) {
+      localStorage.setItem('pr_branches', JSON.stringify(branches));
+      console.log(`✅ Synced ${branches.length} branches`);
+    }
+    
+    // Sync Payroll Approvals
+    const {data: approvals, error: appErr} = await _sb.from('pr_payroll_approvals').select('*');
+    if(!appErr && approvals) {
+      save(KEYS.payrollApprovals, approvals);
+      console.log(`✅ Synced ${approvals.length} payroll approvals`);
+    }
+    
+    toast('✅ All data synced from cloud!');
+    console.log('✅ Force sync complete!');
+    
+    // Refresh UI if dashboard is open
+    setTimeout(() => {
+      if(document.getElementById('dashboardContent')) showDashboard();
+      if(document.getElementById('slipContent')) showPayslipGenerator();
+    }, 500);
+    
+  } catch(err) {
+    console.error('❌ Force sync error:', err);
+    toast('❌ Sync failed - check console');
+  }
+}
+
 async function syncAllEmployeesToSupabase(){
   const employees = load(KEYS.employees) || [];
   if(employees.length === 0) {
@@ -6554,6 +6692,7 @@ function showDeveloperDashboard(){
       <button class="btn btn-primary" onclick="comprehensiveSystemAudit()" style="margin-right:8px">🔍 Run Audit</button>
       <button class="btn btn-secondary" onclick="console.log('LocalStorage:', localStorage); alert('Check DevTools Console (F12)')">📋 View Storage</button>
       <button class="btn btn-success" onclick="syncAllEmployeesToSupabase()" style="margin-left:8px">☁️ Sync All Employees</button>
+      <button class="btn btn-info" onclick="forceSyncAllData()" style="margin-left:8px">🔄 Force Sync from Cloud</button>
       
       <h4 style="margin-top:20px">Operations</h4>
       
