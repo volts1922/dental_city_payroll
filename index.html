@@ -1940,7 +1940,7 @@ function showDashboard(){
   
   // Branch selector
   const branchList = Object.keys(branches).filter(b=>b);
-  const activeBranch = isOwner()||isDev() ? 'All' : (window._dashBranch || branchList[0] || 'All');
+  const activeBranch = isOwner()||isDeveloper() ? 'All' : (window._dashBranch || branchList[0] || 'All');
   
   // Filtered by branch
   const filterByBranch = (arr, bid) => Object.entries(arr).filter(([eid,_])=>(emps[eid]||{}).branch===bid);
@@ -1997,7 +1997,7 @@ function showDashboard(){
   document.getElementById('main').innerHTML=`
     <div class="section-header" style="margin-bottom:12px">
       <div class="section-title">📊 Real-Time Status</div>
-      ${!isOwner()&&!isDev()?`<select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
+      ${!isOwner()&&!isDeveloper()?`<select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
         ${getBranchOptions().map(b=>'<option value="'+b+'" '+( b===activeBranch?'selected':'')+'>'+b+'</option>').join('')}
       </select>`:''}
     </div>
@@ -2760,7 +2760,7 @@ function showAttendanceTracker(period='week'){
     attData = att;
   }
   
-  const activeBranch = isOwner()||isDev() ? null : getBranch();
+  const activeBranch = isOwner()||isDeveloper() ? null : getBranch();
   const activeEmps=Object.entries(emps||{})
     .filter(([,e])=>e.status!=='Resigned' && (!activeBranch || e.branch===activeBranch))
     .map(([id,e])=>({id,name:e.name||id}));
@@ -6495,16 +6495,52 @@ function getShiftHours(empId){
 
 async function syncCurrentBranchOnly(){
   if(!checkAdminAccess('syncCurrentBranchOnly')) return;
-  const branch = getBranch();
-  if(!branch){toast('⚠️ No branch selected');return;}
-  if(!confirm(`🔄 Sync employees from ${branch} only? Local data will be updated.`)) return;
   
-  toast(`🔄 Syncing ${branch} employees...`);
-  console.log(`🔄 Syncing branch: ${branch}`);
+  // Get list of branches
+  const branches = JSON.parse(localStorage.getItem('pr_branches') || '[]');
+  if(!branches || branches.length === 0) {
+    toast('⚠️ No branches found');
+    return;
+  }
+  
+  // Create branch selection popup
+  const branchOpts = branches.map(b => `<option value="${b}">${b}</option>`).join('');
+  
+  openModal('🏥 Sync Which Branch?', `
+    <div style="padding:15px">
+      <label style="display:block;margin-bottom:10px;font-weight:600">Select Branch to Sync:</label>
+      <select id="syncBranchSelect" style="width:100%;padding:10px;border:1.5px solid #ccc;border-radius:6px;font-size:14px;">
+        ${branchOpts}
+      </select>
+      <p style="font-size:12px;color:#666;margin-top:10px">⚠️ This will update employees and attendance from Supabase for the selected branch only.</p>
+    </div>
+  `, [
+    {
+      label: 'Cancel',
+      fn: () => closeModal()
+    },
+    {
+      label: 'Sync Branch',
+      fn: async () => {
+        const selectedBranch = document.getElementById('syncBranchSelect')?.value;
+        if(!selectedBranch) {
+          toast('⚠️ Select a branch');
+          return;
+        }
+        closeModal();
+        await performBranchSync(selectedBranch);
+      }
+    }
+  ]);
+}
+
+async function performBranchSync(branchToSync) {
+  toast(`🔄 Syncing ${branchToSync}...`);
+  console.log(`🔄 Syncing branch: ${branchToSync}`);
   
   try {
-    // Fetch employees for current branch only
-    const {data: emps, error: empErr} = await _sb.from('employees_201').select('*').eq('branch_id', branch);
+    // Fetch employees for selected branch only
+    const {data: emps, error: empErr} = await _sb.from('employees_201').select('*').eq('branch_id', branchToSync);
     if(!empErr && emps) {
       const localEmps = load(KEYS.employees) || {};
       let syncCount = 0;
@@ -6512,7 +6548,7 @@ async function syncCurrentBranchOnly(){
         localEmps[e.employee_id] = {
           id: e.employee_id,
           name: e.full_name,
-          branch: e.branch_id || branch,
+          branch: e.branch_id || branchToSync,
           daily_rate: e.daily_rate || 0,
           allowances: e.allowances ? JSON.parse(e.allowances) : {},
           position: e.position || '',
@@ -6522,11 +6558,11 @@ async function syncCurrentBranchOnly(){
         syncCount++;
       });
       save(KEYS.employees, localEmps);
-      console.log(`✅ Synced ${syncCount} employees from ${branch}`);
+      console.log(`✅ Synced ${syncCount} employees from ${branchToSync}`);
     }
     
-    // Fetch attendance for current branch only
-    const {data: tc, error: tcErr} = await _sb.from('time_clock').select('*').eq('branch_id', branch);
+    // Fetch attendance for selected branch only
+    const {data: tc, error: tcErr} = await _sb.from('time_clock').select('*').eq('branch_id', branchToSync);
     if(!tcErr && tc) {
       const localAtt = load(KEYS.attendance) || {};
       let attCount = 0;
@@ -6545,10 +6581,10 @@ async function syncCurrentBranchOnly(){
         attCount++;
       });
       save(KEYS.attendance, localAtt);
-      console.log(`✅ Synced ${attCount} attendance records from ${branch}`);
+      console.log(`✅ Synced ${attCount} attendance records from ${branchToSync}`);
     }
     
-    toast(`✅ ${branch} data synced!`);
+    toast(`✅ ${branchToSync} synced!`);
     console.log(`✅ Branch sync complete!`);
     
     // Refresh UI
