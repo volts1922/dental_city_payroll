@@ -1,13 +1,13 @@
-// DC Payroll Service Worker v30.82
-const VERSION = 'v30.82-fix-audit-log-branch';
-const CACHE = 'dcpayroll-v30.82';
+// DC Payroll Service Worker v30.83
+const VERSION = 'v30.83-save-branches-to-supabase';
+const CACHE = 'dcpayroll-v30.83';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.82')).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !k.includes('v30.83')).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -21,4 +21,4 @@ self.addEventListener('fetch', e => {
   );
 });
 
-console.log('[SW] v30.82 ready');
+console.log('[SW] v30.83 ready');
