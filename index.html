@@ -975,7 +975,7 @@ async function _loadAccountsFromCloud(){
     const { data, error } = await _sb.from('pr_accounts').select('*');
     if(error || !data) return;
     data.forEach(row=>{
-      USERS[row.username] = { password: row.password_hash, role: row.role, name: row.username, ...(row.branch_id?{branch:row.branch_id}:{}) };
+      USERS[row.username] = { password: row.password, role: row.role, name: row.username, ...(row.branch_id?{branch:row.branch_id}:{}) };
     });
     console.log('☁️ Loaded', data.length, 'cloud accounts');
   }catch(e){ console.log('Account load error:', e.message); }
@@ -1384,8 +1384,26 @@ function updateBranchUI(n){
 function showBranchModal(){
   openModal('🏢 Set Branch Name',`
     <div class="form-group"><label class="form-label">Branch Name *</label>
-    <input class="form-control" id="f_bname" placeholder="e.g. Main Branch, Makati Branch..." style="font-size:14px;padding:10px"></div>`,
-    ()=>{ const n=document.getElementById('f_bname').value.trim(); if(!n){toast('⚠️ Required');return;} setBranch(n);updateBranchUI(n);closeModal();toast('✅ Branch set!'); },
+    <input class="form-control" id="f_bname" placeholder="e.g. Manila, Cebu..." style="font-size:14px;padding:10px"></div>`,
+    async ()=>{ 
+      const n=document.getElementById('f_bname').value.trim(); 
+      if(!n){toast('⚠️ Required');return;} 
+      
+      // Save to Supabase
+      try {
+        const branchId = n.toLowerCase().replace(/\\s+/g,'_');
+        await _sb.from('pr_branches').upsert({id: branchId, branch_name: n}, {onConflict: 'id'});
+        toast('✅ Branch created!');
+      } catch(e) {
+        console.error('Branch save error:', e);
+        toast('❌ Error saving branch');
+        return;
+      }
+      
+      setBranch(n);
+      updateBranchUI(n);
+      closeModal();
+    },
     '✅ Save'
   );
   document.querySelector('.modal-close').style.display='none';
