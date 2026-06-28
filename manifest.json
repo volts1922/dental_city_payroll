@@ -1,7 +1,7 @@
 {
-  "name": "DC Payroll v30.58",
+  "name": "DC Payroll v30.59",
   "short_name": "DC Payroll",
-  "description": "Time tracking, payroll with fixed trackers (weekly/monthly/annual)",
+  "description": "Time tracking, payroll with fully fixed trackers (no false absences)",
   "start_url": "/dental_city_payroll/",
   "scope": "/dental_city_payroll/",
   "display": "standalone",
