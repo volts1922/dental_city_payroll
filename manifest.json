@@ -6,7 +6,25 @@
   "scope": "/dental_city_payroll/",
   "display": "standalone",
   "orientation": "any",
+  "background_color": "#ffffff",{
+  "name": "DC Payroll v30.62",
+  "short_name": "DC Payroll",
+  "description": "Time tracking, payroll with unified tax calculations (2nd/full month match)",
+  "start_url": "/dental_city_payroll/",
+  "scope": "/dental_city_payroll/",
+  "display": "standalone",
+  "orientation": "any",
   "background_color": "#ffffff",
+  "theme_color": "#1E293B",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%231E293B' width='192' height='192'/><text x='96' y='120' font-size='100' font-weight='bold' fill='white' text-anchor='middle'>⏱</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
   "theme_color": "#1E293B",
   "icons": [
     {
