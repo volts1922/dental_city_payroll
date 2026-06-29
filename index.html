@@ -3356,13 +3356,32 @@ async function showPayslip(empId, month, startDate, endDate){
   if(attRecords.length === 0){
     const locAtt = load(KEYS.attendance) || {};
     const empAtt = locAtt[empId] || {};
-    attRecords = Object.values(empAtt).filter(r => r.date >= startDate && r.date <= endDate);
+    attRecords = Object.values(empAtt).filter(r => {
+      if(!r.date) return false;
+      return r.date >= startDate && r.date <= endDate;
+    });
+    console.log(`Attendance from localStorage for ${empId}:`, attRecords.length, 'records');
   }
+  
+  console.log(`Payslip ${empId}: ${startDate} to ${endDate} = ${attRecords.length} records`);
   
   // Count actual days worked in range
   const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present').length;
   const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
-  const daysWorked = daysPresent + (daysHalfDay * 0.5);
+  let daysWorked = daysPresent + (daysHalfDay * 0.5);
+  
+  // If no attendance records found, calculate business days in range as fallback
+  if(daysWorked === 0 && attRecords.length === 0){
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    let count = 0;
+    for(let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+      const day = d.getDay();
+      if(day !== 0 && day !== 6) count++; // Skip Sat/Sun
+    }
+    daysWorked = count;
+    console.log(`Using fallback: ${count} business days`);
+  }
   
   // Determine if this is 1st half, 2nd half, or custom
   const startDay = parseInt(startDate.split('-')[2]);
