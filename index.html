@@ -1096,21 +1096,26 @@ async function doLogin(){
   // Show dashboard IMMEDIATELY from local cache — don't block on the network.
   _finishLogin();
 
-  // Sync from Supabase cloud in the BACKGROUND, then quietly refresh the current view.
+  // Sync from Supabase cloud in the BACKGROUND (don't await, don't block UI)
   if(_sb){
     if(isOwnerRole(user.role)){
       setSyncBar('syncing','☁ Syncing all branches...');
-      loadAllBranchesFromCloud().then(()=>{
-        setSyncBar('ok','☁ All branches loaded');
-        // Refresh current view if it exists
-        if(typeof refreshCurrentView==='function') refreshCurrentView();
-      }).catch(()=>setSyncBar('err','⚠ Sync failed'));
+      // Fire and forget — don't block on this
+      loadAllBranchesFromCloud()
+        .then(()=>setSyncBar('ok','☁ All branches loaded'))
+        .catch(e=>{
+          console.warn('Background sync failed:', e.message);
+          setSyncBar('err','⚠ Sync failed');
+        });
     } else {
       setSyncBar('syncing','☁ Syncing...');
-      loadFromCloud().then(()=>{
-        setSyncBar('ok','☁ Cloud connected');
-        if(typeof refreshCurrentView==='function') refreshCurrentView();
-      }).catch(()=>setSyncBar('err','⚠ Sync failed'));
+      // Fire and forget — don't block on this
+      loadFromCloud()
+        .then(()=>setSyncBar('ok','☁ Cloud connected'))
+        .catch(e=>{
+          console.warn('Background sync failed:', e.message);
+          setSyncBar('err','⚠ Sync failed');
+        });
     }
   } else {
     setSyncBar('offline','💾 Local mode only');
@@ -4988,7 +4993,7 @@ async function softRefreshWithSync(){
 }
 
 // ── All Branches Dashboard ────────────────────────────────────────────────────
-async function showOwnerDashboard(){
+function showOwnerDashboard(){
   // Only Admin and above can view dashboard
   if(!isAdmin()){
     toast('⛔ Access denied.');
@@ -4996,65 +5001,36 @@ async function showOwnerDashboard(){
     return;
   }
   
-  showLoading('Loading branches...');
-  
   const td = today();
   let totalEmps=0, totalPresent=0, totalPayroll=0;
 
   // ADMIN: show only their branch. OWNER: show ALL_BRANCHES
   const branchesToShow = isOwner() ? ALL_BRANCHES : [getBranch()];
   
-  // Fetch ALL employees from Supabase
-  let sbEmps = {};
-  if(_sb) {
-    try {
-      const {data} = await _sb.from('employees_201').select('*');
-      if(data) {
-        data.forEach(e => {
-          sbEmps[e.employee_id] = e;
-        });
-      }
-    } catch(e) {
-      console.error('Failed to fetch employees from Supabase:', e);
-    }
-  }
-  
-  // Group Supabase employees by branch UUID, then get branch names
+  // Use LOCAL cache for quick display — cloud sync happens in background
   const empsByBranch = {};
   ALL_BRANCHES.forEach(b => { empsByBranch[b] = {}; });
   
-  for(const [eid, emp] of Object.entries(sbEmps)) {
-    if(emp.branch_id) {
-      // Find branch name by UUID
-      try {
-        const {data: branchData} = await _sb.from('branches').select('name').eq('id', emp.branch_id).single();
-        if(branchData && branchData.name) {
-          if(!empsByBranch[branchData.name]) empsByBranch[branchData.name] = {};
-          empsByBranch[branchData.name][eid] = emp;
-        }
-      } catch(e) {
-        console.warn('Branch lookup failed for:', emp.branch_id);
-      }
+  const allEmps = load(KEYS.employees) || {};
+  Object.entries(allEmps).forEach(([eid, e]) => {
+    if(e.branch && empsByBranch[e.branch]) {
+      empsByBranch[e.branch][eid] = e;
     }
-  }
+  });
   
   const branchCards = branchesToShow.map((b,i)=>{
     const bdata   = _ownerData[b] || {};
     const emps    = empsByBranch[b] || {};
     const att     = bdata.pr_attendance || {};
     const loans   = bdata.pr_loans      || {};
-    const active  = Object.keys(emps).length; // All from Supabase are active
+    const active  = Object.values(emps).filter(e=>e.status==='Active').length;
     const present = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Present').length,0);
     const absent  = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Absent').length,0);
     const late    = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Late').length,0);
-    
-    // Get daily rates from localStorage for net pay calculation
-    const localEmps = load(KEYS.employees) || {};
-    const netPay  = Object.entries(emps)
-      .reduce((s,[eid])=>{
-        const rate = parseFloat(localEmps[eid]?.daily_rate || 0);
+    const netPay  = Object.entries(emps).filter(([,e])=>e.status==='Active')
+      .reduce((s,[eid,e])=>{
         const loanDed=(loans[eid]||[]).filter(l=>l.status==='Active').reduce((x,l)=>x+parseFloat(l.monthly_amort||0),0);
-        return s+computeNetPay(rate,null,0,0,loanDed).net;
+        return s+computeNetPay(parseFloat(e.daily_rate||0),null,0,0,loanDed).net;
       },0);
     totalEmps+=active; totalPresent+=present; totalPayroll+=netPay;
     const COLS=['#2A7FBF','#16A34A','#D97706','#DC2626','#7C3AED','#0D9488','#B45309','#1D4ED8','#BE185D'];
