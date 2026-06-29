@@ -482,7 +482,8 @@
                     let daysWorked = 0;
                     for (let d = start; d <= end; d++) {
                         const date = `${year}-${mon}-${String(d).padStart(2, '0')}`;
-                        const status = this.getAttendance(emp.id, date);
+                        const key = `${emp.id}-${date}`; // FIXED: correct key format
+                        const status = this.attendance[key]?.status || 'unmarked';
                         if (status === 'present') daysWorked += 1;
                         else if (status === 'half') daysWorked += 0.5;
                     }
@@ -659,9 +660,20 @@
         function generatePayroll() {
             const month = document.getElementById('payMonthSelect').value;
             const period = document.getElementById('payPeriodSelect').value;
-            if (!month || !period) return;
+            if (!month || !period) {
+                showAlert('Select month AND period first', 'error');
+                return;
+            }
 
+            console.log(`Computing payroll for ${month} (${period})`);
             const payroll = sys.computePayroll(month, period);
+            console.log('Payroll result:', payroll);
+
+            if (!payroll || payroll.length === 0) {
+                showAlert('No employees found or no attendance marked', 'error');
+                return;
+            }
+
             const tbody = document.getElementById('payrollTable');
             tbody.innerHTML = payroll.map(p => `
                 <tr>
@@ -676,6 +688,8 @@
                     <td><button class="btn btn-small" onclick="viewPayslip(${p.empId}, '${month}', '${period}')">View</button></td>
                 </tr>
             `).join('');
+
+            showAlert(`Payroll computed for ${payroll.length} employees`, 'success');
         }
 
         function viewPayslip(empId, month, period) {
