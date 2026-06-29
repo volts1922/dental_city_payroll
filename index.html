@@ -1093,31 +1093,35 @@ async function doLogin(){
     if(branch) setBranch(branch);
   }
 
+  // For owner/dev: load branches from cloud BEFORE showing dashboard + picker
+  if(isOwnerRole(user.role) && _sb){
+    showLoading('Loading branches...');
+    try {
+      await loadAllBranchesFromCloud();
+    } catch(e) {
+      console.warn('Failed to load branches:', e.message);
+      // Fall back to defaults
+      if(!ALL_BRANCHES.length) ALL_BRANCHES = [..._DEFAULT_BRANCHES];
+    }
+    hideLoading();
+  } else if(!ALL_BRANCHES.length) {
+    ALL_BRANCHES = [..._DEFAULT_BRANCHES];
+  }
+
   // Show dashboard IMMEDIATELY from local cache — don't block on the network.
   _finishLogin();
 
   // Sync from Supabase cloud in the BACKGROUND (don't await, don't block UI)
-  if(_sb){
-    if(isOwnerRole(user.role)){
-      setSyncBar('syncing','☁ Syncing all branches...');
-      // Fire and forget — don't block on this
-      loadAllBranchesFromCloud()
-        .then(()=>setSyncBar('ok','☁ All branches loaded'))
-        .catch(e=>{
-          console.warn('Background sync failed:', e.message);
-          setSyncBar('err','⚠ Sync failed');
-        });
-    } else {
-      setSyncBar('syncing','☁ Syncing...');
-      // Fire and forget — don't block on this
-      loadFromCloud()
-        .then(()=>setSyncBar('ok','☁ Cloud connected'))
-        .catch(e=>{
-          console.warn('Background sync failed:', e.message);
-          setSyncBar('err','⚠ Sync failed');
-        });
-    }
-  } else {
+  if(_sb && !isOwnerRole(user.role)){
+    setSyncBar('syncing','☁ Syncing...');
+    // Fire and forget — don't block on this
+    loadFromCloud()
+      .then(()=>setSyncBar('ok','☁ Cloud connected'))
+      .catch(e=>{
+        console.warn('Background sync failed:', e.message);
+        setSyncBar('err','⚠ Sync failed');
+      });
+  } else if(_sb) {
     setSyncBar('offline','💾 Local mode only');
   }
 }
@@ -1364,7 +1368,6 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // ── NAV ───────────────────────────────────────────────────────────────────────
 const NAV_OWNER=[
   // ── Overview ──────────────────────────────────────────────────────────────
-  {icon:'🌐',label:'All Branches',     fn:'showOwnerDashboard'},
   {icon:'📊',label:'Dashboard',        fn:'showDashboard'},
   {icon:'👥',label:'All Employees',    fn:'showAllEmployees'},
   {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals'},
@@ -1415,14 +1418,9 @@ let currentPage='';
 let _ownerPendingLeaves = 0;
 let _ownerDashInterval  = null;
 
+// Removed: Owner dashboard no longer used - use branch picker instead
 function startOwnerDashRefresh(){
-  stopOwnerDashRefresh();
-  _ownerDashInterval = setInterval(async ()=>{
-    if(isOwner() && currentPage==='All Branches'){
-      await loadAllBranchesFromCloud();
-      showOwnerDashboard();
-    }
-  }, 60000); // refresh every 60 seconds
+  // DISABLED - showOwnerDashboard removed
 }
 function stopOwnerDashRefresh(){
   if(_ownerDashInterval){ clearInterval(_ownerDashInterval); _ownerDashInterval=null; }
@@ -2244,7 +2242,21 @@ async function deleteEmp(id){
 
   if(!(await _confirm(`Delete employee "${name}"?${extra}<br><br>This cannot be undone.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
 
-  // Delete employee
+  // Delete from Supabase
+  if(_sb){
+    try {
+      console.log('🗑 Deleting from Supabase:', id);
+      const {error} = await _sb.from('employees_201').delete().eq('employee_id', id);
+      if(error) throw error;
+      console.log('✅ Deleted from Supabase:', id);
+    } catch(e){
+      console.error('❌ Supabase delete failed:', e.message);
+      toast(`⚠️ Supabase delete failed: ${e.message}`);
+      return;
+    }
+  }
+
+  // Delete employee from localStorage
   delete emps[id];
   save(KEYS.employees, emps);
 
@@ -4861,7 +4873,7 @@ async function ownerRefresh(){
   hideLoading();
   setSyncBar('ok','☁ All branches refreshed');
   toast('✅ All branch data refreshed!');
-  showOwnerDashboard();
+  showDashboard();
 }
 
 // ── Refresh Data for Admin/Staff ────────────────────────────────────────────────
@@ -5173,7 +5185,7 @@ function showBranchPresent(branchEnc, filterDate=''){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div style="display:flex;align-items:center;gap:10px">
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
         <div class="section-title" style="color:${col}">🏢 ${branch} — Attendance</div>
       </div>
       <div class="btn-row">
@@ -6030,7 +6042,7 @@ function showOwnerAttFilter(status='Present', branchEnc=''){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div style="display:flex;align-items:center;gap:10px">
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
         <div class="section-title">Attendance — <span style="color:${col}">${status}</span></div>
       </div>
       <div class="btn-row">
@@ -7712,7 +7724,7 @@ async function showPayrollApprovals(){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div class="section-title">💰 Payroll Approvals</div>
-      <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+      <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
     </div>
     <div style="text-align:center;padding:40px;color:#555">⏳ Loading approvals...</div>`;
   
@@ -7723,7 +7735,7 @@ async function showPayrollApprovals(){
     document.getElementById('main').innerHTML=`
       <div class="section-header">
         <div class="section-title">💰 Payroll Approvals</div>
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
       </div>
       <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:16px;color:#991B1B">
         ❌ Supabase not connected
@@ -7766,7 +7778,7 @@ async function showPayrollApprovals(){
     document.getElementById('main').innerHTML=`
       <div class="section-header">
         <div class="section-title">💰 Payroll Approvals</div>
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
       </div>
       <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:16px;color:#991B1B">
         ❌ Failed to load: ${err.message}
@@ -7801,7 +7813,7 @@ function renderPayrollApprovals(approvals){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div class="section-title">💰 Payroll Approvals</div>
-      <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+      <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
     </div>
     ${pendingRuns.length===0?`<div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:16px;text-align:center;color:#16A34A">✅ No pending payroll approvals</div>`:`
     <div style="font-size:13px;color:#555;margin-bottom:10px"><b>${pendingRuns.length}</b> payroll run${pendingRuns.length>1?'s':''} awaiting your approval</div>
