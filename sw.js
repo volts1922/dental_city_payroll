@@ -1,100 +1,98 @@
-const CACHE_NAME = 'clinicpay-v1';
+// DC PAYROLL SERVICE WORKER v30.47
+// Fixed: Response clone issue
+
+const CACHE_VERSION = 'dental-city-payroll-v30.47-time';
+const CACHE_NAME = CACHE_VERSION;
+
+// Files to cache
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  '/dental_city_payroll/',
+  '/dental_city_payroll/index.html',
+  '/dental_city_payroll/manifest.json'
 ];
 
-// Install event - cache essential files
-self.addEventListener('install', event => {
+// Install event - cache files
+self.addEventListener('install', (event) => {
   console.log('[SW] Installing...');
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
+    caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching app shell');
-      return cache.addAll(urlsToCache).catch(() => {
-        console.log('[SW] Some resources failed to cache (offline mode)');
+      return cache.addAll(urlsToCache).catch(e => {
+        console.warn('[SW] Cache addAll failed (expected for offline install):', e);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
+  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', event => {
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
   console.log('[SW] Activating...');
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
+        cacheNames.map((cacheName) => {
+          if (!cacheName.includes('v30.47')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
-    }).then(() => self.clients.claim())
+    })
   );
+  self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', event => {
-  const { request } = event;
-
+// Fetch event - network first, cache fallback
+self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
-  if (request.method !== 'GET') {
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // Skip non-http(s) requests
+  if (!event.request.url.startsWith('http')) {
     return;
   }
 
   event.respondWith(
-    caches.match(request)
-      .then(response => {
-        if (response) {
-          console.log('[SW] Serving from cache:', request.url);
+    fetch(event.request)
+      .then((response) => {
+        // Don't cache if not ok
+        if (!response || response.status !== 200) {
           return response;
         }
 
-        return fetch(request)
-          .then(response => {
-            // Don't cache if not a successful response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
+        // Clone response BEFORE using it
+        const responseToCache = response.clone();
 
-            // Clone the response
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then(cache => {
-              cache.put(request, responseToCache);
-            });
-
-            return response;
-          })
-          .catch(error => {
-            console.log('[SW] Fetch failed, returning offline page:', error);
-            // Return a fallback offline page or empty response
-            return new Response('Offline - App is running in offline mode', {
-              status: 503,
-              statusText: 'Service Unavailable',
-              headers: new Headers({ 'Content-Type': 'text/plain' })
-            });
+        // Cache the response
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache).catch(e => {
+            // Silently fail cache put
           });
+        });
+
+        return response;
+      })
+      .catch(() => {
+        // Return cached version if offline
+        return caches.match(event.request).then((response) => {
+          return response || new Response('Offline - cached version not available', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({'Content-Type': 'text/plain'})
+          });
+        });
       })
   );
 });
 
-// Handle messages from clients
-self.addEventListener('message', event => {
-  console.log('[SW] Message received:', event.data);
-
-  if (event.data.type === 'SKIP_WAITING') {
+// Handle messages
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-
-  if (event.data.type === 'CLEAR_CACHE') {
-    caches.delete(CACHE_NAME).then(() => {
-      event.ports[0].postMessage({ cleared: true });
-    });
-  }
-
-  if (event.data.type === 'GET_VERSION') {
-    event.ports[0].postMessage({ version: CACHE_NAME });
-  }
 });
+
+console.log('[SW] Service Worker loaded v30.47');
