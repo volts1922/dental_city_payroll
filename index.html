@@ -2283,7 +2283,22 @@ function showAttendance(){
 }
 
 async function loadAtt(){
-  const emps=load(KEYS.employees);
+  let emps=load(KEYS.employees);
+  
+  // Sync employees from Supabase
+  if(_sb){
+    try {
+      const {data: sbEmps} = await _sb.from('employees_201').select('*');
+      if(sbEmps && sbEmps.length > 0){
+        sbEmps.forEach(e => {
+          if(!emps[e.employee_id]) {
+            emps[e.employee_id] = e;
+          }
+        });
+      }
+    } catch(e) { console.log('Employee sync error:', e); }
+  }
+  
   const date=document.getElementById('attDate')?.value||_attDate;
   _attDate=date;
   const holType = getHolidayType(date);
@@ -2308,13 +2323,13 @@ async function loadAtt(){
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
           const timeInStr = r.time_in ? (() => {
             try {
-              const d = new Date(r.time_in + 'Z');
+              const d = new Date(r.time_in.includes('Z') || r.time_in.includes('+') ? r.time_in : r.time_in + 'Z');
               return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
             } catch { return '—'; }
           })() : '—';
           const timeOutStr = r.time_out ? (() => {
             try {
-              const d = new Date(r.time_out + 'Z');
+              const d = new Date(r.time_out.includes('Z') || r.time_out.includes('+') ? r.time_out : r.time_out + 'Z');
               return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
             } catch { return '—'; }
           })() : '—';
@@ -2396,7 +2411,7 @@ async function refreshLiveAttendance(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
           <div><span style="color:#888">Clocked In:</span> <b>${(() => {
             try {
-              const d = new Date(e.timeIn + 'Z');
+              const d = new Date(e.timeIn);
               return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
             } catch { return '—'; }
           })()}</b></div>
