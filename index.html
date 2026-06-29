@@ -1728,8 +1728,8 @@ function showDashboard(){
   
   const todayRows=Object.entries(att).flatMap(([eid,recs])=>recs.filter(r=>r.date===td).map(r=>({eid,r}))).map(({eid,r})=>{
     const name=(emps[eid]||{}).name||eid;
-    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
-  }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
+    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td><td><button class="btn btn-danger btn-sm" onclick="deleteAttRecord('${eid}','${td}')">🗑</button></td></tr>`;
+  }).join('')||`<tr><td colspan="7" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
     if(!e || e.status!=='Active') return false;
@@ -1818,7 +1818,7 @@ function showDashboard(){
       </div>
     </div>
     <div class="table-wrap"><div class="table-scroll">
-      <table><thead><tr><th>ID</th><th>Name</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>Status</th></tr></thead>
+      <table><thead><tr><th>ID</th><th>Name</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="dashAttBody">${todayRows}</tbody></table>
     </div></div>`;
 
