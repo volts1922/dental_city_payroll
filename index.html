@@ -1427,7 +1427,13 @@ function showBranchModal(){
       
       alert('✅ Branch created!');
       closeModal();
-      setTimeout(()=>location.reload(), 500);
+      
+      // Refresh branches from cloud
+      ALL_BRANCHES = await loadAllBranchesFromCloud();
+      console.log('Refreshed branches:', ALL_BRANCHES);
+      
+      // Show dashboard to see new branch
+      showOwnerDashboard();
       
     } catch(e) {
       console.error('Exception:', e);
