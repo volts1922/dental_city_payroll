@@ -1613,7 +1613,11 @@ function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('o
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-function today(){ return new Date().toISOString().split('T')[0]; }
+function today(){ 
+  const now = new Date();
+  const phTime = new Date(now.getTime() + (8 * 60 * 60 * 1000)); // UTC+8
+  return phTime.toISOString().split('T')[0];
+}
 
 // ✅ NEW: Get current date/time in PH timezone (UTC+8)
 function todayPH(){
@@ -3387,16 +3391,23 @@ async function showPayslip(empId, month, startDate, endDate){
   const startDay = parseInt(startDate.split('-')[2]);
   const endDay = parseInt(endDate.split('-')[2]);
   let periodLabel = `${startDate} to ${endDate}`;
-  if(startDay === 1 && endDay === 15) periodLabel = '1st Half (1-15)';
-  else if(startDay === 16) periodLabel = '2nd Half (16-EOMonth)';
+  let deductionType = 'custom'; // default
+  
+  if(startDay === 1 && endDay === 15) {
+    periodLabel = '1st Half (1-15)';
+    deductionType = 'first_half';
+  } else if(startDay >= 16 && endDay >= 16) {
+    periodLabel = '2nd Half (16-EOMonth)';
+    deductionType = 'second_half';
+  }
   
   // Calculate pay
   const basicPay = rate * daysWorked;
   const gross = basicPay;
   
-  // Determine deductions based on period
+  // Determine deductions based on period type
   let pay;
-  if(periodLabel.includes('1st Half')){
+  if(deductionType === 'first_half'){
     // 1st Half: SSS, PhilHealth, Pag-IBIG
     pay = {
       daysWorked, basic: basicPay, gross,
@@ -3407,8 +3418,8 @@ async function showPayslip(empId, month, startDate, endDate){
       loanDeduction: 0,
       net: 0
     };
-  } else if(periodLabel.includes('2nd Half')){
-    // 2nd Half: BIR only
+  } else if(deductionType === 'second_half'){
+    // 2nd Half: BIR Tax ONLY
     pay = {
       daysWorked, basic: basicPay, gross,
       sss: 0, ph: 0, pi: 0,
