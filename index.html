@@ -3190,7 +3190,11 @@ async function computePayroll(){
   let att = {};
   if(_sb){
     try {
-      const {data: records} = await _sb.from('time_clock').select('*').like('date', month + '%');
+      const [yr, mo] = month.split('-');
+      const nextMo = parseInt(mo) === 12 ? 1 : parseInt(mo) + 1;
+      const nextYr = parseInt(mo) === 12 ? parseInt(yr) + 1 : parseInt(yr);
+      const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
+      const {data: records} = await _sb.from('time_clock').select('*').gte('date', month + '-01').lt('date', nextMonthStr);
       if(records){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
