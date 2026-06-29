@@ -3245,7 +3245,8 @@ async function showPayroll(){
       <div class="btn-row">
         <input type="month" id="payMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
         <button class="btn btn-primary" onclick="(async()=>await computePayroll())()">Compute</button>
-        <button class="btn btn-teal" onclick="exportPayroll()">Export CSV</button>
+        <button class="btn btn-teal" onclick="exportPayroll()">📊 Export CSV</button>
+        <button class="btn btn-success" onclick="exportPayrollPDF()">📄 Export PDF</button>
       </div>
     </div>
     
@@ -3342,10 +3343,6 @@ async function showPayslip(empId, month, period='full_month'){
   const emp = emps[empId];
   if(!emp) { toast('⚠️ Employee not found'); return; }
   
-  // Get payroll data from already-computed data
-  const payData = _payrollData.find(p => p.empId === empId);
-  if(!payData) { toast('⚠️ Employee not in payroll. Compute first.'); return; }
-  
   const rate = parseFloat(emp.daily_rate || 0);
   const [yr, mo] = month.split('-');
   const year = parseInt(yr);
@@ -3353,13 +3350,47 @@ async function showPayslip(empId, month, period='full_month'){
   const monthName = new Date(year, monthNum - 1).toLocaleString('default', {month:'long', year:'numeric'});
   const periodLabel = period === 'first_half' ? '1st Half (1-15)' : period === 'second_half' ? '2nd Half (16-EOMonth)' : 'Full Month';
   
-  // Use payroll data but split deductions by period
+  // Set date range and fetch ACTUAL attendance for period
+  let startDate, endDate;
+  const nextYr = monthNum === 12 ? year + 1 : year;
+  const nextMo = monthNum === 12 ? 1 : monthNum + 1;
+  const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
+  
+  if(period === 'first_half'){
+    startDate = month + '-01';
+    endDate = month + '-16';
+  } else if(period === 'second_half'){
+    startDate = month + '-16';
+    endDate = nextMonthStr;
+  } else {
+    startDate = month + '-01';
+    endDate = nextMonthStr;
+  }
+  
+  // Fetch actual attendance for this period only
+  let attRecords = [];
+  if(_sb){
+    try {
+      const {data} = await _sb.from('time_clock').select('*').eq('employee_id', empId).gte('date', startDate).lt('date', endDate);
+      if(data) attRecords = data;
+    } catch(e) { console.error('Attendance fetch error:', e); }
+  }
+  
+  // Count actual days worked in this period
+  const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present').length;
+  const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
+  const daysWorked = daysPresent + (daysHalfDay * 0.5);
+  
+  // Get full month payroll data for reference
+  const payData = _payrollData.find(p => p.empId === empId);
+  const fullMonthDays = payData?.daysWorked || 22;
+  const dailyRate = rate;
+  const basicPay = dailyRate * daysWorked;
+  const gross = basicPay;
+  
+  // Calculate deductions based on period
   let pay;
   if(period === 'first_half'){
-    // 1st Half: Half the gross, SSS+PhilHealth+Pag-IBIG deductions
-    const daysWorked = payData.daysWorked / 2;
-    const basicPay = payData.basic / 2;
-    const gross = basicPay + (payData.allowances || 0);
     pay = {
       daysWorked: daysWorked,
       basic: basicPay,
@@ -3368,17 +3399,12 @@ async function showPayslip(empId, month, period='full_month'){
       ph: Math.round(gross * 0.025),
       pi: 100,
       tax: 0,
-      loanDeduction: payData.loanDeduction || 0,
+      loanDeduction: payData?.loanDeduction || 0,
       net: 0
     };
     pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.loanDeduction;
     pay.net = pay.gross - pay.totalDeductions;
   } else if(period === 'second_half'){
-    // 2nd Half: Other half of gross, BIR tax only
-    const daysWorked = payData.daysWorked / 2;
-    const basicPay = payData.basic / 2;
-    const gross = basicPay + (payData.allowances || 0);
-    const birTax = Math.max(0, (gross - 5000) * 0.08);
     pay = {
       daysWorked: daysWorked,
       basic: basicPay,
@@ -3386,25 +3412,25 @@ async function showPayslip(empId, month, period='full_month'){
       sss: 0,
       ph: 0,
       pi: 0,
-      tax: birTax,
+      tax: Math.max(0, (gross - 5000) * 0.08),
       loanDeduction: 0,
       net: 0
     };
-    pay.totalDeductions = birTax;
+    pay.totalDeductions = pay.tax;
     pay.net = pay.gross - pay.totalDeductions;
   } else {
-    // Full Month: Use complete payroll data
+    // Full month: use actual full month data
     pay = {
-      daysWorked: payData.daysWorked,
-      basic: payData.basic,
-      gross: payData.gross,
-      sss: payData.sss,
-      ph: payData.ph,
-      pi: payData.pi,
-      tax: payData.tax,
-      loanDeduction: payData.loanDeduction || 0,
-      totalDeductions: payData.totalDeductions,
-      net: payData.net
+      daysWorked: fullMonthDays,
+      basic: payData?.basic || (dailyRate * fullMonthDays),
+      gross: payData?.gross || (dailyRate * fullMonthDays),
+      sss: payData?.sss || 0,
+      ph: payData?.ph || 0,
+      pi: payData?.pi || 0,
+      tax: payData?.tax || 0,
+      loanDeduction: payData?.loanDeduction || 0,
+      totalDeductions: payData?.totalDeductions || 0,
+      net: payData?.net || 0
     };
   }
   
@@ -3422,20 +3448,21 @@ async function showPayslip(empId, month, period='full_month'){
         <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Daily Rate</div><div style="font-size:14px">₱${fmt(rate)}</div></div>
       </div>
       <div style="background:#f5f5f5;padding:15px;border-radius:8px;margin-bottom:20px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px;text-transform:uppercase;color:#333">Period Info</div>
-        <div style="font-weight:700;font-size:13px">Days Worked: <span style="color:#2563eb">${pay.daysWorked.toFixed(1)}</span></div>
+        <div style="font-weight:700;font-size:12px;margin-bottom:10px;text-transform:uppercase;color:#333">Period Details</div>
+        <div style="font-weight:700;font-size:13px">Days Worked: <span style="color:#2563eb">${pay.daysWorked.toFixed(1)}</span> days</div>
+        <div style="font-size:12px;color:#666;margin-top:5px">Period: ${periodLabel}</div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">EARNINGS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
-        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Basic Pay</td><td style="padding:10px;text-align:right">₱${fmt(pay.basic)}</td></tr>
+        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Basic Pay (${pay.daysWorked.toFixed(1)}d × ₱${fmt(rate)})</td><td style="padding:10px;text-align:right">₱${fmt(pay.basic)}</td></tr>
         <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">GROSS PAY</td><td style="padding:10px;text-align:right;font-weight:700">₱${fmt(pay.gross)}</td></tr>
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
-        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">SSS</td><td style="padding:10px;text-align:right">₱${fmt(pay.sss)}</td></tr>
-        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">PhilHealth</td><td style="padding:10px;text-align:right">₱${fmt(pay.ph)}</td></tr>
-        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Pag-IBIG</td><td style="padding:10px;text-align:right">₱${fmt(pay.pi)}</td></tr>
-        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Income Tax</td><td style="padding:10px;text-align:right">₱${fmt(pay.tax)}</td></tr>
+        ${pay.sss > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">SSS</td><td style="padding:10px;text-align:right">₱${fmt(pay.sss)}</td></tr>` : ''}
+        ${pay.ph > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">PhilHealth</td><td style="padding:10px;text-align:right">₱${fmt(pay.ph)}</td></tr>` : ''}
+        ${pay.pi > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Pag-IBIG</td><td style="padding:10px;text-align:right">₱${fmt(pay.pi)}</td></tr>` : ''}
+        ${pay.tax > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Income Tax</td><td style="padding:10px;text-align:right">₱${fmt(pay.tax)}</td></tr>` : ''}
         ${pay.loanDeduction > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Loan Deduction</td><td style="padding:10px;text-align:right">₱${fmt(pay.loanDeduction)}</td></tr>` : ''}
-        <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">TOTAL DED</td><td style="padding:10px;text-align:right;font-weight:700">₱${fmt(pay.totalDeductions)}</td></tr>
+        <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">TOTAL DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">₱${fmt(pay.totalDeductions)}</td></tr>
         <tr style="background:#e8f5e9"><td style="padding:15px;font-weight:700;font-size:14px">NET PAY</td><td style="padding:15px;text-align:right;font-weight:700;font-size:16px;color:#16a34a">₱${fmt(pay.net)}</td></tr>
       </table>
       <div style="text-align:center;font-size:11px;color:#999;border-top:1px solid #e5e5e5;padding-top:20px">
@@ -3677,6 +3704,99 @@ function exportPayroll(){
     d.ot_hours||0, d.nd_hours||0, d.reg_hol||0, d.spe_hol||0
   ]));
   downloadCSV(`payroll_${today()}.csv`,rows);
+}
+
+function exportPayrollPDF(){
+  if(!_payrollData.length){toast('⚠️ Compute payroll first');return;}
+  
+  const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+  const [yr, mo] = month.split('-');
+  const monthName = new Date(parseInt(yr), parseInt(mo)-1).toLocaleString('default', {month:'long', year:'numeric'});
+  
+  let html = `
+    <div style="font-family:Arial;padding:20px;max-width:1200px">
+      <div style="text-align:center;margin-bottom:30px">
+        <h1 style="margin:0;color:#333">DENTAL CITY PAYROLL SUMMARY</h1>
+        <h2 style="margin:5px 0;font-size:18px;color:#666">${monthName}</h2>
+        <p style="margin:10px 0;color:#999;font-size:12px">Generated: ${new Date().toLocaleDateString('en-PH')}</p>
+      </div>
+      
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:30px">
+        <thead>
+          <tr style="background:#333;color:#fff">
+            <th style="padding:8px;text-align:left;border:1px solid #ddd">ID</th>
+            <th style="padding:8px;text-align:left;border:1px solid #ddd">Name</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Days</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Gross Pay</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">SSS</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">PhilHealth</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Pag-IBIG</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Tax</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Loan</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Net Pay</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  let totalGross = 0, totalDed = 0, totalNet = 0;
+  _payrollData.forEach(d => {
+    totalGross += d.gross;
+    totalDed += d.totalDeductions;
+    totalNet += d.net;
+    html += `
+      <tr style="border-bottom:1px solid #ddd">
+        <td style="padding:6px;text-align:left">${d.eid}</td>
+        <td style="padding:6px;text-align:left">${d.name}</td>
+        <td style="padding:6px;text-align:right">${d.days_worked}</td>
+        <td style="padding:6px;text-align:right">₱${d.gross.toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.sss||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.ph||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.pi||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.tax||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.loanDeduction||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right;font-weight:700">₱${d.net.toFixed(2)}</td>
+      </tr>
+    `;
+  });
+  
+  html += `
+        </tbody>
+        <tfoot>
+          <tr style="background:#f5f5f5;font-weight:700;border-top:2px solid #333">
+            <td colspan="3" style="padding:8px">TOTALS</td>
+            <td style="padding:8px;text-align:right;border:1px solid #ddd">₱${totalGross.toFixed(2)}</td>
+            <td colspan="4" style="padding:8px;text-align:center;border:1px solid #ddd">—</td>
+            <td style="padding:8px;text-align:right;border:1px solid #ddd">₱${totalDed.toFixed(2)}</td>
+            <td style="padding:8px;text-align:right;border:1px solid #ddd;color:#16a34a">₱${totalNet.toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      
+      <div style="font-size:10px;color:#999;text-align:center;margin-top:40px;border-top:1px solid #ddd;padding-top:15px">
+        <p>This is an electronically generated payroll summary. No signature required.</p>
+        <p>Prepared by: Dental City Payroll System v30</p>
+      </div>
+    </div>
+  `;
+  
+  // Load html2pdf and generate PDF
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  script.onload = () => {
+    const element = document.createElement('div');
+    element.innerHTML = html;
+    const opt = {
+      margin: 10,
+      filename: `Payroll_${month}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { orientation: 'landscape', unit: 'mm', format: 'a4' }
+    };
+    html2pdf().set(opt).from(element).save();
+    toast(`✅ Downloaded: Payroll_${month}.pdf`);
+  };
+  document.head.appendChild(script);
 }
 
 // Auto-payroll scheduler + daily attendance check
@@ -8618,13 +8738,8 @@ async function _syncPayroll(empId, branchId, date, timeData) {
     const timeIn = clock?.time_in || '00:00';
     const minutesLate = _calcTime('08:00', timeIn);
     const onTime = minutesLate <= 0;
-    await _sb.from('time_analytics').upsert({
-      employee_id: empId, branch_id: branchId, date: date, time_in: timeIn, 
-      minutes_late: Math.max(0, minutesLate), gross_hours: timeData.hours_gross || 0,
-      break_hours: timeData.break_hours || 0, net_hours: netHours, ot_hours: otHours,
-      on_time: onTime, daily_rate: dailyRate, base_pay: basePay, ot_pay: otPay,
-      total_daily_pay: basePay + otPay, updated_at: new Date().toISOString()
-    }, {onConflict: 'employee_id,branch_id,date'});
+    // time_analytics upsert disabled - table not yet created in Supabase
+    // await _sb.from('time_analytics').upsert({...}, {onConflict: 'employee_id,branch_id,date'});
     console.log(`✅ Synced: ${empId} | ${netHours}h × ₱${hourlyRate.toFixed(2)} = ₱${basePay.toFixed(2)}`);
   } catch(e) {
     console.error('Sync error:', e);
