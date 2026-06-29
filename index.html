@@ -2124,7 +2124,10 @@ function addEmp(){
     
     // Auto-create 201 record with photo in Supabase
     try{
-      await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branch,photo});
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+      if(branchData){
+        await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branchData.id,photo});
+      }
     }catch(e){
       console.warn('⚠️ 201 auto-create failed (non-blocking):',e.message);
     }
@@ -2148,9 +2151,11 @@ function editEmp(id){
     
     // Sync to Supabase employees_201 table
     try{
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+      const branchUUID = branchData?.id || branch;
       await _sbInsertOrUpdate('employees_201',{
         employee_id:id, 
-        branch_id:branch,
+        branch_id:branchUUID,
         photo,
         name:fval('name'),
         role:fval('role'),
