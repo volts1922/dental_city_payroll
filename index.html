@@ -1344,7 +1344,6 @@ const NAV_OWNER=[
   {icon:'🌴',label:'Leave',            fn:'showLeave'},
   {icon:'💳',label:'Loans',            fn:'showLoans'},
   {icon:'💰',label:'Payroll',          fn:'showPayroll'},
-  {icon:'🧾',label:'Payslip',          fn:'showPayslip'},
   {icon:'🎁',label:'13th Month',       fn:'show13thMonth'},
   {icon:'🏛',label:'Gov Reports',      fn:'showGovReports'},
   {icon:'📄',label:'BIR 2316',         fn:'showBIR2316'},
@@ -1372,7 +1371,6 @@ const NAV_ADMIN=[
   {icon:'🎁',label:'13th Month',  fn:'show13thMonth'},
   {icon:'🏛',label:'Gov Reports', fn:'showGovReports'},
   {icon:'📄',label:'BIR 2316',    fn:'showBIR2316'},
-  {icon:'🧾',label:'Payslip',     fn:'showPayslip'},
   {icon:'💾',label:'Backup',      fn:'showBackupManager'},
   {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
   {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
@@ -7902,7 +7900,7 @@ async function clockIn(empId, branchId) {
     }
     const {data, error} = await _sb.from('time_clock').upsert({
       employee_id: empId, branch_id: branchId, date: today, time_in: timeIn, 
-      status: 'clocked_in', validation_status: 'valid', created_at: now.toISOString()
+      status: 'clocked_in', created_at: now.toISOString()
     }, {onConflict: 'employee_id,branch_id,date'}).select();
     if(error) throw error;
     toast(`✅ Clocked in at ${timeIn}`);
@@ -7973,9 +7971,7 @@ async function clockOut(empId, branchId) {
     const netHours = (grossHours - totalBreakHours).toFixed(2);
     const otHours = Math.max(0, netHours - 8).toFixed(2);
     await _sb.from('time_clock').update({
-      time_out: timeOut, status: 'clocked_out', hours_gross: grossHours, 
-      break_hours: totalBreakHours, hours_net: netHours, ot_hours: otHours, 
-      validation_status: 'valid', updated_at: now.toISOString()
+      time_out: timeOut, status: 'clocked_out', updated_at: now.toISOString()
     }).eq('id', clock.id);
     await _syncPayroll(empId, branchId, today, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
     toast(`✅ Clocked out at ${timeOut}\nNet: ${netHours}h | OT: ${otHours}h`);
