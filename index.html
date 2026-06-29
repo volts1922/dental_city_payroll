@@ -7893,7 +7893,7 @@ async function clockIn(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const timeIn = now.toTimeString().slice(0, 5);
+    const timeIn = now.toISOString(); // Full timestamp
     const existing = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(existing.data && existing.data.status === 'clocked_in') {
       throw new Error('Already clocked in at ' + existing.data.time_in);
@@ -7915,7 +7915,7 @@ async function startBreak(empId, branchId, breakType = 'Lunch') {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const breakInTime = now.toTimeString().slice(0, 5);
+    const breakInTime = now.toISOString();
     const {data: clock} = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || clock.status !== 'clocked_in') throw new Error('Not clocked in');
     await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
@@ -7935,7 +7935,7 @@ async function endBreak(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const breakOutTime = now.toTimeString().slice(0, 5);
+    const breakOutTime = now.toISOString();
     const {data: breaks} = await _sb.from('time_breaks').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today)
       .is('break_out', null).order('created_at', {ascending: false}).limit(1).single();
@@ -7955,7 +7955,7 @@ async function clockOut(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const timeOut = now.toTimeString().slice(0, 5);
+    const timeOut = now.toISOString();
     const {data: clock} = await _sb.from('time_clock').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || !clock.time_in) throw new Error('Not clocked in');
