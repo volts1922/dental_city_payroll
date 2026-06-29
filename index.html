@@ -1884,6 +1884,7 @@ function filterDashboard(filter){
 // ══════════════════════════════════════════════════════════════════════════════
 function showEmployees(q=''){
   let emps=load(KEYS.employees);
+  const currentBranch = getBranch(); // Get selected branch
   
   // Auto-purge ghost records: NO name AND NO role/daily_rate (these slip through soft-delete)
   const isGhost = (e) => {
@@ -1902,9 +1903,10 @@ function showEmployees(q=''){
     emps = cleaned;
   }
   
-  // Filter: show only non-deleted, non-inactive, valid employees
+  // Filter: show only non-deleted, non-inactive, valid employees AND matching current branch
   const filtered=Object.entries(emps).filter(([id,e])=>
     e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive'
+    && (isOwner() ? true : e.branch === currentBranch) // Owner sees all, others see their branch
   );
   
   const rows=filtered.filter(([id,e])=>!q||(e.name+id+e.role+(e.branch||'')).toLowerCase().includes(q.toLowerCase()))
@@ -1960,9 +1962,9 @@ function empForm(d={}){
        </div>`
     : `<div class="form-group">
         <label class="form-label">Branch *</label>
-        <input class="form-control" id="f_branch" value="${d.branch||myBranch}" readonly
-          style="background:var(--sky);color:#555;cursor:not-allowed;">
-        <div style="font-size:11px;color:#555;margin-top:3px">🔒 Set automatically to the branch you're currently viewing. To move an employee to another branch, switch to that branch first, then re-add them there.</div>
+        <select class="form-control" id="f_branch">
+          ${ALL_BRANCHES.map(b=>`<option${(d.branch||myBranch)===b?' selected':''}>${b}</option>`).join('')}
+        </select>
        </div>`;
 
   return `
