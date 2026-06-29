@@ -1778,8 +1778,14 @@ function showDashboard(){
     const hasLeave = (leaves[eid]||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td);
     return !hasAtt && !hasLeave;
   }).length;
+  
+  const totalActive = Object.values(emps).filter(e=>e && e.status==='Active').length;
 
-  const alertBanner = noRecord>0 ? `
+  const alertBanner = totalActive === 0 ? `
+    <div style="background:#E0E7FF;border:1.5px solid #6366F1;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">ℹ️</span>
+      <div style="font-weight:700;color:#4F46E5">No active employees yet. Add employees to track attendance.</div>
+    </div>` : noRecord>0 ? `
     <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">⚠️</span>
       <div>
