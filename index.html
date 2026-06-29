@@ -2263,7 +2263,7 @@ function showAttendance(){
       <div class="clock-panel-title">⏱ Quick Clock-In / Out</div>
       <select id="clkEmpSel" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;min-width:200px">
         <option value="">-- Select Employee --</option>
-        ${Object.keys(_clkEidMap).map(n=>`<option value="${n}">${n}</option>`).join('')}
+        ${Object.entries(_clkEidMap).map(([name,id])=>`<option value="${id}">${name}</option>`).join('')}
       </select>
       <button class="btn btn-success" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} getBranchUUID(getBranch()).then(bid=>clockIn(eid, bid))">⏵ Clock In</button>
       <button class="btn btn-danger" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} getBranchUUID(getBranch()).then(bid=>clockOut(eid, bid))">⏹ Clock Out</button>
@@ -2313,49 +2313,72 @@ function loadAtt(){
   refreshLiveAttendance();
 }
 
-function refreshLiveAttendance(){
-  const att=load(KEYS.attendance), emps=load(KEYS.employees);
-  const today = new Date().toISOString().split('T')[0];
-  const liveEmps = [];
+async function refreshLiveAttendance(){
+  if(!_sb) return;
   
-  Object.entries(att).forEach(([eid, recs]) => {
-    const rec = recs.find(r => r.date === today && r.time_in && !r.time_out);
-    if(rec && emps[eid]?.status !== 'Resigned') {
-      const emp = emps[eid];
+  const today = new Date().toISOString().split('T')[0];
+  const emps = load(KEYS.employees);
+  const branch = getBranch();
+  
+  try {
+    // Get branch UUID
+    const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+    if(!branchData) { document.getElementById('liveAttendance').innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>'; return; }
+    
+    // Get all clocked-in employees for today
+    const {data: records} = await _sb.from('time_clock')
+      .select('*')
+      .eq('branch_id', branchData.id)
+      .eq('date', today)
+      .eq('status', 'clocked_in');
+    
+    if(!records || records.length === 0) {
+      document.getElementById('liveAttendance').innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
+      return;
+    }
+    
+    const liveEmps = records.map(rec => {
+      const emp = emps[rec.employee_id] || {name: rec.employee_id};
       const timeIn = new Date(rec.time_in);
       const now = new Date();
       const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
       const shiftHours = emp.shift_hours || 8;
       const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
-      const timeRemaining = Math.max(0, ((shiftEnd - now) / (1000 * 60)).toFixed(0));
+      const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
       
-      liveEmps.push({
-        eid, name: emp.name, hoursWorked, timeRemaining, 
+      return {
+        eid: rec.employee_id,
+        name: emp.name,
+        hoursWorked,
+        timeRemaining,
         clockInTime: timeIn.toLocaleTimeString('en-PH', {hour:'2-digit', minute:'2-digit'}),
         branch: emp.branch
-      });
-    }
-  });
-  
-  const html = liveEmps.length ? liveEmps.map(e => `
-    <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div>
-          <div style="font-weight:700;font-size:14px">${e.name}</div>
-          <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
+      };
+    });
+    
+    const html = liveEmps.map(e => `
+      <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700;font-size:14px">${e.name}</div>
+            <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
+          </div>
+          <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
         </div>
-        <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
+          <div><span style="color:#888">Clocked In:</span> <b>${e.clockInTime}</b></div>
+          <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
+          <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
-        <div><span style="color:#888">Clocked In:</span> <b>${e.clockInTime}</b></div>
-        <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
-        <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
-      </div>
-      <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
-    </div>
-  `).join('') : '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
-  
-  document.getElementById('liveAttendance').innerHTML = html;
+    `).join('');
+    
+    document.getElementById('liveAttendance').innerHTML = html;
+  } catch(e) {
+    console.error('Live attendance fetch error:', e);
+    document.getElementById('liveAttendance').innerHTML = '<div style="color:#e11d48;padding:10px">Error loading live attendance</div>';
+  }
 }
 
 async function clearAllAtt(){
@@ -6375,6 +6398,28 @@ function showSecurityDashboard(){
 // ══════════════════════════════════════════════════════════════════════════════
 function showAccountManager(){
   const roleColors = {Owner:'#B7860B', Admin:'var(--blue)', BranchAdmin:'var(--teal)', Staff:'var(--green)'};
+  
+  // Load accounts from Supabase first
+  if(_sb){
+    _sb.from('payroll_accounts').select('*').then(({data, error})=>{
+      if(data){
+        data.forEach(acc=>{
+          USERS[acc.username] = {
+            password: acc.password_hash,
+            role: acc.role,
+            name: acc.name,
+            branch: acc.branch
+          };
+        });
+      }
+      renderAccounts(roleColors);
+    });
+  } else {
+    renderAccounts(roleColors);
+  }
+}
+
+function renderAccounts(roleColors){
   const byRole = {Owner:[], Admin:[], BranchAdmin:[], Staff:[]};
   Object.entries(USERS).forEach(([u,d])=>{ if(!d._hidden)(byRole[d.role]||[]).push([u,d]); });
 
