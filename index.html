@@ -2417,13 +2417,26 @@ async function clearAllAtt(){
 async function deleteAttRecord(eid, date){
   const name = (load(KEYS.employees)[eid]||{}).name || eid;
   if(!(await _confirm(`Delete attendance for "${name}" on ${date}?`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
-  const att = load(KEYS.attendance);
-  if(att[eid]){
-    att[eid] = att[eid].filter(r=>r.date!==date);
-    if(att[eid].length===0) delete att[eid];
-    save(KEYS.attendance, att);
-    toast(`🗑 Attendance deleted for ${name} on ${date}`);
-    loadAtt();
+  
+  if(_sb){
+    try {
+      // Get branch UUID
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
+      if(!branchData) { toast('⚠️ Branch not found'); return; }
+      
+      // Delete from Supabase
+      await _sb.from('time_clock')
+        .delete()
+        .eq('employee_id', eid)
+        .eq('branch_id', branchData.id)
+        .eq('date', date);
+      
+      toast(`🗑 Attendance deleted for ${name} on ${date}`);
+      loadAtt();
+    } catch(e) {
+      console.error('Delete error:', e);
+      toast('❌ Failed to delete');
+    }
   }
 }
 
