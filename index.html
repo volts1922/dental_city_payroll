@@ -3296,7 +3296,7 @@ async function computePayroll(){
     att = load(KEYS.attendance) || {};
   }
   
-  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active').map(([eid,e])=>{
+  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
     const rate       = parseFloat(e.daily_rate||0);
     const recs       = Object.values(att[eid]||[]).filter(r=>r.date?.startsWith(month));
     const daysPresent= recs.filter(r=>r.status==='clocked_in'||r.status==='Present'||r.status==='Late').length;
@@ -4484,138 +4484,6 @@ function exportBIR2316(){
   toast('📥 BIR 2316 summary exported!');
 }
 
-function showPayslip(){
-  ownerEnsureBranchData();
-  const emps=load(KEYS.employees);
-  const now=new Date(), defMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  // Default: 1st to 15th (semi-monthly) or full month
-  const y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0');
-  const defFrom=`${y}-${m}-01`, defTo=`${y}-${m}-${String(new Date(y,now.getMonth()+1,0).getDate()).padStart(2,'0')}`;
-  document.getElementById('main').innerHTML=`
-    <div class="section-header">
-      <div class="section-title">Payslip Generator</div>
-      <div class="btn-row">
-        <select id="slipEmp" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;min-width:200px">
-          <option value="">-- Select Employee --</option>
-          ${Object.entries(emps).map(([id,e])=>`<option value="${id}">${e.name} (${id})</option>`).join('')}
-        </select>
-        <input type="month" id="slipMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('1st')">1st Half</button>
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('2nd')">2nd Half</button>
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('full')">Full Month</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
-      <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;font-weight:700;color:#555">FROM</label>
-        <input type="date" id="slipFrom" value="${defFrom}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-      </div>
-      <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;font-weight:700;color:#555">TO</label>
-        <input type="date" id="slipTo" value="${defTo}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-      </div>
-      <button class="btn btn-primary" onclick="generateSlip()">Generate Payslip</button>
-      <button class="btn btn-teal" onclick="printSlip()">🖨 Print</button>
-    </div>
-    <div id="slipContent" style="max-width:600px"></div>`;
-}
-
-function setSlipRange(type){
-  const month = document.getElementById('slipMonth')?.value || today().slice(0,7);
-  const [y,m] = month.split('-').map(Number);
-  const lastDay = new Date(y,m,0).getDate();
-  if(type==='1st'){
-    document.getElementById('slipFrom').value=`${month}-01`;
-    document.getElementById('slipTo').value=`${month}-15`;
-  } else if(type==='2nd'){
-    document.getElementById('slipFrom').value=`${month}-16`;
-    document.getElementById('slipTo').value=`${month}-${String(lastDay).padStart(2,'0')}`;
-  } else {
-    document.getElementById('slipFrom').value=`${month}-01`;
-    document.getElementById('slipTo').value=`${month}-${String(lastDay).padStart(2,'0')}`;
-  }
-}
-
-function generateSlip(){
-  ownerEnsureBranchData();
-  const eid=document.getElementById('slipEmp')?.value;
-  const fromDate=document.getElementById('slipFrom')?.value;
-  const toDate=document.getElementById('slipTo')?.value;
-  if(!eid){toast('⚠️ Select an employee');return;}
-  if(!fromDate||!toDate){toast('⚠️ Set date range');return;}
-  const emps=load(KEYS.employees), att=load(KEYS.attendance);
-  const e=emps[eid], rate=parseFloat(e.daily_rate||0);
-  // FIX: Map attendance records with date from KEY
-  const recs=Object.entries(att[eid]||{}).map(([date,rec])=>({...rec,date})).filter(r=>r.date>=fromDate&&r.date<=toDate);
-  const daysPresent= recs.filter(r=>r.status==='Present'||r.status==='Late').length;
-  const absences   = recs.filter(r=>r.status==='Absent').length;
-  const halfDays   = recs.filter(r=>r.status==='Half-day').length;
-  const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
-  const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
-  const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
-  const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
-  const loanDed    = getActiveLoanDeduction(eid);
-  const hasAtt     = daysPresent+absences+halfDays>0;
-  const daysWorked = hasAtt?daysPresent+(halfDays*0.5):null;
-  const allowances = e.allowances || {};
-  const totalAllow = totalAllowances(allowances);
-  const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances);
-  const dw         = daysWorked!==null?daysWorked.toFixed(2):WORKING_DAYS.toFixed(2);
-  const loans      = load(KEYS.loans);
-  const activeLoans= (loans[eid]||[]).filter(l=>l.status==='Active');
-  const loanLines  = activeLoans.length
-    ? activeLoans.map(l=>`  ${(l.type||'Loan').padEnd(28)}₱${parseFloat(l.monthly_amort||0).toLocaleString('en-PH',{minimumFractionDigits:2})}`).join('\n')
-    : '  (none)';
-  const w=48, line='─'.repeat(w);
-  const period = fromDate===toDate ? fromDate : `${fromDate} to ${toDate}`;
-
-  const slip=`
-${'DENTAL CITY PAYROLL SYSTEM'.padStart((w+26)/2)}
-${'PAYSLIP'.padStart((w+7)/2)}
-${line}
-Employee Name : ${e.name}
-Position      : ${e.role||'—'}
-Branch        : ${e.branch||'—'}
-Employee ID   : ${eid}
-Pay Period    : ${period}
-${line}
-EARNINGS
-  Daily Rate                 ₱${rate.toLocaleString('en-PH',{minimumFractionDigits:2})}/day
-  Days Worked                ${dw} days
-  Basic Pay                  ₱${(rate*(parseFloat(dw)||WORKING_DAYS)).toLocaleString('en-PH',{minimumFractionDigits:2})}
-${otHours>0?`  Overtime (${otHours}hrs × ₱${pay.hourlyRate.toFixed(2)} × 1.25)  ₱${pay.otPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${ndHours>0?`  Night Differential (${ndHours}hrs)     ₱${pay.ndPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${regHolDays>0?`  Regular Holiday Pay (${regHolDays} day/s)   ₱${pay.regHolPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${speHolDays>0?`  Special Holiday Pay (${speHolDays} day/s)   ₱${pay.speHolPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${totalAllow>0?`${line}\nALLOWANCES\n${allowances.meal>0?`  Meal Allowance                ₱${parseFloat(allowances.meal).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.transport>0?`  Transportation Allowance      ₱${parseFloat(allowances.transport).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.communication>0?`  Communication Allowance       ₱${parseFloat(allowances.communication).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.housing>0?`  Housing Allowance             ₱${parseFloat(allowances.housing).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.medical>0?`  Medical Allowance             ₱${parseFloat(allowances.medical).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.other>0?`  Other Allowance               ₱${parseFloat(allowances.other).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}  Total Allowances               ₱${totalAllow.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}  Gross Pay                  ₱${pay.gross.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-DEDUCTIONS
-  SSS Contribution           ₱${pay.sss.toLocaleString('en-PH',{minimumFractionDigits:2})}
-  PhilHealth Contribution    ₱${pay.ph.toLocaleString('en-PH',{minimumFractionDigits:2})}
-  Pag-IBIG Contribution      ₱${pay.pi.toLocaleString('en-PH',{minimumFractionDigits:2})}
-  Withholding Tax            ₱${pay.tax.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-LOAN DEDUCTIONS
-${loanLines}
-  Total Loan Deductions      ₱${pay.loanDeduction.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-  Total Deductions           ₱${pay.totalDeductions.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-NET PAY                      ₱${pay.net.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-ATTENDANCE SUMMARY
-  Days Present : ${daysPresent}   Days Absent : ${absences}   Half Days : ${halfDays}
-  OT Hours     : ${otHours}h      Night Diff  : ${ndHours}h
-${regHolDays>0?`  Regular Holidays : ${regHolDays} day/s\n`:''}${speHolDays>0?`  Special Holidays : ${speHolDays} day/s\n`:''}${line}
-Generated: ${new Date().toLocaleString('en-PH')}
-${'This is a system-generated payslip.'.padStart((w+38)/2)}
-`;
-  document.getElementById('slipContent').innerHTML=`<div class="payslip">${slip}</div>`;
-  window._slipContent=slip;
-}
-
-function printSlip(){
-  if(!window._slipContent){toast('⚠️ Generate a payslip first');return;}
-  const win=window.open('','_blank','width=600,height=700');
-  win.document.write(`<!DOCTYPE html><html><head><style>body{font-family:'Courier New',monospace;font-size:12px;padding:20px;white-space:pre;}@media print{@page{size:A4;margin:15mm;}}</style></head><body>${window._slipContent}<script>window.onload=function(){window.print();window.close();}<\/script>`);
-  win.document.close();
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONSOLIDATE ATTENDANCE
