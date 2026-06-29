@@ -2114,9 +2114,14 @@ function addEmp(){
     const branch = isBranchAdmin() ? getBranch() : fval('branch');
     if(!branch){toast('⚠️ Branch is required');return;}
     
-    // Generate UUID or random ID
-    const id = crypto.randomUUID ? crypto.randomUUID() : 'emp_' + Date.now() + Math.random().toString(36).substr(2, 9);
-    const emps=load(KEYS.employees);
+    // Generate ID: BRANCHCODE-###
+    const branchCode = branch.substring(0, 3).toUpperCase();
+    const emps = load(KEYS.employees);
+    const branchEmps = Object.keys(emps).filter(k => k.startsWith(branchCode));
+    const nums = branchEmps.map(k => parseInt(k.split('-')[1])).filter(n => !isNaN(n));
+    const nextNum = (nums.length === 0 ? 0 : Math.max(...nums)) + 1;
+    const id = `${branchCode}-${String(nextNum).padStart(3, '0')}`;
+    
     const photo = document.getElementById('f_photo')?.value || '';
     emps[id]={name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
@@ -5157,7 +5162,6 @@ function showAllEmployees(q='', filterBranch='All'){
           style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
           ${branches.map(b=>`<option${b===filterBranch?' selected':''}>${b}</option>`).join('')}
         </select>
-        <button class="btn btn-primary" onclick="ownerAddEmp()">＋ Add Employee</button>
         <button class="btn btn-teal btn-sm" onclick="exportAllEmployees()">Export CSV</button>
       </div>
     </div>
@@ -6488,7 +6492,7 @@ function showAccountManager(){
 }
 
 function renderAccounts(roleColors){
-  const byRole = {Owner:[], Admin:[], BranchAdmin:[], Staff:[]};
+  const byRole = {owner:[], admin:[], Staff:[]};
   Object.entries(USERS).forEach(([u,d])=>{ if(!d._hidden)(byRole[d.role]||[]).push([u,d]); });
 
   const buildTable = (role, list)=>{
@@ -6503,7 +6507,7 @@ function renderAccounts(roleColors){
         ${u!=='owner'&&!d._hidden?`<button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">🗑</button>`:''}
       </td>
     </tr>`).join('');
-    const icons={Owner:'👑',Admin:'🛡',BranchAdmin:'🏢',Staff:'👤'};
+    const icons={owner:'👑',admin:'🛡',Staff:'👤'};
     return `<div style="margin-bottom:20px">
       <div style="font-weight:700;font-size:13px;color:${roleColors[role]};margin-bottom:8px;padding:8px 14px;
                   background:var(--sky);border-radius:8px;border-left:4px solid ${roleColors[role]}">
@@ -6527,9 +6531,8 @@ function renderAccounts(roleColors){
     <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#92400E">
       ⚠️ Password changes take effect on next login. Share credentials securely with staff.
     </div>
-    ${buildTable('owner',byRole.Owner||[])}
-    ${buildTable('admin',byRole.Admin||[])}
-    ${buildTable('branch_admin',byRole.BranchAdmin||[])}
+    ${buildTable('owner',byRole.owner||[])}
+    ${buildTable('admin',byRole.admin||[])}
     ${buildTable('Staff',byRole.Staff||[])}`;
 }
 
@@ -6547,10 +6550,10 @@ function accountForm(d={}){
     <div class="form-group">
       <label class="form-label">Role *</label>
       <select class="form-control" id="f_acc_role" onchange="toggleBranchField()">
-        ${(isOwner()?['owner','admin','branch_admin','Staff']:['branch_admin','Staff']).map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
+        ${(isOwner()?['owner','admin','Staff']:['admin','Staff']).map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
       </select>
     </div>
-    <div class="form-group" id="branchFieldGroup" style="display:${['branch_admin','Staff'].includes(d.role||'Staff')?'block':'none'}">
+    <div class="form-group" id="branchFieldGroup" style="display:${['Staff'].includes(d.role||'Staff')?'block':'none'}">
       <label class="form-label">Branch *</label>
       <select class="form-control" id="f_acc_branch">${branchOpts}</select>
     </div>`;
@@ -6559,7 +6562,7 @@ function accountForm(d={}){
 function toggleBranchField(){
   const role = document.getElementById('f_acc_role')?.value;
   const grp  = document.getElementById('branchFieldGroup');
-  if(grp) grp.style.display = ['branch_admin','Staff'].includes(role)?'block':'none';
+  if(grp) grp.style.display = ['Staff'].includes(role)?'block':'none';
 }
 
 function addAccount(){
