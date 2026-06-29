@@ -780,46 +780,46 @@ function hideLoading(){ document.getElementById('loadingOverlay').classList.remo
 // ⚠ Change branch names and passwords before giving to your client!
 const USERS = {
   // ── Owner (sees ALL branches) ────────────────────────────────────────────
-  owner:      { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9',    role:'Owner',       name:'Owner'              },
+  owner:      { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9',    role:'owner',       name:'owner'              },
 
   // ── Branch 1 ─────────────────────────────────────────────────────────────
-  branch1_admin: { password:'7c2bbcdf653e453250630e3f39fea50ae5e7a92bc0d27b2e892d6e93e6e62838', role:'BranchAdmin', name:'Branch 1 Admin', branch:'Branch 1' },
+  branch1_admin: { password:'7c2bbcdf653e453250630e3f39fea50ae5e7a92bc0d27b2e892d6e93e6e62838', role:'branch_admin', name:'Branch 1 Admin', branch:'Branch 1' },
   branch1_staff: { password:'f13d859fb200bf1c1c49433004ff3fe9c40078c1cd409d3839db725521ec37c7', role:'Staff',       name:'Branch 1 Staff', branch:'Branch 1' },
 
   // ── Branch 2 ─────────────────────────────────────────────────────────────
-  branch2_admin: { password:'3e12cff30cdafc0c499d7ab3af2857be613e2513d6b38cdb7a31c4fdca4463f4', role:'BranchAdmin', name:'Branch 2 Admin', branch:'Branch 2' },
+  branch2_admin: { password:'3e12cff30cdafc0c499d7ab3af2857be613e2513d6b38cdb7a31c4fdca4463f4', role:'branch_admin', name:'Branch 2 Admin', branch:'Branch 2' },
   branch2_staff: { password:'dd963f9ee062481c4a232ad7190a72e2d511cdf61f935729ec5012a41a56c719', role:'Staff',       name:'Branch 2 Staff', branch:'Branch 2' },
 
   // ── Branch 3 ─────────────────────────────────────────────────────────────
-  branch3_admin: { password:'ebabd5412c7b4214464538d0371f16c5249a6a2f66d5736b284a48374c9f6f06', role:'BranchAdmin', name:'Branch 3 Admin', branch:'Branch 3' },
+  branch3_admin: { password:'ebabd5412c7b4214464538d0371f16c5249a6a2f66d5736b284a48374c9f6f06', role:'branch_admin', name:'Branch 3 Admin', branch:'Branch 3' },
   branch3_staff: { password:'33d29f4b1a27aee9c702d68af2af87faabda72d3bc9c2b0aecb97c341a4339c3', role:'Staff',       name:'Branch 3 Staff', branch:'Branch 3' },
 
   // ── Branch 4 ─────────────────────────────────────────────────────────────
-  branch4_admin: { password:'a293c10f3f89481a0b4ede1bf55d1a62e667e4a07a6a6386b1effd3e684ef9c4', role:'BranchAdmin', name:'Branch 4 Admin', branch:'Branch 4' },
+  branch4_admin: { password:'a293c10f3f89481a0b4ede1bf55d1a62e667e4a07a6a6386b1effd3e684ef9c4', role:'branch_admin', name:'Branch 4 Admin', branch:'Branch 4' },
   branch4_staff: { password:'e10c558ef0735efe18cb23b741dc2fed46d9000b743ac028a88f5bf649f0b431', role:'Staff',       name:'Branch 4 Staff', branch:'Branch 4' },
 
   // ── Branch 5 ─────────────────────────────────────────────────────────────
-  branch5_admin: { password:'e41128856ca4dc4311171e906918e923cc95f3e5758b9a412448ae8e29e4c84b', role:'BranchAdmin', name:'Branch 5 Admin', branch:'Branch 5' },
+  branch5_admin: { password:'e41128856ca4dc4311171e906918e923cc95f3e5758b9a412448ae8e29e4c84b', role:'branch_admin', name:'Branch 5 Admin', branch:'Branch 5' },
   branch5_staff: { password:'3febcd606e55ae2eeb2f6b5471155a8afef538dfcc414503e77f7e656c7b22e5', role:'Staff',       name:'Branch 5 Staff', branch:'Branch 5' },
 
   // ── Branch 6 ─────────────────────────────────────────────────────────────
-  branch6_admin: { password:'dcb2140a616c495d174afbba55781eac0ea17369904889c6236c93209a46d0ed', role:'BranchAdmin', name:'Branch 6 Admin', branch:'Branch 6' },
+  branch6_admin: { password:'dcb2140a616c495d174afbba55781eac0ea17369904889c6236c93209a46d0ed', role:'branch_admin', name:'Branch 6 Admin', branch:'Branch 6' },
   branch6_staff: { password:'df353e6ae35cfd7e73f16279e24363be9068c99d0c516fda63baf59a10bf20fe', role:'Staff',       name:'Branch 6 Staff', branch:'Branch 6' },
 
   // ── Branch 7 ─────────────────────────────────────────────────────────────
-  branch7_admin: { password:'4ae977b14031826ec73f7d80523d373deb99cab137cd3abbf552d756d01c5481', role:'BranchAdmin', name:'Branch 7 Admin', branch:'Branch 7' },
+  branch7_admin: { password:'4ae977b14031826ec73f7d80523d373deb99cab137cd3abbf552d756d01c5481', role:'branch_admin', name:'Branch 7 Admin', branch:'Branch 7' },
   branch7_staff: { password:'1857f2baed91fac1105da25730fd0fe3fa3888646c97fca98a814abdd6a36c9f', role:'Staff',       name:'Branch 7 Staff', branch:'Branch 7' },
 
   // ── Branch 8 ─────────────────────────────────────────────────────────────
-  branch8_admin: { password:'f839f62a6ccaf845f596ab454c204c7605739d94b319d11847bcc5a26c71779a', role:'BranchAdmin', name:'Branch 8 Admin', branch:'Branch 8' },
+  branch8_admin: { password:'f839f62a6ccaf845f596ab454c204c7605739d94b319d11847bcc5a26c71779a', role:'branch_admin', name:'Branch 8 Admin', branch:'Branch 8' },
   branch8_staff: { password:'6edd5075fea164de5c29ee3e37d80f714d37b53489005f01e0b1a2843264a429', role:'Staff',       name:'Branch 8 Staff', branch:'Branch 8' },
 
   // ── Branch 9 ─────────────────────────────────────────────────────────────
-  branch9_admin: { password:'5ba880391986e4299428d3a106fd5c660766f80f0f5d8bbadd95b194e3aafbd8', role:'BranchAdmin', name:'Branch 9 Admin', branch:'Branch 9' },
+  branch9_admin: { password:'5ba880391986e4299428d3a106fd5c660766f80f0f5d8bbadd95b194e3aafbd8', role:'branch_admin', name:'Branch 9 Admin', branch:'Branch 9' },
   branch9_staff: { password:'895b161252b1c9e9090a7e68bbf53a15daa373b9a942b5be6f6a902923b08b5a', role:'Staff',       name:'Branch 9 Staff', branch:'Branch 9' },
 
   // ── Developer (hidden — not shown in Account Manager) ────────────────────
-  dev: { password:'995f80cefdb79b5ec1584db23fd82c5dcb8d039116adc0c428727a77f0052be6', role:'Developer', name:'Developer', _hidden:true },
+  dev: { password:'995f80cefdb79b5ec1584db23fd82c5dcb8d039116adc0c428727a77f0052be6', role:'dev', name:'dev', _hidden:true },
 };
 
 // ── Cloud-persisted accounts (Supabase) — merges over hardcoded USERS on load ─
@@ -1040,14 +1040,14 @@ async function doLogin(){
   }
 
   // ✅ PASSWORD HISTORY: Check if Owner is reusing password
-  if(user.role === 'Owner' && _isPasswordReused(u, enteredHash)){
+  if(user.role === 'owner' && _isPasswordReused(u, enteredHash)){
     await _auditLog('LOGIN_PASSWORD_REUSED', u, 'Attempted password reuse');
     errEl.textContent='⚠️ You recently used this password. Please change it.';
     document.getElementById('loginPass').value=''; return;
   }
 
   // ✅ 2FA CHECK: If Owner with 2FA enabled, request verification
-  if(user.role === 'Owner' && user.totp_enabled){
+  if(user.role === 'owner' && user.totp_enabled){
     const verified = await _verify2FA();
     if(!verified){
       await _auditLog('LOGIN_2FA_FAILED', u, '2FA verification failed');
@@ -1062,7 +1062,7 @@ async function doLogin(){
   _currentUser = u; // Store username for audit logs
   
   // Developer/Owner should have no specific branch context (All Branches view)
-  if(user.role === 'Developer' || user.role === 'Owner'){
+  if(user.role === 'dev' || user.role === 'owner'){
     setBranch(''); // Clear any branch context
   } else {
     const branch = user.branch || '';
@@ -1093,22 +1093,22 @@ async function doLogin(){
   }
 }
 
-function isOwnerRole(r){ return r==='Owner'||r==='Developer'; }
+function isOwnerRole(r){ return r==='owner'||r==='dev'; }
 
 function _finishLogin(){
   document.getElementById('loginScreen').style.display='none';
   const rb = document.getElementById('roleBadge');
-  rb.textContent = currentRole==='Developer'?'Developer':currentRole; // Show actual role
+  rb.textContent = currentRole==='dev'?'dev':currentRole; // Show actual role
   const C_GOLD='#B7860B';
-  rb.style.background = currentRole==='Developer'?'#7C3AED':currentRole==='Owner'?C_GOLD:isAdmin()?'var(--blue)':'var(--green)';
+  rb.style.background = currentRole==='dev'?'#7C3AED':currentRole==='owner'?C_GOLD:isAdmin()?'var(--blue)':'var(--green)';
   rb.style.color = '#fff';
   document.getElementById('userLabel').textContent = currentUser;
   document.getElementById('userBadge').style.display = 'flex';
   document.getElementById('syncBtn').style.display = 'inline-block';
   const cloudBtn = document.getElementById('devCloudRestoreBtn');
-  if(cloudBtn) cloudBtn.style.display = currentRole==='Developer' ? 'block' : 'none';
+  if(cloudBtn) cloudBtn.style.display = currentRole==='dev' ? 'block' : 'none';
   const topbarCloudBtn = document.getElementById('topbarCloudRestoreBtn');
-  if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='Developer' ? 'inline-block' : 'none';
+  if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='dev' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
     // Owner sees ALL branches in dashboard — no branch filter needed
@@ -1139,11 +1139,11 @@ async function doLogout(){
   document.getElementById('loginPass').value='';
   setSyncBar('offline','☁ Not connected');
 }
-function isOwner(){       return currentRole==='Owner'||currentRole==='Developer'; }
-function isBranchAdmin(){ return currentRole==='BranchAdmin'; }
-function isAdmin(){       return currentRole==='Owner'||currentRole==='Admin'||currentRole==='BranchAdmin'||currentRole==='Developer'; }
-function canSeeAll(){     return currentRole==='Owner'||currentRole==='Admin'||currentRole==='Developer'; }
-function isDeveloper(){   return currentRole==='Developer'; }
+function isOwner(){       return currentRole==='owner'||currentRole==='dev'; }
+function isBranchAdmin(){ return currentRole==='branch_admin'; }
+function isAdmin(){       return currentRole==='owner'||currentRole==='admin'||currentRole==='branch_admin'||currentRole==='dev'; }
+function canSeeAll(){     return currentRole==='owner'||currentRole==='admin'||currentRole==='dev'; }
+function isDeveloper(){   return currentRole==='dev'; }
 const WORKING_DAYS  = 22;
 const OT_MULTIPLIER = 1.25;  // Regular overtime
 const OT_RESTDAY    = 1.30;  // Rest day overtime
@@ -1442,7 +1442,7 @@ function ownerEnsureBranchData(){
 
 function ownerShowBranchPicker(show){
   const picker = document.getElementById('ownerBranchPicker');
-  if(!picker || currentRole!=='Developer') return;
+  if(!picker || currentRole!=='dev') return;
   if(show){
     // Populate dropdown with all branches + All Branches option
     const sel = document.getElementById('ownerBranchSel');
@@ -1484,7 +1484,7 @@ async function ownerSwitchBranch(branch){
 }
 
 function buildNav(){
-  const items=currentRole==='Developer'?NAV_DEVELOPER:isOwner()?NAV_OWNER:isBranchAdmin()||currentRole==='Admin'?NAV_ADMIN:NAV_STAFF;
+  const items=currentRole==='dev'?NAV_DEVELOPER:isOwner()?NAV_OWNER:isBranchAdmin()||currentRole==='admin'?NAV_ADMIN:NAV_STAFF;
 
   if(isOwner()){
     // Owner nav with group dividers
@@ -1530,7 +1530,7 @@ function navigate(label,fn){
   buildNav(); closeSidebar();
   if(label!=='All Branches') stopOwnerDashRefresh();
   // Branch picker — Developer only (Owner uses normal owner dashboard flow)
-  if(currentRole==='Developer'){
+  if(currentRole==='dev'){
     ownerShowBranchPicker(true);
   }
   if(isOwner()){
@@ -4581,8 +4581,8 @@ const SUPABASE_KEY = 'your-anon-key-here';</pre>
         <b style="color:var(--blue)">Step 4 — Customize Usernames &amp; Passwords</b><br>
         Open the HTML file, find the <b>USERS</b> section and edit:<br>
         <pre style="background:#1A3C5E;color:#93C5FD;padding:10px;border-radius:6px;font-size:11px;margin-top:8px">const USERS = {
-  owner:     { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9', role:'Owner',       name:'Owner'       },
-  manila:    { password:'08c9f2c97386422522a55fd245613b4152a9ec185c780ffaf1be54d0a88d0d0a',role:'BranchAdmin', name:'Manila Admin',branch:'Manila' },
+  owner:     { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9', role:'owner',       name:'owner'       },
+  manila:    { password:'08c9f2c97386422522a55fd245613b4152a9ec185c780ffaf1be54d0a88d0d0a',role:'branch_admin', name:'Manila Admin',branch:'Manila' },
   bgc:       { password:'240ba9c0868c7f63c338cbbdcefd9a8aff840028aa20c4cce410c56bde9db9e1',   role:'Staff',       name:'BGC Staff',  branch:'BGC' },
 };</pre>
         Change usernames and passwords before giving to your client! 🔐
@@ -6259,7 +6259,7 @@ function showSecurityDashboard(){
   _recordActivity();
   const user = _currentUser;
   const userObj = USERS[user];
-  const isOwner = userObj?.role === 'Owner';
+  const isOwner = userObj?.role === 'owner';
   const totp = userObj?.totp_enabled ? '✅ Enabled' : '❌ Disabled';
   const pwHist = (SEC.passwordHistory[user] || []).length;
   const recentLog = SEC.auditLog.filter(a => a.user === user).slice(-20);
@@ -6355,9 +6355,9 @@ function showAccountManager(){
     <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#92400E">
       ⚠️ Password changes take effect on next login. Share credentials securely with staff.
     </div>
-    ${buildTable('Owner',byRole.Owner||[])}
-    ${buildTable('Admin',byRole.Admin||[])}
-    ${buildTable('BranchAdmin',byRole.BranchAdmin||[])}
+    ${buildTable('owner',byRole.Owner||[])}
+    ${buildTable('admin',byRole.Admin||[])}
+    ${buildTable('branch_admin',byRole.BranchAdmin||[])}
     ${buildTable('Staff',byRole.Staff||[])}`;
 }
 
@@ -6375,10 +6375,10 @@ function accountForm(d={}){
     <div class="form-group">
       <label class="form-label">Role *</label>
       <select class="form-control" id="f_acc_role" onchange="toggleBranchField()">
-        ${(isOwner()?['Owner','Admin','BranchAdmin','Staff']:['BranchAdmin','Staff']).map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
+        ${(isOwner()?['owner','admin','branch_admin','Staff']:['branch_admin','Staff']).map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
       </select>
     </div>
-    <div class="form-group" id="branchFieldGroup" style="display:${['BranchAdmin','Staff'].includes(d.role||'Staff')?'block':'none'}">
+    <div class="form-group" id="branchFieldGroup" style="display:${['branch_admin','Staff'].includes(d.role||'Staff')?'block':'none'}">
       <label class="form-label">Branch *</label>
       <select class="form-control" id="f_acc_branch">${branchOpts}</select>
     </div>`;
@@ -6387,7 +6387,7 @@ function accountForm(d={}){
 function toggleBranchField(){
   const role = document.getElementById('f_acc_role')?.value;
   const grp  = document.getElementById('branchFieldGroup');
-  if(grp) grp.style.display = ['BranchAdmin','Staff'].includes(role)?'block':'none';
+  if(grp) grp.style.display = ['branch_admin','Staff'].includes(role)?'block':'none';
 }
 
 function addAccount(){
@@ -6399,7 +6399,7 @@ function addAccount(){
     const branch = fval('acc_branch');
     if(!u||!name||!pass){ toast('⚠️ Username, name and password are required'); return; }
     if(USERS[u]){ toast(`⚠️ Username "${u}" already exists!`); return; }
-    if(['BranchAdmin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
+    if(['branch_admin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
     USERS[u] = {password: await _sha256(pass), role, name, ...(branch?{branch}:{})};
     _saveAccountToCloud(u, USERS[u]);
     toast(`✅ Account "${u}" created!`); closeModal(); showAccountManager();
@@ -6420,7 +6420,7 @@ function editAccount(username){
     const role  = fval('acc_role');
     const branch= fval('acc_branch');
     if(!name){ toast('⚠️ Name is required'); return; }
-    if(['BranchAdmin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
+    if(['branch_admin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
     
     // ✅ NEW: Prevent branch escalation (BranchAdmin can't create Owner accounts)
     if(isBranchAdmin() && role !== 'Staff'){
@@ -7369,8 +7369,8 @@ const SECTIONS_201 = {
 
 function open201(empId){
   const role = currentRole;
-  if(!['Owner','Admin','BranchAdmin','Developer','dev'].includes(role)){ toast('❌ Access denied'); return; }
-  const isReadOnly = role === 'Developer' || role === 'dev';
+  if(!['owner','admin','branch_admin','dev','dev'].includes(role)){ toast('❌ Access denied'); return; }
+  const isReadOnly = role === 'dev' || role === 'dev';
   
   let html = '';
   for(let [section, fields] of Object.entries(SECTIONS_201)){
