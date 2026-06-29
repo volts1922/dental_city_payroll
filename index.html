@@ -1588,6 +1588,11 @@ function formatEmpId(eid, branch=''){
   const code = b.replace(/\D/g, '').slice(-3) || '001';
   return `BR${code}-${eid}`;
 }
+async function getBranchUUID(branchName){
+  if(!_sb) return null;
+  const {data} = await _sb.from('branches').select('id').eq('name', branchName).single();
+  return data?.id || null;
+}
 function fval(k){ const el=document.getElementById('f_'+k); return el?el.value.trim():''; }
 function badge(status){
   const map={Active:'blue',Inactive:'gray',Resigned:'red',Present:'green',Absent:'red','Half-day':'yellow',Late:'yellow',Approved:'green',Rejected:'red',Pending:'yellow',Paid:'green',Unpaid:'red',Active2:'blue'};
@@ -1596,7 +1601,7 @@ function badge(status){
 }
 function empOptions(sel=''){
   const emps=load(KEYS.employees);
-  return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${id})</option>`).join('');
+  return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${formatEmpId(id, e.branch)})</option>`).join('');
 }
 function formRow(lbl,key,val='',type='text',opts=null){
   if(opts) return `<div class="form-group"><label class="form-label">${lbl}</label><select class="form-control" id="f_${key}">${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select></div>`;
@@ -1723,7 +1728,7 @@ function showDashboard(){
   
   const todayRows=Object.entries(att).flatMap(([eid,recs])=>recs.filter(r=>r.date===td).map(r=>({eid,r}))).map(({eid,r})=>{
     const name=(emps[eid]||{}).name||eid;
-    return `<tr><td>${eid}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
   }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
@@ -1847,7 +1852,7 @@ function filterDashboard(filter){
   if(filter==='OnLeave'){
     rows = leaveEids.map(eid=>{
       const name=(emps[eid]||{}).name||eid;
-      return `<tr><td>${eid}</td><td><b>${name}</b></td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-blue">On Leave</span></td></tr>`;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-blue">On Leave</span></td></tr>`;
     }).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No employees on leave today</td></tr>`;
   } else if(filter==='NoRecord'){
@@ -1858,7 +1863,7 @@ function filterDashboard(filter){
       return !hasAtt && !hasLeave;
     });
     rows = noRecEids.map(([eid,e])=>`
-      <tr><td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>—</td><td>—</td><td>—</td>
+      <tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>—</td><td>—</td><td>—</td>
       <td><span class="badge badge-gray">No Record</span></td></tr>`).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">All employees have records today 🎉</td></tr>`;
   } else {
@@ -1867,7 +1872,7 @@ function filterDashboard(filter){
       : todayAll.filter(({r})=>r.status===filter);
     rows = filtered.map(({eid,r})=>{
       const name=(emps[eid]||{}).name||eid;
-      return `<tr><td>${eid}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
     }).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No records for this filter</td></tr>`;
   }
@@ -2260,12 +2265,17 @@ function showAttendance(){
         <option value="">-- Select Employee --</option>
         ${Object.keys(_clkEidMap).map(n=>`<option value="${n}">${n}</option>`).join('')}
       </select>
-      <button class="btn btn-success" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} clockIn(eid, getBranch())">⏵ Clock In</button>
-      <button class="btn btn-danger" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} clockOut(eid, getBranch())">⏹ Clock Out</button>
+      <button class="btn btn-success" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} getBranchUUID(getBranch()).then(bid=>clockIn(eid, bid))">⏵ Clock In</button>
+      <button class="btn btn-danger" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} getBranchUUID(getBranch()).then(bid=>clockOut(eid, bid))">⏹ Clock Out</button>
       <span id="clkStatus" style="font-size:12px;font-weight:600;color:#555"></span>
     </div>
 
-    <div class="table-wrap" id="attTable"><div class="table-scroll">
+    <!-- Real-time Attendance Status Widget -->
+    <div class="section-header" style="margin-top:20px">
+      <div class="section-title">🟢 Currently Present</div>
+      <button class="btn btn-sm btn-teal" onclick="refreshLiveAttendance()">🔄 Refresh</button>
+    </div>
+    <div id="liveAttendance" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:10px 0"></div>
       <table><thead><tr><th>ID</th><th>Name</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>OT Hours</th><th>ND Hours</th><th>Holiday</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="attBody"></tbody></table>
     </div></div>`;
@@ -2285,7 +2295,7 @@ function loadAtt(){
         ? `<span class="badge ${r.holiday.includes('Regular')?'badge-red':'badge-yellow'}">${r.holiday}</span>`
         : (holType ? `<span class="badge badge-gray">${holType}</span>` : '—');
       rows.push(`<tr>
-        <td>${eid}</td><td><b>${empHover(eid, name)}</b></td><td>${r.date}</td>
+        <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${empHover(eid, name)}</b></td><td>${r.date}</td>
         <td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td>
         <td>${r.hours||'0'}h</td>
         <td>${r.ot_hours>0?`<span style="color:var(--blue);font-weight:700">+${r.ot_hours}h</span>`:'—'}</td>
@@ -2300,6 +2310,52 @@ function loadAtt(){
     });
   });
   document.getElementById('attBody').innerHTML=rows.join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">No records for this date</td></tr>`;
+  refreshLiveAttendance();
+}
+
+function refreshLiveAttendance(){
+  const att=load(KEYS.attendance), emps=load(KEYS.employees);
+  const today = new Date().toISOString().split('T')[0];
+  const liveEmps = [];
+  
+  Object.entries(att).forEach(([eid, recs]) => {
+    const rec = recs.find(r => r.date === today && r.time_in && !r.time_out);
+    if(rec && emps[eid]?.status !== 'Resigned') {
+      const emp = emps[eid];
+      const timeIn = new Date(rec.time_in);
+      const now = new Date();
+      const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
+      const shiftHours = emp.shift_hours || 8;
+      const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
+      const timeRemaining = Math.max(0, ((shiftEnd - now) / (1000 * 60)).toFixed(0));
+      
+      liveEmps.push({
+        eid, name: emp.name, hoursWorked, timeRemaining, 
+        clockInTime: timeIn.toLocaleTimeString('en-PH', {hour:'2-digit', minute:'2-digit'}),
+        branch: emp.branch
+      });
+    }
+  });
+  
+  const html = liveEmps.length ? liveEmps.map(e => `
+    <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${e.name}</div>
+          <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
+        </div>
+        <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
+        <div><span style="color:#888">Clocked In:</span> <b>${e.clockInTime}</b></div>
+        <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
+        <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
+    </div>
+  `).join('') : '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
+  
+  document.getElementById('liveAttendance').innerHTML = html;
 }
 
 async function clearAllAtt(){
@@ -3037,7 +3093,7 @@ function computePayroll(){
     _payrollData.push({eid, name:e.name, branch:e.branch||'—', ...pay, days_worked:dw,
       ot_hours:otHours, nd_hours:ndHours, reg_hol:regHolDays, spe_hol:speHolDays});
     return `<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(rate)}/day</td><td>${dw} days</td>
       <td>${fmt(pay.gross)}</td>
       <td>${otHours>0?`<span style="color:var(--blue);font-weight:700">${fmt(pay.otPay)}</span>`:'—'}</td>
@@ -3295,7 +3351,7 @@ function computeGovReports(){
     sssEmpTotal += sssEmp; sssErTotal += sssEr;
     _govData.sss.push({eid,name:e.name,branch:e.branch||'—',monthly,sssEmp,sssEr});
     sssRows.push(`<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(monthly)}</td>
       <td><input placeholder="SSS No." style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px"
           oninput="updateGovNo('sss','${eid}',this.value)"></td>
@@ -3310,7 +3366,7 @@ function computeGovReports(){
     phEmpTotal += phEmp; phErTotal += phEr;
     _govData.ph.push({eid,name:e.name,branch:e.branch||'—',monthly,phEmp,phEr});
     phRows.push(`<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(monthly)}</td>
       <td><input placeholder="PhilHealth No." style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px"
           oninput="updateGovNo('ph','${eid}',this.value)"></td>
@@ -3325,7 +3381,7 @@ function computeGovReports(){
     piEmpTotal += piEmp; piErTotal += piEr;
     _govData.pi.push({eid,name:e.name,branch:e.branch||'—',monthly,piEmp,piEr});
     piRows.push(`<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(monthly)}</td>
       <td><input placeholder="Pag-IBIG No." style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px"
           oninput="updateGovNo('pi','${eid}',this.value)"></td>
@@ -3509,7 +3565,7 @@ function compute13th(){
         dateHired:e.date_hired||'—', totalBasic, thirteenth, taxExempt});
 
       return `<tr>
-        <td>${eid}</td>
+        <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td>
         <td><b>${_esc(e.name)}</b>${hiredNote}</td>
         <td>${e.branch||'—'}</td>
         <td>${empTypeTag}</td>
@@ -3684,7 +3740,7 @@ function generateBIR2316List(){
                 addr:localStorage.getItem('bir_emp_addr')||''}});
 
     return `<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td>
       <td><input value="${tin}" placeholder="000-000-000"
         style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:110px"
         oninput="localStorage.setItem('bir_tin_${eid}',this.value);
