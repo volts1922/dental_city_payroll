@@ -1583,6 +1583,11 @@ function nowPH(){
 }
 function nextId(data,prefix=''){ const nums=Object.keys(data).map(k=>parseInt(k.replace(prefix,''))).filter(n=>!isNaN(n)); return prefix+String(nums.length?Math.max(...nums)+1:1).padStart(3,'0'); }
 function fmt(n){ return '₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
+function formatEmpId(eid, branch=''){
+  const b = branch || getBranch() || '';
+  const code = b.replace(/\D/g, '').slice(-3) || '001';
+  return `BR${code}-${eid}`;
+}
 function fval(k){ const el=document.getElementById('f_'+k); return el?el.value.trim():''; }
 function badge(status){
   const map={Active:'blue',Inactive:'gray',Resigned:'red',Present:'green',Absent:'red','Half-day':'yellow',Late:'yellow',Approved:'green',Rejected:'red',Pending:'yellow',Paid:'green',Unpaid:'red',Active2:'blue'};
