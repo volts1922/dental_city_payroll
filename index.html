@@ -1341,7 +1341,6 @@ const NAV_OWNER=[
   // ── Branch Operations (active when a branch is selected via picker) ───────
   {icon:'👤',label:'Employees',        fn:'showEmployees'},
   {icon:'📅',label:'Attendance',       fn:'showAttendance'},
-  {icon:'📊',label:'Tracker (D/W/M/Y)', fn:'showAttendanceTracker'},
   {icon:'🌴',label:'Leave',            fn:'showLeave'},
   {icon:'💳',label:'Loans',            fn:'showLoans'},
   {icon:'💰',label:'Payroll',          fn:'showPayroll'},
@@ -3866,7 +3865,8 @@ function generateSlip(){
   if(!fromDate||!toDate){toast('⚠️ Set date range');return;}
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const e=emps[eid], rate=parseFloat(e.daily_rate||0);
-  const recs=Object.values(att[eid]||[]).filter(r=>r.date>=fromDate&&r.date<=toDate);
+  // FIX: Map attendance records with date from KEY
+  const recs=Object.entries(att[eid]||{}).map(([date,rec])=>({...rec,date})).filter(r=>r.date>=fromDate&&r.date<=toDate);
   const daysPresent= recs.filter(r=>r.status==='Present'||r.status==='Late').length;
   const absences   = recs.filter(r=>r.status==='Absent').length;
   const halfDays   = recs.filter(r=>r.status==='Half-day').length;
@@ -7896,11 +7896,11 @@ async function clockIn(empId, branchId) {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const timeIn = now.toTimeString().slice(0, 5);
-    const existing = await supabase.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
+    const existing = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(existing.data && existing.data.status === 'clocked_in') {
       throw new Error('Already clocked in at ' + existing.data.time_in);
     }
-    const {data, error} = await supabase.from('time_clock').upsert({
+    const {data, error} = await _sb.from('time_clock').upsert({
       employee_id: empId, branch_id: branchId, date: today, time_in: timeIn, 
       status: 'clocked_in', validation_status: 'valid', created_at: now.toISOString()
     }, {onConflict: 'employee_id,branch_id,date'}).select();
@@ -7918,10 +7918,10 @@ async function startBreak(empId, branchId, breakType = 'Lunch') {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const breakInTime = now.toTimeString().slice(0, 5);
-    const {data: clock} = await supabase.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
+    const {data: clock} = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || clock.status !== 'clocked_in') throw new Error('Not clocked in');
-    await supabase.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
-    const {data: breakRecord} = await supabase.from('time_breaks').insert({
+    await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
+    const {data: breakRecord} = await _sb.from('time_breaks').insert({
       clock_id: clock.id, employee_id: empId, branch_id: branchId, date: today, 
       break_type: breakType, break_in: breakInTime, auto_deducted: true
     }).select();
@@ -7938,13 +7938,13 @@ async function endBreak(empId, branchId) {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const breakOutTime = now.toTimeString().slice(0, 5);
-    const {data: breaks} = await supabase.from('time_breaks').select('*')
+    const {data: breaks} = await _sb.from('time_breaks').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today)
       .is('break_out', null).order('created_at', {ascending: false}).limit(1).single();
     if(!breaks) throw new Error('No active break');
     const breakDurationMins = _calcTime(breaks.break_in, breakOutTime);
-    await supabase.from('time_breaks').update({break_out: breakOutTime, approval_status: 'auto_approved'}).eq('id', breaks.id);
-    await supabase.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', today);
+    await _sb.from('time_breaks').update({break_out: breakOutTime, approval_status: 'auto_approved'}).eq('id', breaks.id);
+    await _sb.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', today);
     toast(`✅ Break ended. ${breakDurationMins} mins deducted`);
     return {breakDurationMins};
   } catch(e) {
@@ -7958,12 +7958,12 @@ async function clockOut(empId, branchId) {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const timeOut = now.toTimeString().slice(0, 5);
-    const {data: clock} = await supabase.from('time_clock').select('*')
+    const {data: clock} = await _sb.from('time_clock').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || !clock.time_in) throw new Error('Not clocked in');
     const grossMins = _calcTime(clock.time_in, timeOut);
     const grossHours = (grossMins / 60).toFixed(2);
-    const {data: breaks} = await supabase.from('time_breaks').select('break_in, break_out')
+    const {data: breaks} = await _sb.from('time_breaks').select('break_in, break_out')
       .eq('employee_id', empId).eq('date', today);
     let totalBreakMins = 0;
     if(breaks) breaks.forEach(b => {
@@ -7972,7 +7972,7 @@ async function clockOut(empId, branchId) {
     const totalBreakHours = (totalBreakMins / 60).toFixed(2);
     const netHours = (grossHours - totalBreakHours).toFixed(2);
     const otHours = Math.max(0, netHours - 8).toFixed(2);
-    await supabase.from('time_clock').update({
+    await _sb.from('time_clock').update({
       time_out: timeOut, status: 'clocked_out', hours_gross: grossHours, 
       break_hours: totalBreakHours, hours_net: netHours, ot_hours: otHours, 
       validation_status: 'valid', updated_at: now.toISOString()
@@ -7997,18 +7997,18 @@ function _calcTime(timeIn, timeOut) {
 
 async function _syncPayroll(empId, branchId, date, timeData) {
   try {
-    const {data: emp} = await supabase.from('employees_201').select('daily_rate').eq('employee_id', empId).single();
+    const {data: emp} = await _sb.from('employees_201').select('daily_rate').eq('employee_id', empId).single();
     const dailyRate = emp?.daily_rate || 1000;
     const hourlyRate = dailyRate / 8;
     const netHours = parseFloat(timeData.hours_net) || 0;
     const otHours = parseFloat(timeData.ot_hours) || 0;
     const basePay = netHours * hourlyRate;
     const otPay = otHours * hourlyRate * 1.25;
-    const {data: clock} = await supabase.from('time_clock').select('time_in').eq('employee_id', empId).eq('branch_id', branchId).eq('date', date).single();
+    const {data: clock} = await _sb.from('time_clock').select('time_in').eq('employee_id', empId).eq('branch_id', branchId).eq('date', date).single();
     const timeIn = clock?.time_in || '00:00';
     const minutesLate = _calcTime('08:00', timeIn);
     const onTime = minutesLate <= 0;
-    await supabase.from('time_analytics').upsert({
+    await _sb.from('time_analytics').upsert({
       employee_id: empId, branch_id: branchId, date: date, time_in: timeIn, 
       minutes_late: Math.max(0, minutesLate), gross_hours: timeData.hours_gross || 0,
       break_hours: timeData.break_hours || 0, net_hours: netHours, ot_hours: otHours,
@@ -8027,7 +8027,7 @@ async function _syncPayroll(empId, branchId, date, timeData) {
 
 async function showAnalyticsDashboard(branchId, startDate, endDate) {
   try {
-    const {data} = await supabase.from('time_analytics').select('employee_id, employees_201!inner(name), minutes_late')
+    const {data} = await _sb.from('time_analytics').select('employee_id, employees_201!inner(name), minutes_late')
       .eq('branch_id', branchId).gte('date', startDate).lte('date', endDate).gt('minutes_late', 0);
     if(!data || data.length === 0) {
       document.getElementById('main').innerHTML = '<div style="padding:20px"><p>📊 No late arrivals</p></div>';
@@ -8058,7 +8058,7 @@ async function showPayrollPreview(empId, branchId) {
     const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const monthStart = month + '-01';
     const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().split('T')[0];
-    const {data: analytics} = await supabase.from('time_analytics').select('*')
+    const {data: analytics} = await _sb.from('time_analytics').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).gte('date', monthStart).lte('date', monthEnd);
     if(!analytics || analytics.length === 0) {
       document.getElementById('main').innerHTML = '<div style="padding:20px"><p>No payroll data yet</p></div>';
