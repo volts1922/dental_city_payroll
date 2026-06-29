@@ -274,10 +274,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <header class="topbar">
   <button class="menu-btn" onclick="toggleSidebar()">☰</button>
   <div class="topbar-title" id="topbarTitle">Dashboard</div>
-  <div id="branchBadge" style="display:none;align-items:center;gap:6px;margin-right:8px">
-    <span id="branchBadgeText" style="background:var(--navy);color:#fff;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:600;"></span>
-    <button onclick="changeBranch()" style="background:none;border:none;cursor:pointer;font-size:11px;color:#555">✏</button>
-  </div>
   <div id="ownerBranchPicker" style="display:none;align-items:center;gap:6px;margin-right:8px">
     <span style="font-size:11px;color:#555;font-weight:600">🏢 Branch:</span>
     <select id="ownerBranchSel" onchange="ownerSwitchBranch(this.value)"
@@ -1256,8 +1252,7 @@ function initBranch(){
 }
 function updateBranchUI(n){
   if(n){
-    document.getElementById('branchBadgeText').textContent='🏢 '+n;
-    document.getElementById('branchBadge').style.display='flex';
+    // branchBadge removed - use ownerBranchPicker instead
     document.getElementById('branchNameSidebar').textContent=n;
     document.title=n+' — Dental City Payroll';
   }
