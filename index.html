@@ -2367,7 +2367,7 @@ async function refreshLiveAttendance(){
     
     const liveEmps = records.map(rec => {
       const emp = emps[rec.employee_id] || {name: rec.employee_id};
-      const timeIn = new Date(rec.time_in);
+      const timeIn = new Date(rec.time_in.includes('Z') ? rec.time_in : rec.time_in + 'Z');
       const now = new Date();
       const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
       const shiftHours = emp.shift_hours || 8;
