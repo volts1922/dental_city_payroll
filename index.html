@@ -1977,7 +1977,7 @@ function showEmployees(q=''){
       const empTypeBadge = e.emp_type ? `<span class="badge ${e.emp_type==='Regular'?'badge-blue':e.emp_type==='Probationary'?'badge-yellow':e.emp_type==='Contractual'?'badge-gray':'badge-gray'}">${e.emp_type}</span>` : '—';
       const los = e.date_hired ? `<span style="font-size:11px;color:#555">${e.date_hired}</span><br><span style="font-size:11px;color:var(--blue);font-weight:600">${lengthOfService(e.date_hired)}</span>` : '—';
       return `<tr>
-        <td>${id}</td><td><b>${_esc(e.name)}</b></td><td>${e.role||'—'}</td>
+        <td>${formatEmpId(id, e.branch)}</td><td><b>${_esc(e.name)}</b></td><td>${e.role||'—'}</td>
         <td>${e.branch||'—'}</td>
         <td>${empTypeBadge}</td>
         <td>${los}</td>
