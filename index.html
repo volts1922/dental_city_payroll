@@ -222,7 +222,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         <input id="loginPass" class="form-control" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter'){setTimeout(()=>{if(window.doLogin)doLogin()},0)}">
       </div>
       <div id="loginErr" style="color:var(--red);font-size:12px;margin:6px 0;min-height:16px;"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px" onclick="doLogin()">Sign In</button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px" onclick="setTimeout(()=>{if(window.doLogin)doLogin()},0)">Sign In</button>
       <div style="margin-top:14px;padding:10px;background:var(--bg);border-radius:8px;font-size:11px;color:#555;">
         Use your <b>username</b> &amp; <b>password</b>. <span style="color:var(--blue);cursor:pointer" onclick="showSetupHelp()">Setup help →</span>
       </div>
@@ -3513,7 +3513,6 @@ async function downloadPayslipPDF(empId, month, period){
     toast(`✅ Downloaded: ${fileName}`);
   };
   document.head.appendChild(script);
-}
 }
 
 async function generatePayslipBatch(period){
