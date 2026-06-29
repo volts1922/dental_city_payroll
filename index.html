@@ -829,7 +829,7 @@ async function _loadAccountsFromCloud(){
     const { data, error } = await _sb.from('payroll_accounts').select('*');
     if(error || !data) return;
     data.forEach(row=>{
-      USERS[row.username] = { password: row.password, role: row.role, name: row.name, ...(row.branch?{branch:row.branch}:{}) };
+      USERS[row.username] = { password: row.password_hash, role: row.role, name: row.name, ...(row.branch?{branch:row.branch}:{}) };
     });
     console.log('☁️ Loaded', data.length, 'cloud accounts');
   }catch(e){ console.log('Account load error:', e.message); }
@@ -839,7 +839,7 @@ async function _saveAccountToCloud(username, acc){
   if(!_sb) return;
   try{
     await _sb.from('payroll_accounts').upsert({
-      username, password: acc.password, role: acc.role, name: acc.name, branch: acc.branch||null
+      username, password_hash: acc.password, role: acc.role, name: acc.name, branch: acc.branch||null
     }, { onConflict: 'username' });
   }catch(e){ console.log('Account save error:', e.message); }
 }
