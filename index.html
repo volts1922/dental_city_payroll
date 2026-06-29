@@ -3613,7 +3613,6 @@ async function generatePayslipBatch(period){
     </div>
   `;
 }
-}
 
 // Deduct loan balances after confirming payroll run
 async function confirmPayrollRun(){
@@ -8760,13 +8759,6 @@ function checkAdminAccess(feature) {
   }
   return true;
 }
-
-// Wrapper for Attendance Tracker
-const _originalShowAttendanceTracker = showAttendanceTracker;
-window.showAttendanceTracker = function(period='week') {
-  if(!checkAdminAccess('showAttendanceTracker')) return;
-  _originalShowAttendanceTracker(period);
-};
 
 // Wrapper for Analytics Dashboard
 const _originalShowAnalyticsDashboard = showAnalyticsDashboard;
