@@ -3325,7 +3325,13 @@ async function computePayroll(){
       <td>${fmt(pay.sss)}</td><td>${fmt(pay.ph)}</td>
       <td>${fmt(pay.pi)}</td><td>${fmt(pay.tax)}</td><td>${fmt(pay.loanDeduction)}</td>
       <td>${fmt(pay.totalDeductions)}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
-      <td><button class="btn btn-primary btn-sm" onclick="showPayslip('${eid}','${month}')">🧾 View</button></td>
+      <td>
+        <div class="btn-group" style="display:flex;gap:4px">
+          <button class="btn btn-primary btn-sm" onclick="showPayslip('${eid}','${month}','first_half')">1st</button>
+          <button class="btn btn-primary btn-sm" onclick="showPayslip('${eid}','${month}','second_half')">2nd</button>
+          <button class="btn btn-primary btn-sm" onclick="showPayslip('${eid}','${month}','full_month')">Full</button>
+        </div>
+      </td>
     </tr>`;
   }).join('')||`<tr><td colspan="16" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
   document.getElementById('payBody').innerHTML=rows;
@@ -3476,10 +3482,38 @@ async function showPayslip(empId, month, period='full_month'){
       <div style="display:flex;gap:10px;margin-bottom:20px">
         <button class="btn btn-secondary" onclick="showPayroll()">← Back</button>
         <button class="btn btn-primary" onclick="window.print()">🖨 Print</button>
+        <button class="btn btn-success" onclick="downloadPayslipPDF('${empId}','${month}','${period}')">📥 Download PDF</button>
       </div>
       ${payslipHTML}
     </div>
   `;
+}
+
+async function downloadPayslipPDF(empId, month, period){
+  const emps = load(KEYS.employees);
+  const emp = emps[empId];
+  const periodLabel = period === 'first_half' ? '1st Half' : period === 'second_half' ? '2nd Half' : 'Full Month';
+  const fileName = `Payslip_${formatEmpId(empId, emp.branch)}_${month}_${periodLabel}.pdf`;
+  
+  // Load html2pdf from CDN
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  script.onload = () => {
+    const element = document.querySelector('[style*="max-width:800px"]');
+    if(!element) { toast('⚠️ Payslip not found'); return; }
+    
+    const opt = {
+      margin: 10,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+    };
+    html2pdf().set(opt).from(element).save();
+    toast(`✅ Downloaded: ${fileName}`);
+  };
+  document.head.appendChild(script);
+}
 }
 
 async function generatePayslipBatch(period){
