@@ -902,10 +902,9 @@ let currentRole = null, currentUser = null;
 
 // ── Form sections for 201 file ─────────────────────────────────────────────────
 var SECTIONS_201 = {
-  'Personal': ['full_name','birthdate','civil_status','address','phone'],
-  'Emergency': ['emergency_contact','emergency_phone','dependents_count'],
-  'IDs': ['sss_id','pag_ibig_id','philhealth_id','tin'],
-  'Other': ['health_insurance','education']
+  'Basic Info': ['name','email','contact','emp_type'],
+  'Employment': ['role','daily_rate','date_hired','status'],
+  'Documents': ['photo']
 };
 
 // ── Password security ────────────────────────────────────────────────────────
@@ -2415,6 +2414,8 @@ async function loadAtt(){
         records.forEach(r=>{
           const emp = emps[r.employee_id] || {name: r.employee_id};
           const eid = r.employee_id;
+          // Use branch from emp object, or try to get from branch_id, otherwise use current branch
+          const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
           const timeInStr = r.time_in ? (() => {
             try {
@@ -2430,7 +2431,7 @@ async function loadAtt(){
           })() : '—';
           
           rows.push(`<tr>
-            <td>${formatEmpId(eid, emp.branch || getBranch())}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
+            <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
             <td>${timeInStr}</td><td>${timeOutStr}</td>
             <td>—</td><td>—</td><td>—</td>
             <td>${holBadge}</td>
