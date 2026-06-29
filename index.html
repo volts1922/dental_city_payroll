@@ -584,13 +584,22 @@ let _ownerData = {}; // { 'Branch 1': {pr_employees, pr_attendance, ...}, ... }
 async function loadAllBranchesFromCloud(){
   if(!_sb) return false;
   try{
+    // Set 5s timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Cloud load timeout')), 5000)
+    );
+    
     // For Owner: fetch ALL branches from branches table (source of truth)
     let allBranches = null, branchError = null;
     try {
-      const result = await _sb.from('branches').select('name');
+      const result = await Promise.race([
+        _sb.from('branches').select('name'),
+        timeoutPromise
+      ]);
       allBranches = result.data;
       branchError = result.error;
     } catch(e) {
+      console.warn('⚠️ Branch fetch timeout/error:', e.message);
       branchError = e;
     }
     
@@ -599,16 +608,22 @@ async function loadAllBranchesFromCloud(){
       ALL_BRANCHES = allBranches.map(b => b.name).filter(b => b && b !== 'main');
     }
     
-    // Still fetch payroll_data for owner data
+    // Still fetch payroll_data for owner data (with timeout)
     let data = null, error = null;
     try {
-      const result = await _sb.from('payroll_data').select('branch_key,data_type,data');
+      const result = await Promise.race([
+        _sb.from('payroll_data').select('branch_key,data_type,data'),
+        timeoutPromise
+      ]);
       data = result.data;
       error = result.error;
     } catch(e) {
+      console.warn('⚠️ Payroll data fetch timeout/error:', e.message);
       error = e;
     }
-    if(error) throw error;
+    
+    if(error && !error.message?.includes('timeout')) throw error;
+    
     _ownerData = {};
     (data||[]).forEach(row=>{
       if(!row.branch_key) return;
@@ -651,7 +666,9 @@ async function loadAllBranchesFromCloud(){
     console.log('[Owner] Loaded branches:', ALL_BRANCHES);
     return true;
   }catch(e){
-    console.error('Load all branches error:', e.message || JSON.stringify(e));
+    console.error('❌ Load all branches error:', e.message || JSON.stringify(e));
+    // Fallback to default branches if cloud load fails
+    if(!ALL_BRANCHES.length) ALL_BRANCHES = [..._DEFAULT_BRANCHES];
     return false;
   }
 }
