@@ -2320,7 +2320,11 @@ async function loadAtt(){
     try {
       // Get branch UUID
       const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
-      if(!branchData) { document.getElementById('attBody').innerHTML = `<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">Branch not found</td></tr>`; return; }
+      if(!branchData) { 
+        const ab = document.getElementById('attBody');
+        if(ab) ab.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">Branch not found</td></tr>`;
+        return;
+      }
       
       // Fetch time_clock records for this date and branch
       const {data: records} = await _sb.from('time_clock')
@@ -2372,7 +2376,7 @@ async function loadAtt(){
 }
 
 async function refreshLiveAttendance(){
-  if(!_sb) return;
+  if(!_sb || !document.getElementById('liveAttendance')) return;
   
   const today = new Date().toISOString().split('T')[0];
   const emps = load(KEYS.employees);
@@ -2381,7 +2385,11 @@ async function refreshLiveAttendance(){
   try {
     // Get branch UUID
     const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
-    if(!branchData) { document.getElementById('liveAttendance').innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>'; return; }
+    if(!branchData) { 
+      const la = document.getElementById('liveAttendance');
+      if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>';
+      return;
+    }
     
     // Get all clocked-in employees for today
     const {data: records} = await _sb.from('time_clock')
@@ -2391,7 +2399,8 @@ async function refreshLiveAttendance(){
       .eq('status', 'clocked_in');
     
     if(!records || records.length === 0) {
-      document.getElementById('liveAttendance').innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
+      const la = document.getElementById('liveAttendance');
+      if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
       return;
     }
     
