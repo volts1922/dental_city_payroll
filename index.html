@@ -2255,8 +2255,8 @@ function showAttendance(){
         <option value="">-- Select Employee --</option>
         ${Object.keys(_clkEidMap).map(n=>`<option value="${n}">${n}</option>`).join('')}
       </select>
-      <button class="btn btn-success" onclick="clockIn()">⏵ Clock In</button>
-      <button class="btn btn-danger" onclick="clockOut()">⏹ Clock Out</button>
+      <button class="btn btn-success" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} clockIn(eid, getBranch())">⏵ Clock In</button>
+      <button class="btn btn-danger" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} clockOut(eid, getBranch())">⏹ Clock Out</button>
       <span id="clkStatus" style="font-size:12px;font-weight:600;color:#555"></span>
     </div>
 
@@ -6597,6 +6597,14 @@ function renameBranch(idx, oldName){
     if(ALL_BRANCHES.includes(newName)){ toast('⚠️ Name already exists!'); return; }
     ALL_BRANCHES[idx] = newName;
     Object.values(USERS).forEach(u=>{ if(u.branch===oldName) u.branch=newName; });
+    
+    // UPDATE SUPABASE branches TABLE
+    if(_sb){
+      try {
+        await _sb.from('branches').update({name: newName}).eq('name', oldName);
+      } catch(e) { console.error('Branch update failed:', e); }
+    }
+    
     await _renameBranchInCloudAccounts(oldName, newName);
 
     const bdata = _ownerData[oldName] || {};
