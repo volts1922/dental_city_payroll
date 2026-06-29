@@ -6588,7 +6588,7 @@ function showSecurityDashboard(){
 // ACCOUNT MANAGER
 // ══════════════════════════════════════════════════════════════════════════════
 function showAccountManager(){
-  const roleColors = {Owner:'#B7860B', Admin:'var(--blue)', BranchAdmin:'var(--teal)', Staff:'var(--green)'};
+  const roleColors = {owner:'#B7860B', admin:'var(--blue)', staff:'var(--green)'};
   
   // Load accounts from Supabase first
   if(_sb){
@@ -6597,7 +6597,7 @@ function showAccountManager(){
         data.forEach(acc=>{
           USERS[acc.username] = {
             password: acc.password_hash,
-            role: acc.role,
+            role: (acc.role||'staff').toLowerCase(),
             name: acc.name,
             branch: acc.branch
           };
@@ -6611,8 +6611,11 @@ function showAccountManager(){
 }
 
 function renderAccounts(roleColors){
-  const byRole = {owner:[], admin:[], Staff:[]};
-  Object.entries(USERS).forEach(([u,d])=>{ if(!d._hidden)(byRole[d.role]||[]).push([u,d]); });
+  const byRole = {owner:[], admin:[], staff:[]};
+  Object.entries(USERS).forEach(([u,d])=>{ 
+    const role = (d.role||'staff').toLowerCase();
+    if(!d._hidden) (byRole[role]||[]).push([u,d]); 
+  });
 
   const buildTable = (role, list)=>{
     if(!list.length) return '';
@@ -6626,7 +6629,7 @@ function renderAccounts(roleColors){
         ${u!=='owner'&&!d._hidden?`<button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">🗑</button>`:''}
       </td>
     </tr>`).join('');
-    const icons={owner:'👑',admin:'🛡',Staff:'👤'};
+    const icons={owner:'👑',admin:'🛡',staff:'👤'};
     return `<div style="margin-bottom:20px">
       <div style="font-weight:700;font-size:13px;color:${roleColors[role]};margin-bottom:8px;padding:8px 14px;
                   background:var(--sky);border-radius:8px;border-left:4px solid ${roleColors[role]}">
