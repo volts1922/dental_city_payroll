@@ -3390,15 +3390,24 @@ async function showPayslip(empId, month, startDate, endDate){
   // Determine if this is 1st half, 2nd half, or custom
   const startDay = parseInt(startDate.split('-')[2]);
   const endDay = parseInt(endDate.split('-')[2]);
+  
+  console.log(`=== PAYSLIP DEBUG ===`);
+  console.log(`startDate: ${startDate}, startDay: ${startDay}`);
+  console.log(`endDate: ${endDate}, endDay: ${endDay}`);
+  
   let periodLabel = `${startDate} to ${endDate}`;
   let deductionType = 'custom'; // default
   
   if(startDay === 1 && endDay === 15) {
     periodLabel = '1st Half (1-15)';
     deductionType = 'first_half';
+    console.log('Detected: 1st HALF');
   } else if(startDay >= 16 && endDay >= 16) {
     periodLabel = '2nd Half (16-EOMonth)';
     deductionType = 'second_half';
+    console.log('Detected: 2nd HALF - applying BIR tax only');
+  } else {
+    console.log('Detected: CUSTOM range');
   }
   
   // Calculate pay
@@ -3453,7 +3462,7 @@ async function showPayslip(empId, month, startDate, endDate){
         <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">ID</div><div style="font-size:14px;font-weight:700">${formatEmpId(empId, emp.branch)}</div></div>
         <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Name</div><div style="font-size:14px;font-weight:700">${emp.name}</div></div>
         <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Branch</div><div style="font-size:14px">${emp.branch}</div></div>
-        <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Daily Rate</div><div style="font-size:14px">₱${fmt(rate)}</div></div>
+        <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Daily Rate</div><div style="font-size:14px">${fmt(rate)}</div></div>
       </div>
       <div style="background:#f5f5f5;padding:15px;border-radius:8px;margin-bottom:20px">
         <div style="font-weight:700;font-size:12px;margin-bottom:10px;text-transform:uppercase;color:#333">Period Details</div>
@@ -3643,17 +3652,17 @@ async function generatePayslipBatch(period){
           <div><span style="color:#666">ID:</span> <b>${formatEmpId(empId, emp.branch)}</b></div>
           <div><span style="color:#666">Name:</span> <b>${emp.name}</b></div>
           <div><span style="color:#666">Branch:</span> ${emp.branch}</div>
-          <div><span style="color:#666">Rate:</span> ₱${fmt(rate)}</div>
+          <div><span style="color:#666">Rate:</span> ${fmt(rate)}</div>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:15px">
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Days Worked</td><td style="text-align:right">${daysWorked.toFixed(1)}</td></tr>
-          <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">GROSS PAY</td><td style="padding:8px;text-align:right;font-weight:700">₱${fmt(pay.gross)}</td></tr>
-          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">SSS</td><td style="text-align:right">₱${fmt(pay.sss)}</td></tr>
-          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">PhilHealth</td><td style="text-align:right">₱${fmt(pay.ph)}</td></tr>
-          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Pag-IBIG</td><td style="text-align:right">₱${fmt(pay.pi)}</td></tr>
-          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Income Tax</td><td style="text-align:right">₱${fmt(pay.tax)}</td></tr>
-          ${pay.loanDeduction > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Loan</td><td style="text-align:right">₱${fmt(pay.loanDeduction)}</td></tr>` : ''}
-          <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">NET PAY</td><td style="padding:8px;text-align:right;font-weight:700">₱${fmt(pay.net)}</td></tr>
+          <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">GROSS PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">SSS</td><td style="text-align:right">${fmt(pay.sss)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">PhilHealth</td><td style="text-align:right">${fmt(pay.ph)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Pag-IBIG</td><td style="text-align:right">${fmt(pay.pi)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Income Tax</td><td style="text-align:right">${fmt(pay.tax)}</td></tr>
+          ${pay.loanDeduction > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Loan</td><td style="text-align:right">${fmt(pay.loanDeduction)}</td></tr>` : ''}
+          <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">NET PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.net)}</td></tr>
         </table>
       </div>
     `;
@@ -8359,7 +8368,7 @@ function runPayrollNow(){
         if(error) throw error;
       }
       
-      toast(`✅ Payroll submitted! ₱${fmt(total_net)}`);
+      toast(`✅ Payroll submitted! ${fmt(total_net)}`);
       setTimeout(() => showPayroll(), 1000);
     } catch(err) {
       console.error('[Payroll]', err);
