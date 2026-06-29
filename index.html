@@ -3412,39 +3412,53 @@ async function showPayslip(empId, month, startDate, endDate){
     console.log('Detected: CUSTOM range');
   }
   
-  // Calculate pay
+  // Calculate FULL MONTH gross (always 22 business days) for deduction basis
+  const fullMonthDays = 22; // Standard PH workdays
+  const fullMonthGross = rate * fullMonthDays;
+  
+  // Period-specific gross (for display)
   const basicPay = rate * daysWorked;
   const gross = basicPay;
   
-  // Determine deductions based on period type
+  // Determine deductions based on FULL MONTH gross
   let pay;
   if(deductionType === 'first_half'){
-    // 1st Half: SSS, PhilHealth, Pag-IBIG
+    // 1st Half: Deductions calculated from FULL MONTH, payment split
+    const monthlySSS = Math.round(fullMonthGross * 0.04);
+    const monthlyPH = Math.round(fullMonthGross * 0.025);
+    const monthlyPI = 100;
+    
     pay = {
       daysWorked, basic: basicPay, gross,
-      sss: Math.round(gross * 0.04),
-      ph: Math.round(gross * 0.025),
-      pi: 100,
+      sss: monthlySSS,
+      ph: monthlyPH,
+      pi: monthlyPI,
       tax: 0,
       loanDeduction: 0,
       net: 0
     };
   } else if(deductionType === 'second_half'){
-    // 2nd Half: BIR Tax ONLY
+    // 2nd Half: BIR calculated from FULL MONTH
+    const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
+    
     pay = {
       daysWorked, basic: basicPay, gross,
       sss: 0, ph: 0, pi: 0,
-      tax: Math.max(0, (gross - 5000) * 0.08),
+      tax: monthlyBIR,
       loanDeduction: 0,
       net: 0
     };
   } else {
-    // Custom range: SSS, PhilHealth, Pag-IBIG (default)
+    // Custom range: Use full month basis too
+    const monthlySSS = Math.round(fullMonthGross * 0.04);
+    const monthlyPH = Math.round(fullMonthGross * 0.025);
+    const monthlyPI = 100;
+    
     pay = {
       daysWorked, basic: basicPay, gross,
-      sss: Math.round(gross * 0.04),
-      ph: Math.round(gross * 0.025),
-      pi: 100,
+      sss: monthlySSS,
+      ph: monthlyPH,
+      pi: monthlyPI,
       tax: 0,
       loanDeduction: 0,
       net: 0
