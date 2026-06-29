@@ -2437,10 +2437,12 @@ async function refreshLiveAttendance(){
       </div>
     `).join('');
     
-    document.getElementById('liveAttendance').innerHTML = html;
+    const liveAtt = document.getElementById('liveAttendance');
+    if(liveAtt) liveAtt.innerHTML = html;
   } catch(e) {
     console.error('Live attendance fetch error:', e);
-    document.getElementById('liveAttendance').innerHTML = '<div style="color:#e11d48;padding:10px">Error loading live attendance</div>';
+    const liveAtt = document.getElementById('liveAttendance');
+    if(liveAtt) liveAtt.innerHTML = '<div style="color:#e11d48;padding:10px">Error loading live attendance</div>';
   }
 }
 
