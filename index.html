@@ -7866,9 +7866,9 @@ function showBackupManager(){
         <button class="btn btn-success btn-sm" onclick="generateBackupCSV();_markBackupDone('monthly');toast('💾 Monthly backup saved!');closeModal()">⬇ Run Now</button>
       </div>
       <div style="background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-weight:700;color:var(--navy);margin-bottom:4px">📥 Manual Backup</div>
-        <div style="font-size:12px;color:#555;margin-bottom:10px">Download a full backup right now anytime</div>
-        <button class="btn btn-teal btn-sm" onclick="generateBackupCSV();toast('📥 Backup downloaded!');closeModal()">⬇ Download Now</button>
+        <div style="font-weight:700;color:var(--navy);margin-bottom:4px">☁️ Cloud Backups</div>
+        <div style="font-size:12px;color:#555;margin-bottom:10px">View &amp; restore backups stored in Supabase cloud</div>
+        <button class="btn btn-info btn-sm" onclick="closeModal();showCloudBackups()">☁️ View Cloud Backups</button>
       </div>
     </div>`, null, null
   );
