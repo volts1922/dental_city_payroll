@@ -2516,7 +2516,7 @@ async function loadAtt(){
 async function refreshLiveAttendance(){
   if(!_sb || !document.getElementById('liveAttendance')) return;
   
-  const today = new Date().toISOString().split('T')[0];
+  const todayPhDate = today(); // ← Use our fixed today() function that returns GMT+8 date
   const emps = load(KEYS.employees);
   const branch = getBranch();
   
@@ -2529,11 +2529,11 @@ async function refreshLiveAttendance(){
       return;
     }
     
-    // Get all clocked-in employees for today
+    // Get all clocked-in employees for today (Philippines timezone)
     const {data: records} = await _sb.from('time_clock')
       .select('*')
       .eq('branch_id', branchData.id)
-      .eq('date', today)
+      .eq('date', todayPhDate)  // ← Use Philippines timezone date
       .eq('status', 'clocked_in');
     
     if(!records || records.length === 0) {
@@ -2665,15 +2665,60 @@ function editAttRecord(eid, date){
     ()=>{
       const tin  = document.getElementById('f_att_tin').value;
       const tout = document.getElementById('f_att_tout').value;
-      const tIn  = parseTime(tin), tOut = parseTime(tout);
-      const hours= tIn&&tOut?Math.round(Math.max((tOut-tIn)/3600000,0)*100)/100:rec.hours||0;
+      
+      // Calculate hours using 12-hour format
+      const result = calculateWorkHours(tin, tout);
+      
       rec.status    = fval('att_status');
-      rec.time_in   = tin; rec.time_out = tout; rec.hours = hours;
+      rec.time_in   = tin; 
+      rec.time_out  = tout; 
+      rec.hours     = parseFloat(result.decimalHours);
       rec.ot_hours  = parseFloat(document.getElementById('f_att_ot').value||0);
       rec.nd_hours  = parseFloat(document.getElementById('f_att_nd').value||0);
       rec.holiday   = fval('att_hol');
       save(KEYS.attendance, att);
-      closeModal(); toast(`✅ Attendance updated for ${name}!`); loadAtt();
+      
+      // SYNC TO SUPABASE
+      if(_sb){
+        (async ()=>{
+          try {
+            const branchUUID = await getBranchUUID(getBranch());
+            
+            // Convert time strings (HH:MM) to ISO timestamps correctly
+            // Assume input times are Philippines time (GMT+8)
+            const utcMs_in = new Date(`${date}T${tin}`).getTime() + (new Date().getTimezoneOffset() * 60 * 1000);
+            const phMs_in = utcMs_in - (8 * 60 * 60 * 1000); // Convert to UTC from GMT+8
+            const timeInISO = new Date(phMs_in).toISOString();
+            
+            const utcMs_out = new Date(`${date}T${tout}`).getTime() + (new Date().getTimezoneOffset() * 60 * 1000);
+            const phMs_out = utcMs_out - (8 * 60 * 60 * 1000);
+            const timeOutISO = new Date(phMs_out).toISOString();
+            
+            const {data, error} = await _sb.from('time_clock').upsert({
+              employee_id: eid,
+              branch_id: branchUUID,
+              date: date,
+              status: rec.status,
+              time_in: timeInISO,
+              time_out: timeOutISO,
+              updated_at: new Date().toISOString()
+            }, {onConflict: 'employee_id,branch_id,date'});
+            
+            if(error){
+              toast(`⚠️ Supabase sync failed: ${error.message}`);
+              console.warn('Edit sync error:', error);
+            } else {
+              toast(`✅ Attendance updated & synced to Supabase!`);
+            }
+          } catch(e) {
+            console.error('Edit sync exception:', e);
+            toast(`⚠️ Sync error: ${e.message}`);
+          }
+          closeModal(); loadAtt();
+        })();
+      } else {
+        closeModal(); toast(`✅ Attendance updated for ${name}!`); loadAtt();
+      }
     }, '💾 Update'
   );
 }
@@ -2684,6 +2729,42 @@ function parseTime(t){
     if(parts?.length>=2){ try{ return new Date(0,0,0,parseInt(parts[0]),parseInt(parts[1]),parseInt(parts[2]||0)); }catch(e){} }
   }
   return null;
+}
+
+// ── 12-Hour Time Conversion ────────────────────────────────────────────────
+function convert12HourToMinutes(time) {
+  // Example input: "8:30 AM"
+  if(!time) return null;
+  let [timePart, modifier] = time.split(" ");
+  let [hours, minutes] = timePart.split(":");
+  hours = parseInt(hours);
+  minutes = parseInt(minutes);
+  if (modifier === "PM" && hours !== 12) {
+    hours += 12;
+  }
+  if (modifier === "AM" && hours === 12) {
+    hours = 0;
+  }
+  return (hours * 60) + minutes;
+}
+
+function calculateWorkHours(clockIn, clockOut){
+  let start = convert12HourToMinutes(clockIn);
+  let end = convert12HourToMinutes(clockOut);
+  if(start === null || end === null) return {hours: 0, minutes: 0, decimalHours: "0.00"};
+  
+  // overnight shift handling
+  if(end < start){
+    end += 24 * 60;
+  }
+  let totalMinutes = end - start;
+  let hours = Math.floor(totalMinutes / 60);
+  let minutes = totalMinutes % 60;
+  return {
+    hours: hours,
+    minutes: minutes,
+    decimalHours: (totalMinutes / 60).toFixed(2)
+  };
 }
 
 async function clockIn(){
@@ -2747,23 +2828,9 @@ async function clockOut(){
   if(!(await _confirm(`Clock OUT "${empName}" at ${nowStr}?<br>Clocked in at: ${existing.time_in}`, {ok:'Clock Out', cancel:'Cancel', icon:'⏹'}))) return;
   existing.time_out=nowStr;
   
-  // Calculate hours worked - robust version
-  let hours = 0;
-  try {
-    const tin = parseTime(existing.time_in);
-    const tout = parseTime(nowStr);
-    
-    if(tin && tout){
-      let diffMs = tout.getTime() - tin.getTime();
-      if(diffMs < 0) diffMs += 24 * 60 * 60 * 1000; // overnight shift
-      hours = Math.round(Math.max(diffMs / (1000 * 60 * 60), 0) * 100) / 100;
-    }
-  } catch(e) {
-    console.warn('Hours calculation error:', e);
-    hours = 0;
-  }
-  
-  existing.hours = hours || 0;
+  // Calculate hours worked using 12-hour format
+  const result = calculateWorkHours(existing.time_in, nowStr);
+  existing.hours = parseFloat(result.decimalHours);
   
   // Calculate OT/ND
   const {ot, nd} = computeOT(existing.time_in, nowStr);
