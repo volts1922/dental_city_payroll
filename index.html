@@ -2642,7 +2642,7 @@ function editAttRecord(eid, date){
   if(!rec){toast('Record not found');return;}
   openModal(`✏ Edit Attendance — ${name}`,`
     <div style="font-size:12px;color:#555;margin-bottom:12px">Date: <b>${date}</b></div>
-    ${formRow('Status','att_status',rec.status||'Present',null,['Present','Absent','Late','Half-day','Rest Day','On Leave'])}
+    <div style="font-size:11px;color:#e11d48;margin-bottom:12px">⚠️ Status: <b>${rec.status||'—'}</b> (read-only, edit as needed)</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group">
         <label class="form-label">Time In</label>
@@ -2681,7 +2681,8 @@ function editAttRecord(eid, date){
       // Calculate hours using 12-hour format
       const result = calculateWorkHours(tin12, tout12);
       
-      rec.status    = fval('att_status');
+      // DON'T CHANGE STATUS - keep original
+      // Only update times and hours
       rec.time_in   = tin; 
       rec.time_out  = tout; 
       rec.hours     = parseFloat(result.decimalHours);
@@ -2696,17 +2697,19 @@ function editAttRecord(eid, date){
           try {
             const branchUUID = await getBranchUUID(getBranch());
             
-            // Convert 24-hour time (14:30) to ISO timestamp
-            const timeInISO = new Date(`${date}T${tin}:00`).toISOString();
-            const timeOutISO = new Date(`${date}T${tout}:00`).toISOString();
+            // For timestamp (without timezone) columns:
+            // Send Philippines local time directly (14:30 → 2026-07-01 14:30:00)
+            // Postgres stores it as-is without timezone conversion
+            const timeInStr = `${date} ${tin}:00`;  // "2026-07-01 14:30:00"
+            const timeOutStr = `${date} ${tout}:00`; // "2026-07-01 17:00:00"
             
             const {data, error} = await _sb.from('time_clock').upsert({
               employee_id: eid,
               branch_id: branchUUID,
               date: date,
               status: rec.status,
-              time_in: timeInISO,
-              time_out: timeOutISO,
+              time_in: timeInStr,
+              time_out: timeOutStr,
               updated_at: new Date().toISOString()
             }, {onConflict: 'employee_id,branch_id,date'});
             
@@ -8813,17 +8816,23 @@ async function clockIn(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const timeIn = now.toISOString(); // Full timestamp
+    
+    // For timestamp (without timezone) column, use local time format
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const timeInStr = `${today} ${hours}:${minutes}:${seconds}`;
+    
     const existing = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(existing.data && existing.data.status === 'clocked_in') {
       throw new Error('Already clocked in at ' + existing.data.time_in);
     }
     const {data, error} = await _sb.from('time_clock').upsert({
-      employee_id: empId, branch_id: branchId, date: today, time_in: timeIn, 
+      employee_id: empId, branch_id: branchId, date: today, time_in: timeInStr, 
       status: 'clocked_in', created_at: now.toISOString()
     }, {onConflict: 'employee_id,branch_id,date'}).select();
     if(error) throw error;
-    toast(`✅ Clocked in at ${timeIn}`);
+    toast(`✅ Clocked in at ${timeInStr}`);
     return data[0];
   } catch(e) {
     console.error(e);
@@ -8835,13 +8844,19 @@ async function startBreak(empId, branchId, breakType = 'Lunch') {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const breakInTime = now.toISOString();
+    
+    // For timestamp (without timezone) column, use local time format
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const breakInTimeStr = `${today} ${hours}:${minutes}:${seconds}`;
+    
     const {data: clock} = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || clock.status !== 'clocked_in') throw new Error('Not clocked in');
     await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
     const {data: breakRecord} = await _sb.from('time_breaks').insert({
       clock_id: clock.id, employee_id: empId, branch_id: branchId, date: today, 
-      break_type: breakType, break_in: breakInTime, auto_deducted: true
+      break_type: breakType, break_in: breakInTimeStr, auto_deducted: true
     }).select();
     toast(`☕ ${breakType} started`);
     return breakRecord[0];
@@ -8855,13 +8870,19 @@ async function endBreak(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const breakOutTime = now.toISOString();
+    
+    // For timestamp (without timezone) column, use local time format
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const breakOutTimeStr = `${today} ${hours}:${minutes}:${seconds}`;
+    
     const {data: breaks} = await _sb.from('time_breaks').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today)
       .is('break_out', null).order('created_at', {ascending: false}).limit(1).single();
     if(!breaks) throw new Error('No active break');
-    const breakDurationMins = _calcTime(breaks.break_in, breakOutTime);
-    await _sb.from('time_breaks').update({break_out: breakOutTime, approval_status: 'auto_approved'}).eq('id', breaks.id);
+    const breakDurationMins = _calcTime(breaks.break_in, breakOutTimeStr);
+    await _sb.from('time_breaks').update({break_out: breakOutTimeStr, approval_status: 'auto_approved'}).eq('id', breaks.id);
     await _sb.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', today);
     toast(`✅ Break ended. ${breakDurationMins} mins deducted`);
     return {breakDurationMins};
@@ -8875,11 +8896,17 @@ async function clockOut(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const timeOut = now.toISOString();
+    
+    // For timestamp (without timezone) column, use local time format
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const timeOutStr = `${today} ${hours}:${minutes}:${seconds}`;
+    
     const {data: clock} = await _sb.from('time_clock').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || !clock.time_in) throw new Error('Not clocked in');
-    const grossMins = _calcTime(clock.time_in, timeOut);
+    const grossMins = _calcTime(clock.time_in, timeOutStr);
     const grossHours = (grossMins / 60).toFixed(2);
     const {data: breaks} = await _sb.from('time_breaks').select('break_in, break_out')
       .eq('employee_id', empId).eq('date', today);
@@ -8891,10 +8918,10 @@ async function clockOut(empId, branchId) {
     const netHours = (grossHours - totalBreakHours).toFixed(2);
     const otHours = Math.max(0, netHours - 8).toFixed(2);
     await _sb.from('time_clock').update({
-      time_out: timeOut, status: 'clocked_out', updated_at: now.toISOString()
+      time_out: timeOutStr, status: 'clocked_out', updated_at: now.toISOString()
     }).eq('id', clock.id);
     await _syncPayroll(empId, branchId, today, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
-    toast(`✅ Clocked out at ${timeOut}\nNet: ${netHours}h | OT: ${otHours}h`);
+    toast(`✅ Clocked out at ${timeOutStr}\nNet: ${netHours}h | OT: ${otHours}h`);
     return {gross: grossHours, break: totalBreakHours, net: netHours, ot: otHours};
   } catch(e) {
     console.error(e);
