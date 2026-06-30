@@ -2767,7 +2767,7 @@ async function clockIn(){
         time_in: now_iso,
         time_out: null,
         updated_at: now_iso
-      }, {onConflict: 'employee_id,date'});
+      });
       if(error) {
         console.warn('⚠️ Supabase sync error:', error.status, error.message);
         toast(`⚠️ Sync warning: ${error.message}`);
@@ -2825,7 +2825,7 @@ async function clockOut(){
         time_in: `${td}T${existing.time_in}`,
         time_out: `${td}T${nowStr}`,
         updated_at: now_iso
-      }, {onConflict: 'employee_id,date'});
+      });
       if(error) {
         console.warn('⚠️ Clock out sync error:', error.status, error.message);
         toast(`⚠️ Sync warning: ${error.message}`);
