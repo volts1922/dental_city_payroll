@@ -1159,12 +1159,12 @@ function _finishLogin(){
   if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='dev' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
-    // Owner sees branch picker + regular dashboard (branch-specific)
+    // Owner sees branch picker + Attendance
     ownerShowBranchPicker(true);
-    navigate('Dashboard','showDashboard');
+    navigate('Attendance','showAttendance');
     initBranch();
   } else {
-    navigate('Dashboard','showDashboard');
+    navigate('Attendance','showAttendance');
     initBranch();
   }
   toast(`👋 Welcome, ${currentUser}!`);
@@ -1382,7 +1382,6 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // ── NAV ───────────────────────────────────────────────────────────────────────
 const NAV_OWNER=[
   // ── Overview ──────────────────────────────────────────────────────────────
-  {icon:'📊',label:'Dashboard',        fn:'showDashboard'},
   {icon:'👥',label:'All Employees',    fn:'showAllEmployees'},
   {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals'},
   {icon:'💰',label:'Payroll Summary',  fn:'showPayrollSummary'},
@@ -1410,7 +1409,6 @@ const NAV_DEVELOPER=[
 ];
 
 const NAV_ADMIN=[
-  {icon:'📊',label:'Dashboard',   fn:'showDashboard'},
   {icon:'👥',label:'Employees',   fn:'showEmployees'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
@@ -1763,55 +1761,35 @@ function showDashboard(){
   if(_sb){
     (async ()=>{
       const td = today();
-      const branchUUID = await getBranchUUID(getBranch());
       try {
-        const {data, error} = await _sb.from('payroll_data')
+        const {data, error} = await _sb.from('time_clock')
           .select('*')
-          .eq('branch_key', branchUUID)
-          .like('data_type', 'attendance_%');
+          .eq('date', td);
           
         if(!error && data && data.length > 0){
           let att = load(KEYS.attendance) || {};
           data.forEach(rec => {
-            try {
-              const parsed = JSON.parse(rec.data);
-              const [_, empId, recDate] = rec.data_type.split('_');
-              
-              if(recDate !== td) return; // Only today's records
-              
-              if(!att[empId]) att[empId] = [];
-              const existing = att[empId].find(r => r.date === recDate);
-              
-              // Apply GMT+8 timezone conversion
-              const formatTimeGMT8 = (timeStr) => {
-                if(!timeStr || timeStr === '—') return '—';
-                try {
-                  const d = new Date(timeStr.includes('T') ? timeStr : timeStr + 'Z');
-                  return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-                } catch { return '—'; }
-              };
-              
-              if(existing){
-                existing.time_in = formatTimeGMT8(parsed.time_in || existing.time_in);
-                existing.time_out = formatTimeGMT8(parsed.time_out || existing.time_out);
-                existing.status = parsed.status || existing.status;
-              } else {
-                att[empId].push({
-                  date: recDate,
-                  status: parsed.status || 'Present',
-                  time_in: formatTimeGMT8(parsed.time_in),
-                  time_out: formatTimeGMT8(parsed.time_out),
-                  hours: 0,
-                  ot_hours: 0,
-                  nd_hours: 0
-                });
-              }
-            } catch(e) {
-              console.warn('Parse error for record:', rec, e);
+            const empId = rec.employee_id;
+            if(!att[empId]) att[empId] = [];
+            const existing = att[empId].find(r => r.date === td);
+            if(existing){
+              existing.time_in = rec.time_in ? rec.time_in.split('T')[1] : existing.time_in;
+              existing.time_out = rec.time_out ? rec.time_out.split('T')[1] : existing.time_out;
+              existing.status = rec.status || existing.status;
+            } else {
+              att[empId].push({
+                date: td,
+                status: rec.status || 'Present',
+                time_in: rec.time_in ? rec.time_in.split('T')[1] : '—',
+                time_out: rec.time_out ? rec.time_out.split('T')[1] : '—',
+                hours: 0,
+                ot_hours: 0,
+                nd_hours: 0
+              });
             }
           });
           save(KEYS.attendance, att);
-          console.log('✓ Dashboard synced attendance from Supabase (GMT+8)');
+          console.log('✓ Dashboard synced attendance from Supabase');
           renderDashboard(); // Render AFTER sync
         } else {
           renderDashboard(); // Render even if no new data
