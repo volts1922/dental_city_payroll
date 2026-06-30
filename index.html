@@ -2808,10 +2808,10 @@ async function clockOut(){
   const {ot,nd}=computeOT(existing.time_in,nowStr);
   existing.ot_hours=Math.round(ot*100)/100;
   existing.nd_hours=Math.round(nd*100)/100;
-    const tinParsed=parseTime(existing.time_in);
-    const cutoff=new Date(0,0,0,8,10,0);
-    if(tinParsed>cutoff) existing.status='Late';
-  }
+  // Auto-flag Late if clocked in after 08:10
+  const tinParsed=parseTime(existing.time_in);
+  const cutoff=new Date(0,0,0,8,10,0);
+  if(tinParsed>cutoff) existing.status='Late';
   save(KEYS.attendance,att);
   
   // SYNC TO SUPABASE with proper format
