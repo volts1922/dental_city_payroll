@@ -2546,12 +2546,16 @@ async function refreshLiveAttendance(){
       const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
       const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
       
+      // Format time_in for display (HH:MM 24-hour format)
+      const timeInFormatted = isNaN(timeIn.getTime()) ? '—' : new Date(timeIn.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+      
       return {
         eid: rec.employee_id,
         name: emp.name,
         hoursWorked,
         timeRemaining,
         timeIn: timeIn.toISOString(), // Store raw ISO
+        timeInFormatted, // Add formatted version for display
         branch: emp.branch
       };
     });
@@ -2566,12 +2570,7 @@ async function refreshLiveAttendance(){
           <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
-          <div><span style="color:#888">Clocked In:</span> <b>${(() => {
-            try {
-              const d = new Date(e.timeIn);
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-            } catch { return '—'; }
-          })()}</b></div>
+          <div><span style="color:#888">Time In:</span> <b>${e.timeInFormatted || '—'}</b></div>
           <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
           <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
         </div>
