@@ -1635,14 +1635,6 @@ function formatEmpId(eid, branch=''){
   const code = b.replace(/\D/g, '').slice(-3) || '001';
   return `BR${code}-${eid}`;
 }
-function formatTime(timeStr){
-  if(!timeStr || timeStr==='—') return '—';
-  try {
-    if(timeStr.match(/^\d{2}:\d{2}$/)) return timeStr;
-    const d = new Date(timeStr.includes('Z') || timeStr.includes('+') ? timeStr : timeStr + 'Z');
-    return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-  } catch { return '—'; }
-}
 async function getBranchUUID(branchName){
   if(!_sb) return null;
   const {data} = await _sb.from('branches').select('id').eq('name', branchName).single();
@@ -1767,13 +1759,15 @@ function showDashboard(){
   
   ownerEnsureBranchData();
   
-  // SYNC ATTENDANCE FROM SUPABASE FIRST
+  // SYNC ATTENDANCE FROM SUPABASE FIRST - AWAIT it!
   if(_sb){
-    const td = today();
-    _sb.from('time_clock')
-      .select('*')
-      .eq('date', td)
-      .then(({data, error}) => {
+    (async ()=>{
+      const td = today();
+      try {
+        const {data, error} = await _sb.from('time_clock')
+          .select('*')
+          .eq('date', td);
+          
         if(!error && data && data.length > 0){
           let att = load(KEYS.attendance) || {};
           data.forEach(rec => {
@@ -1798,10 +1792,21 @@ function showDashboard(){
           });
           save(KEYS.attendance, att);
           console.log('✓ Dashboard synced attendance from Supabase');
+          renderDashboard(); // Render AFTER sync
+        } else {
+          renderDashboard(); // Render even if no new data
         }
-      })
-      .catch(e => console.warn('Dashboard sync failed:', e));
+      } catch(e) {
+        console.warn('Dashboard sync failed:', e);
+        renderDashboard(); // Render even on error
+      }
+    })();
+  } else {
+    renderDashboard();
   }
+}
+
+function renderDashboard(){
   
   const emps=load(KEYS.employees), att=load(KEYS.attendance), leaves=load(KEYS.leaves);
   const branches=load(KEYS.branches)||{};
@@ -1830,10 +1835,9 @@ function showDashboard(){
     return {total:bEmps.length, present:bPresent, absent:bAbsent, onLeave:bOnLeave};
   })();
   
-
   const todayRows=Object.entries(att).flatMap(([eid,recs])=>recs.filter(r=>r.date===td).map(r=>({eid,r}))).map(({eid,r})=>{
     const name=(emps[eid]||{}).name||eid;
-    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${formatTime(r.time_in)}</td><td>${formatTime(r.time_out)}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
   }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
@@ -1984,7 +1988,7 @@ function filterDashboard(filter){
       : todayAll.filter(({r})=>r.status===filter);
     rows = filtered.map(({eid,r})=>{
       const name=(emps[eid]||{}).name||eid;
-      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${formatTime(r.time_in)}</td><td>${formatTime(r.time_out)}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
     }).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No records for this filter</td></tr>`;
   }
@@ -2965,6 +2969,64 @@ function showAttendanceTracker(period='week'){
     </div>
   `;
   applyRole();
+}function markAttModal(){
+  const emps=load(KEYS.employees), att=load(KEYS.attendance);
+  const active=Object.entries(emps).filter(([,e])=>e.status!=='Resigned');
+  const holType = getHolidayType(_attDate);
+  const holBadge = holType
+    ? `<div style="background:${holType.includes('Regular')?'#FEE2E2':'#FEF3C7'};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:${holType.includes('Regular')?'#DC2626':'#D97706'};margin-bottom:12px">
+        🎉 ${holType} — ${holType.includes('Regular')?'200%':'130%'} pay applies today!
+       </div>` : '';
+  const rows=active.map(([id,e])=>`
+    <div style="border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">${_esc(e.name)} <span style="color:#555;font-weight:400">(${e.role||'—'})</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#555">STATUS</label>
+          <select id="ms_${id}" style="width:100%;padding:5px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+            ${['Present','Absent','Half-day','Late','Rest Day'].map(s=>`<option>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#555">HOLIDAY</label>
+          <select id="hol_${id}" style="width:100%;padding:5px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+            <option value="">None</option>
+            <option value="Regular Holiday"${holType==='Regular Holiday'?' selected':''}>Regular Holiday (200%)</option>
+            <option value="Special Holiday"${holType==='Special Holiday'?' selected':''}>Special Holiday (130%)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#555">TIME IN</label>
+          <input id="ti_${id}" type="time" value="08:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#555">TIME OUT</label>
+          <input id="to_${id}" type="time" value="17:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+        </div>
+      </div>
+    </div>`).join('');
+
+  openModal(`Mark Attendance — ${_attDate}`,`${holBadge}<div style="max-height:380px;overflow-y:auto">${rows}</div>`,()=>{
+    active.forEach(([id])=>{
+      if(!att[id]) att[id]=[];
+      att[id]=att[id].filter(r=>r.date!==_attDate);
+      const tin=document.getElementById(`ti_${id}`)?.value;
+      const tout=document.getElementById(`to_${id}`)?.value;
+      const tIn=parseTime(tin), tOut=parseTime(tout);
+      const hours=tIn&&tOut?Math.round(Math.max((tOut-tIn)/3600000,0)*100)/100:0;
+      const {ot, nd}=computeOT(tin, tout);
+      const holiday=document.getElementById(`hol_${id}`)?.value||'';
+      att[id].push({
+        date:_attDate,
+        status:document.getElementById(`ms_${id}`).value,
+        time_in:tin, time_out:tout, hours,
+        ot_hours: Math.round(ot*100)/100,
+        nd_hours: Math.round(nd*100)/100,
+        holiday
+      });
+    });
+    save(KEYS.attendance,att); closeModal(); toast('✅ Attendance saved!'); loadAtt();
+  },'💾 Save Attendance');
 }
 
 function exportAtt(){
