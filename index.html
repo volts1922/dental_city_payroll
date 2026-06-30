@@ -215,14 +215,14 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       <div style="font-family:'DM Serif Display',serif;font-size:17px;margin-bottom:16px">Sign In</div>
       <div style="margin-bottom:10px">
         <label style="display:block;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Username</label>
-        <input id="loginUser" class="form-control" type="text" placeholder="Enter username" onkeydown="if(event.key==='Enter')doLogin()">
+        <input id="loginUser" class="form-control" type="text" placeholder="Enter username" onkeydown="if(event.key==='Enter'){setTimeout(()=>{if(window.doLogin)doLogin()},0)}">
       </div>
       <div style="margin-bottom:6px">
         <label style="display:block;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Password</label>
-        <input id="loginPass" class="form-control" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()">
+        <input id="loginPass" class="form-control" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter'){setTimeout(()=>{if(window.doLogin)doLogin()},0)}">
       </div>
       <div id="loginErr" style="color:var(--red);font-size:12px;margin:6px 0;min-height:16px;"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px" onclick="doLogin()">Sign In</button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px" onclick="setTimeout(()=>{if(window.doLogin)doLogin()},0)">Sign In</button>
       <div style="margin-top:14px;padding:10px;background:var(--bg);border-radius:8px;font-size:11px;color:#555;">
         Use your <b>username</b> &amp; <b>password</b>. <span style="color:var(--blue);cursor:pointer" onclick="showSetupHelp()">Setup help →</span>
       </div>
@@ -274,10 +274,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <header class="topbar">
   <button class="menu-btn" onclick="toggleSidebar()">☰</button>
   <div class="topbar-title" id="topbarTitle">Dashboard</div>
-  <div id="branchBadge" style="display:none;align-items:center;gap:6px;margin-right:8px">
-    <span id="branchBadgeText" style="background:var(--navy);color:#fff;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:600;"></span>
-    <button onclick="changeBranch()" style="background:none;border:none;cursor:pointer;font-size:11px;color:#555">✏</button>
-  </div>
   <div id="ownerBranchPicker" style="display:none;align-items:center;gap:6px;margin-right:8px">
     <span style="font-size:11px;color:#555;font-weight:600">🏢 Branch:</span>
     <select id="ownerBranchSel" onchange="ownerSwitchBranch(this.value)"
@@ -294,7 +290,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   <div id="userBadge" style="display:none;align-items:center;gap:8px;margin-right:6px">
     <span id="roleBadge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;"></span>
     <span id="userLabel" style="font-size:13px;font-weight:600;"></span>
-    <button id="installBtn" style="display:none;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.12)'" onmouseout="this.style.background='#E5E5E7';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'">📥 Install</button>
     <button onclick="openAccountSettings()" style="background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.12)'" onmouseout="this.style.background='#E5E5E7';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'" title="Change password or username">⚙️</button>
     <button onclick="doLogout()" style="background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.12)'" onmouseout="this.style.background='#E5E5E7';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'">⏻ Logout</button>
   </div>
@@ -584,13 +579,22 @@ let _ownerData = {}; // { 'Branch 1': {pr_employees, pr_attendance, ...}, ... }
 async function loadAllBranchesFromCloud(){
   if(!_sb) return false;
   try{
+    // Set 5s timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Cloud load timeout')), 5000)
+    );
+    
     // For Owner: fetch ALL branches from branches table (source of truth)
     let allBranches = null, branchError = null;
     try {
-      const result = await _sb.from('branches').select('name');
+      const result = await Promise.race([
+        _sb.from('branches').select('name'),
+        timeoutPromise
+      ]);
       allBranches = result.data;
       branchError = result.error;
     } catch(e) {
+      console.warn('⚠️ Branch fetch timeout/error:', e.message);
       branchError = e;
     }
     
@@ -599,16 +603,22 @@ async function loadAllBranchesFromCloud(){
       ALL_BRANCHES = allBranches.map(b => b.name).filter(b => b && b !== 'main');
     }
     
-    // Still fetch payroll_data for owner data
+    // Still fetch payroll_data for owner data (with timeout)
     let data = null, error = null;
     try {
-      const result = await _sb.from('payroll_data').select('branch_key,data_type,data');
+      const result = await Promise.race([
+        _sb.from('payroll_data').select('branch_key,data_type,data'),
+        timeoutPromise
+      ]);
       data = result.data;
       error = result.error;
     } catch(e) {
+      console.warn('⚠️ Payroll data fetch timeout/error:', e.message);
       error = e;
     }
-    if(error) throw error;
+    
+    if(error && !error.message?.includes('timeout')) throw error;
+    
     _ownerData = {};
     (data||[]).forEach(row=>{
       if(!row.branch_key) return;
@@ -651,7 +661,9 @@ async function loadAllBranchesFromCloud(){
     console.log('[Owner] Loaded branches:', ALL_BRANCHES);
     return true;
   }catch(e){
-    console.error('Load all branches error:', e.message || JSON.stringify(e));
+    console.error('❌ Load all branches error:', e.message || JSON.stringify(e));
+    // Fallback to default branches if cloud load fails
+    if(!ALL_BRANCHES.length) ALL_BRANCHES = [..._DEFAULT_BRANCHES];
     return false;
   }
 }
@@ -780,46 +792,46 @@ function hideLoading(){ document.getElementById('loadingOverlay').classList.remo
 // ⚠ Change branch names and passwords before giving to your client!
 const USERS = {
   // ── Owner (sees ALL branches) ────────────────────────────────────────────
-  owner:      { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9',    role:'Owner',       name:'Owner'              },
+  owner:      { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9',    role:'owner',       name:'owner'              },
 
   // ── Branch 1 ─────────────────────────────────────────────────────────────
-  branch1_admin: { password:'7c2bbcdf653e453250630e3f39fea50ae5e7a92bc0d27b2e892d6e93e6e62838', role:'BranchAdmin', name:'Branch 1 Admin', branch:'Branch 1' },
-  branch1_staff: { password:'f13d859fb200bf1c1c49433004ff3fe9c40078c1cd409d3839db725521ec37c7', role:'Staff',       name:'Branch 1 Staff', branch:'Branch 1' },
+  branch1_admin: { password:'7c2bbcdf653e453250630e3f39fea50ae5e7a92bc0d27b2e892d6e93e6e62838', role:'branch_admin', name:'Branch 1 Admin', branch:'Branch 1' },
+  branch1_staff: { password:'f13d859fb200bf1c1c49433004ff3fe9c40078c1cd409d3839db725521ec37c7', role:'employee',       name:'Branch 1 Staff', branch:'Branch 1' },
 
   // ── Branch 2 ─────────────────────────────────────────────────────────────
-  branch2_admin: { password:'3e12cff30cdafc0c499d7ab3af2857be613e2513d6b38cdb7a31c4fdca4463f4', role:'BranchAdmin', name:'Branch 2 Admin', branch:'Branch 2' },
-  branch2_staff: { password:'dd963f9ee062481c4a232ad7190a72e2d511cdf61f935729ec5012a41a56c719', role:'Staff',       name:'Branch 2 Staff', branch:'Branch 2' },
+  branch2_admin: { password:'3e12cff30cdafc0c499d7ab3af2857be613e2513d6b38cdb7a31c4fdca4463f4', role:'branch_admin', name:'Branch 2 Admin', branch:'Branch 2' },
+  branch2_staff: { password:'dd963f9ee062481c4a232ad7190a72e2d511cdf61f935729ec5012a41a56c719', role:'employee',       name:'Branch 2 Staff', branch:'Branch 2' },
 
   // ── Branch 3 ─────────────────────────────────────────────────────────────
-  branch3_admin: { password:'ebabd5412c7b4214464538d0371f16c5249a6a2f66d5736b284a48374c9f6f06', role:'BranchAdmin', name:'Branch 3 Admin', branch:'Branch 3' },
-  branch3_staff: { password:'33d29f4b1a27aee9c702d68af2af87faabda72d3bc9c2b0aecb97c341a4339c3', role:'Staff',       name:'Branch 3 Staff', branch:'Branch 3' },
+  branch3_admin: { password:'ebabd5412c7b4214464538d0371f16c5249a6a2f66d5736b284a48374c9f6f06', role:'branch_admin', name:'Branch 3 Admin', branch:'Branch 3' },
+  branch3_staff: { password:'33d29f4b1a27aee9c702d68af2af87faabda72d3bc9c2b0aecb97c341a4339c3', role:'employee',       name:'Branch 3 Staff', branch:'Branch 3' },
 
   // ── Branch 4 ─────────────────────────────────────────────────────────────
-  branch4_admin: { password:'a293c10f3f89481a0b4ede1bf55d1a62e667e4a07a6a6386b1effd3e684ef9c4', role:'BranchAdmin', name:'Branch 4 Admin', branch:'Branch 4' },
-  branch4_staff: { password:'e10c558ef0735efe18cb23b741dc2fed46d9000b743ac028a88f5bf649f0b431', role:'Staff',       name:'Branch 4 Staff', branch:'Branch 4' },
+  branch4_admin: { password:'a293c10f3f89481a0b4ede1bf55d1a62e667e4a07a6a6386b1effd3e684ef9c4', role:'branch_admin', name:'Branch 4 Admin', branch:'Branch 4' },
+  branch4_staff: { password:'e10c558ef0735efe18cb23b741dc2fed46d9000b743ac028a88f5bf649f0b431', role:'employee',       name:'Branch 4 Staff', branch:'Branch 4' },
 
   // ── Branch 5 ─────────────────────────────────────────────────────────────
-  branch5_admin: { password:'e41128856ca4dc4311171e906918e923cc95f3e5758b9a412448ae8e29e4c84b', role:'BranchAdmin', name:'Branch 5 Admin', branch:'Branch 5' },
-  branch5_staff: { password:'3febcd606e55ae2eeb2f6b5471155a8afef538dfcc414503e77f7e656c7b22e5', role:'Staff',       name:'Branch 5 Staff', branch:'Branch 5' },
+  branch5_admin: { password:'e41128856ca4dc4311171e906918e923cc95f3e5758b9a412448ae8e29e4c84b', role:'branch_admin', name:'Branch 5 Admin', branch:'Branch 5' },
+  branch5_staff: { password:'3febcd606e55ae2eeb2f6b5471155a8afef538dfcc414503e77f7e656c7b22e5', role:'employee',       name:'Branch 5 Staff', branch:'Branch 5' },
 
   // ── Branch 6 ─────────────────────────────────────────────────────────────
-  branch6_admin: { password:'dcb2140a616c495d174afbba55781eac0ea17369904889c6236c93209a46d0ed', role:'BranchAdmin', name:'Branch 6 Admin', branch:'Branch 6' },
-  branch6_staff: { password:'df353e6ae35cfd7e73f16279e24363be9068c99d0c516fda63baf59a10bf20fe', role:'Staff',       name:'Branch 6 Staff', branch:'Branch 6' },
+  branch6_admin: { password:'dcb2140a616c495d174afbba55781eac0ea17369904889c6236c93209a46d0ed', role:'branch_admin', name:'Branch 6 Admin', branch:'Branch 6' },
+  branch6_staff: { password:'df353e6ae35cfd7e73f16279e24363be9068c99d0c516fda63baf59a10bf20fe', role:'employee',       name:'Branch 6 Staff', branch:'Branch 6' },
 
   // ── Branch 7 ─────────────────────────────────────────────────────────────
-  branch7_admin: { password:'4ae977b14031826ec73f7d80523d373deb99cab137cd3abbf552d756d01c5481', role:'BranchAdmin', name:'Branch 7 Admin', branch:'Branch 7' },
-  branch7_staff: { password:'1857f2baed91fac1105da25730fd0fe3fa3888646c97fca98a814abdd6a36c9f', role:'Staff',       name:'Branch 7 Staff', branch:'Branch 7' },
+  branch7_admin: { password:'4ae977b14031826ec73f7d80523d373deb99cab137cd3abbf552d756d01c5481', role:'branch_admin', name:'Branch 7 Admin', branch:'Branch 7' },
+  branch7_staff: { password:'1857f2baed91fac1105da25730fd0fe3fa3888646c97fca98a814abdd6a36c9f', role:'employee',       name:'Branch 7 Staff', branch:'Branch 7' },
 
   // ── Branch 8 ─────────────────────────────────────────────────────────────
-  branch8_admin: { password:'f839f62a6ccaf845f596ab454c204c7605739d94b319d11847bcc5a26c71779a', role:'BranchAdmin', name:'Branch 8 Admin', branch:'Branch 8' },
-  branch8_staff: { password:'6edd5075fea164de5c29ee3e37d80f714d37b53489005f01e0b1a2843264a429', role:'Staff',       name:'Branch 8 Staff', branch:'Branch 8' },
+  branch8_admin: { password:'f839f62a6ccaf845f596ab454c204c7605739d94b319d11847bcc5a26c71779a', role:'branch_admin', name:'Branch 8 Admin', branch:'Branch 8' },
+  branch8_staff: { password:'6edd5075fea164de5c29ee3e37d80f714d37b53489005f01e0b1a2843264a429', role:'employee',       name:'Branch 8 Staff', branch:'Branch 8' },
 
   // ── Branch 9 ─────────────────────────────────────────────────────────────
-  branch9_admin: { password:'5ba880391986e4299428d3a106fd5c660766f80f0f5d8bbadd95b194e3aafbd8', role:'BranchAdmin', name:'Branch 9 Admin', branch:'Branch 9' },
-  branch9_staff: { password:'895b161252b1c9e9090a7e68bbf53a15daa373b9a942b5be6f6a902923b08b5a', role:'Staff',       name:'Branch 9 Staff', branch:'Branch 9' },
+  branch9_admin: { password:'5ba880391986e4299428d3a106fd5c660766f80f0f5d8bbadd95b194e3aafbd8', role:'branch_admin', name:'Branch 9 Admin', branch:'Branch 9' },
+  branch9_staff: { password:'895b161252b1c9e9090a7e68bbf53a15daa373b9a942b5be6f6a902923b08b5a', role:'employee',       name:'Branch 9 Staff', branch:'Branch 9' },
 
   // ── Developer (hidden — not shown in Account Manager) ────────────────────
-  dev: { password:'995f80cefdb79b5ec1584db23fd82c5dcb8d039116adc0c428727a77f0052be6', role:'Developer', name:'Developer', _hidden:true },
+  dev: { password:'995f80cefdb79b5ec1584db23fd82c5dcb8d039116adc0c428727a77f0052be6', role:'dev', name:'dev', _hidden:true },
 };
 
 // ── Cloud-persisted accounts (Supabase) — merges over hardcoded USERS on load ─
@@ -836,12 +848,32 @@ async function _loadAccountsFromCloud(){
 }
 
 async function _saveAccountToCloud(username, acc){
-  if(!_sb) return;
+  if(!_sb) { console.warn('⚠️ Supabase not initialized'); return; }
   try{
-    await _sb.from('payroll_accounts').upsert({
-      username, password_hash: acc.password, role: acc.role, name: acc.name, branch: acc.branch||null
+    const roleValue = (acc.role || '').toLowerCase().trim();
+    console.log('☁️ Saving to Supabase:', username, {
+      role_raw: acc.role,
+      role_processed: roleValue,
+      full: acc
+    });
+    const {data, error} = await _sb.from('payroll_accounts').upsert({
+      username, password_hash: acc.password, role: roleValue, name: acc.name, branch: acc.branch||null
     }, { onConflict: 'username' });
-  }catch(e){ console.log('Account save error:', e.message); }
+    
+    if(error) {
+      console.error('🔴 Supabase Error Details:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
+      throw new Error(`${error.message} (${error.code}). Allowed roles: owner, admin, staff`);
+    }
+    console.log('✅ Supabase save successful:', username);
+  }catch(e){ 
+    console.error('❌ Account save error:', e.message, e);
+    throw e;
+  }
 }
 
 async function _deleteAccountFromCloud(username){
@@ -866,6 +898,13 @@ async function _renameBranchInCloudAccounts(oldName, newName){
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 let currentRole = null, currentUser = null;
+
+// ── Form sections for 201 file ─────────────────────────────────────────────────
+var SECTIONS_201 = {
+  'Basic Info': ['name','email','contact','emp_type'],
+  'Employment': ['role','daily_rate','date_hired','status'],
+  'Documents': ['photo']
+};
 
 // ── Password security ────────────────────────────────────────────────────────
 async function _sha256(str){
@@ -1040,14 +1079,14 @@ async function doLogin(){
   }
 
   // ✅ PASSWORD HISTORY: Check if Owner is reusing password
-  if(user.role === 'Owner' && _isPasswordReused(u, enteredHash)){
+  if(user.role === 'owner' && _isPasswordReused(u, enteredHash)){
     await _auditLog('LOGIN_PASSWORD_REUSED', u, 'Attempted password reuse');
     errEl.textContent='⚠️ You recently used this password. Please change it.';
     document.getElementById('loginPass').value=''; return;
   }
 
   // ✅ 2FA CHECK: If Owner with 2FA enabled, request verification
-  if(user.role === 'Owner' && user.totp_enabled){
+  if(user.role === 'owner' && user.totp_enabled){
     const verified = await _verify2FA();
     if(!verified){
       await _auditLog('LOGIN_2FA_FAILED', u, '2FA verification failed');
@@ -1062,57 +1101,68 @@ async function doLogin(){
   _currentUser = u; // Store username for audit logs
   
   // Developer/Owner should have no specific branch context (All Branches view)
-  if(user.role === 'Developer' || user.role === 'Owner'){
+  if(user.role === 'dev' || user.role === 'owner'){
     setBranch(''); // Clear any branch context
   } else {
     const branch = user.branch || '';
     if(branch) setBranch(branch);
   }
 
+  // For owner/dev: load branches from cloud BEFORE showing dashboard + picker
+  if(isOwnerRole(user.role) && _sb){
+    showLoading('Loading branches...');
+    try {
+      await loadAllBranchesFromCloud();
+    } catch(e) {
+      console.warn('Failed to load branches:', e.message);
+      // Fall back to defaults
+      if(!ALL_BRANCHES.length) ALL_BRANCHES = [..._DEFAULT_BRANCHES];
+    }
+    hideLoading();
+  } else if(!ALL_BRANCHES.length) {
+    ALL_BRANCHES = [..._DEFAULT_BRANCHES];
+  }
+
   // Show dashboard IMMEDIATELY from local cache — don't block on the network.
   _finishLogin();
 
-  // Sync from Supabase cloud in the BACKGROUND, then quietly refresh the current view.
-  if(_sb){
-    if(isOwnerRole(user.role)){
-      setSyncBar('syncing','☁ Syncing all branches...');
-      loadAllBranchesFromCloud().then(()=>{
-        setSyncBar('ok','☁ All branches loaded');
-        // Refresh current view if it exists
-        if(typeof refreshCurrentView==='function') refreshCurrentView();
-      }).catch(()=>setSyncBar('err','⚠ Sync failed'));
-    } else {
-      setSyncBar('syncing','☁ Syncing...');
-      loadFromCloud().then(()=>{
-        setSyncBar('ok','☁ Cloud connected');
-        if(typeof refreshCurrentView==='function') refreshCurrentView();
-      }).catch(()=>setSyncBar('err','⚠ Sync failed'));
-    }
-  } else {
+  // Sync from Supabase cloud in the BACKGROUND (don't await, don't block UI)
+  if(_sb && !isOwnerRole(user.role)){
+    setSyncBar('syncing','☁ Syncing...');
+    // Fire and forget — don't block on this
+    loadFromCloud()
+      .then(()=>setSyncBar('ok','☁ Cloud connected'))
+      .catch(e=>{
+        console.warn('Background sync failed:', e.message);
+        setSyncBar('err','⚠ Sync failed');
+      });
+  } else if(_sb) {
     setSyncBar('offline','💾 Local mode only');
   }
 }
 
-function isOwnerRole(r){ return r==='Owner'||r==='Developer'; }
+function isOwnerRole(r){ return r==='owner'||r==='dev'; }
 
 function _finishLogin(){
   document.getElementById('loginScreen').style.display='none';
   const rb = document.getElementById('roleBadge');
-  rb.textContent = currentRole==='Developer'?'Developer':currentRole; // Show actual role
+  rb.textContent = currentRole==='dev'?'dev':currentRole; // Show actual role
   const C_GOLD='#B7860B';
-  rb.style.background = currentRole==='Developer'?'#7C3AED':currentRole==='Owner'?C_GOLD:isAdmin()?'var(--blue)':'var(--green)';
+  rb.style.background = currentRole==='dev'?'#7C3AED':currentRole==='owner'?C_GOLD:isAdmin()?'var(--blue)':'var(--green)';
   rb.style.color = '#fff';
   document.getElementById('userLabel').textContent = currentUser;
   document.getElementById('userBadge').style.display = 'flex';
   document.getElementById('syncBtn').style.display = 'inline-block';
   const cloudBtn = document.getElementById('devCloudRestoreBtn');
-  if(cloudBtn) cloudBtn.style.display = currentRole==='Developer' ? 'block' : 'none';
+  if(cloudBtn) cloudBtn.style.display = currentRole==='dev' ? 'block' : 'none';
   const topbarCloudBtn = document.getElementById('topbarCloudRestoreBtn');
-  if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='Developer' ? 'inline-block' : 'none';
+  if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='dev' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
-    // Owner sees ALL branches in dashboard — no branch filter needed
-    navigate('All Branches','showOwnerDashboard');
+    // Owner sees branch picker + regular dashboard (branch-specific)
+    ownerShowBranchPicker(true);
+    navigate('Dashboard','showDashboard');
+    initBranch();
   } else {
     navigate('Dashboard','showDashboard');
     initBranch();
@@ -1124,7 +1174,7 @@ function _finishLogin(){
       runAutoBackup('daily');
       runAutoBackup('bimonthly');
       runAutoBackup('monthly');
-      initAutoPayroll(); // Start auto-payroll scheduler
+      // initAutoPayroll(); // Premium: Auto-payroll scheduler (disabled for now)
     }, 3000);
   }
 }
@@ -1139,11 +1189,11 @@ async function doLogout(){
   document.getElementById('loginPass').value='';
   setSyncBar('offline','☁ Not connected');
 }
-function isOwner(){       return currentRole==='Owner'||currentRole==='Developer'; }
-function isBranchAdmin(){ return currentRole==='BranchAdmin'; }
-function isAdmin(){       return currentRole==='Owner'||currentRole==='Admin'||currentRole==='BranchAdmin'||currentRole==='Developer'; }
-function canSeeAll(){     return currentRole==='Owner'||currentRole==='Admin'||currentRole==='Developer'; }
-function isDeveloper(){   return currentRole==='Developer'; }
+function isOwner(){       return currentRole==='owner'||currentRole==='dev'; }
+function isBranchAdmin(){ return currentRole==='branch_admin'; }
+function isAdmin(){       return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='branch_admin'||currentRole==='dev'; }
+function canSeeAll(){     return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='dev'; }
+function isDeveloper(){   return currentRole==='dev'; }
 const WORKING_DAYS  = 22;
 const OT_MULTIPLIER = 1.25;  // Regular overtime
 const OT_RESTDAY    = 1.30;  // Rest day overtime
@@ -1221,8 +1271,7 @@ function initBranch(){
 }
 function updateBranchUI(n){
   if(n){
-    document.getElementById('branchBadgeText').textContent='🏢 '+n;
-    document.getElementById('branchBadge').style.display='flex';
+    // branchBadge removed - use ownerBranchPicker instead
     document.getElementById('branchNameSidebar').textContent=n;
     document.title=n+' — Dental City Payroll';
   }
@@ -1333,7 +1382,6 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // ── NAV ───────────────────────────────────────────────────────────────────────
 const NAV_OWNER=[
   // ── Overview ──────────────────────────────────────────────────────────────
-  {icon:'🌐',label:'All Branches',     fn:'showOwnerDashboard'},
   {icon:'📊',label:'Dashboard',        fn:'showDashboard'},
   {icon:'👥',label:'All Employees',    fn:'showAllEmployees'},
   {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals'},
@@ -1341,11 +1389,9 @@ const NAV_OWNER=[
   // ── Branch Operations (active when a branch is selected via picker) ───────
   {icon:'👤',label:'Employees',        fn:'showEmployees'},
   {icon:'📅',label:'Attendance',       fn:'showAttendance'},
-  {icon:'📊',label:'Tracker (D/W/M/Y)', fn:'showAttendanceTracker'},
   {icon:'🌴',label:'Leave',            fn:'showLeave'},
   {icon:'💳',label:'Loans',            fn:'showLoans'},
   {icon:'💰',label:'Payroll',          fn:'showPayroll'},
-  {icon:'🧾',label:'Payslip',          fn:'showPayslip'},
   {icon:'🎁',label:'13th Month',       fn:'show13thMonth'},
   {icon:'🏛',label:'Gov Reports',      fn:'showGovReports'},
   {icon:'📄',label:'BIR 2316',         fn:'showBIR2316'},
@@ -1373,7 +1419,6 @@ const NAV_ADMIN=[
   {icon:'🎁',label:'13th Month',  fn:'show13thMonth'},
   {icon:'🏛',label:'Gov Reports', fn:'showGovReports'},
   {icon:'📄',label:'BIR 2316',    fn:'showBIR2316'},
-  {icon:'🧾',label:'Payslip',     fn:'showPayslip'},
   {icon:'💾',label:'Backup',      fn:'showBackupManager'},
   {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
   {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
@@ -1387,14 +1432,9 @@ let currentPage='';
 let _ownerPendingLeaves = 0;
 let _ownerDashInterval  = null;
 
+// Removed: Owner dashboard no longer used - use branch picker instead
 function startOwnerDashRefresh(){
-  stopOwnerDashRefresh();
-  _ownerDashInterval = setInterval(async ()=>{
-    if(isOwner() && currentPage==='All Branches'){
-      await loadAllBranchesFromCloud();
-      showOwnerDashboard();
-    }
-  }, 60000); // refresh every 60 seconds
+  // DISABLED - showOwnerDashboard removed
 }
 function stopOwnerDashRefresh(){
   if(_ownerDashInterval){ clearInterval(_ownerDashInterval); _ownerDashInterval=null; }
@@ -1442,7 +1482,7 @@ function ownerEnsureBranchData(){
 
 function ownerShowBranchPicker(show){
   const picker = document.getElementById('ownerBranchPicker');
-  if(!picker || currentRole!=='Developer') return;
+  if(!picker || !['dev','owner'].includes(currentRole)) return;
   if(show){
     // Populate dropdown with all branches + All Branches option
     const sel = document.getElementById('ownerBranchSel');
@@ -1484,7 +1524,7 @@ async function ownerSwitchBranch(branch){
 }
 
 function buildNav(){
-  const items=currentRole==='Developer'?NAV_DEVELOPER:isOwner()?NAV_OWNER:isBranchAdmin()||currentRole==='Admin'?NAV_ADMIN:NAV_STAFF;
+  const items=currentRole==='dev'?NAV_DEVELOPER:isOwner()?NAV_OWNER:isBranchAdmin()||currentRole==='branch_admin'?NAV_ADMIN:NAV_STAFF;
 
   if(isOwner()){
     // Owner nav with group dividers
@@ -1530,7 +1570,7 @@ function navigate(label,fn){
   buildNav(); closeSidebar();
   if(label!=='All Branches') stopOwnerDashRefresh();
   // Branch picker — Developer only (Owner uses normal owner dashboard flow)
-  if(currentRole==='Developer'){
+  if(currentRole==='dev'){
     ownerShowBranchPicker(true);
   }
   if(isOwner()){
@@ -1572,7 +1612,11 @@ function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('o
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-function today(){ return new Date().toISOString().split('T')[0]; }
+function today(){ 
+  const now = new Date();
+  const phTime = new Date(now.getTime() + (8 * 60 * 60 * 1000)); // UTC+8
+  return phTime.toISOString().split('T')[0];
+}
 
 // ✅ NEW: Get current date/time in PH timezone (UTC+8)
 function todayPH(){
@@ -1586,6 +1630,16 @@ function nowPH(){
 }
 function nextId(data,prefix=''){ const nums=Object.keys(data).map(k=>parseInt(k.replace(prefix,''))).filter(n=>!isNaN(n)); return prefix+String(nums.length?Math.max(...nums)+1:1).padStart(3,'0'); }
 function fmt(n){ return '₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
+function formatEmpId(eid, branch=''){
+  const b = branch || getBranch() || '';
+  const code = b.replace(/\D/g, '').slice(-3) || '001';
+  return `BR${code}-${eid}`;
+}
+async function getBranchUUID(branchName){
+  if(!_sb) return null;
+  const {data} = await _sb.from('branches').select('id').eq('name', branchName).single();
+  return data?.id || null;
+}
 function fval(k){ const el=document.getElementById('f_'+k); return el?el.value.trim():''; }
 function badge(status){
   const map={Active:'blue',Inactive:'gray',Resigned:'red',Present:'green',Absent:'red','Half-day':'yellow',Late:'yellow',Approved:'green',Rejected:'red',Pending:'yellow',Paid:'green',Unpaid:'red',Active2:'blue'};
@@ -1594,7 +1648,7 @@ function badge(status){
 }
 function empOptions(sel=''){
   const emps=load(KEYS.employees);
-  return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${id})</option>`).join('');
+  return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${formatEmpId(id, e.branch)})</option>`).join('');
 }
 function formRow(lbl,key,val='',type='text',opts=null){
   if(opts) return `<div class="form-group"><label class="form-label">${lbl}</label><select class="form-control" id="f_${key}">${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select></div>`;
@@ -1691,7 +1745,56 @@ function getActiveLoanDeduction(eid){
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 function showDashboard(){
+  // Owner/Dev: Show branch picker prompt if no branch selected
+  if(isOwner() && !getBranch()){
+    document.getElementById('main').innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:500px;gap:20px;text-align:center">
+        <div style="font-size:48px">🏢</div>
+        <div style="font-size:24px;font-weight:700">Select a Branch</div>
+        <div style="font-size:14px;color:#555;max-width:400px">Use the branch dropdown in the top bar to select a branch and view its operations</div>
+        <div style="font-size:12px;color:#999;margin-top:20px">Branch Picker: <span style="background:var(--sky);padding:2px 6px;border-radius:4px;font-weight:600">🏢 Branch:</span></div>
+      </div>`;
+    return;
+  }
+  
   ownerEnsureBranchData();
+  
+  // SYNC ATTENDANCE FROM SUPABASE FIRST
+  if(_sb){
+    const td = today();
+    _sb.from('time_clock')
+      .select('*')
+      .eq('date', td)
+      .then(({data, error}) => {
+        if(!error && data && data.length > 0){
+          let att = load(KEYS.attendance) || {};
+          data.forEach(rec => {
+            const empId = rec.employee_id;
+            if(!att[empId]) att[empId] = [];
+            const existing = att[empId].find(r => r.date === td);
+            if(existing){
+              existing.time_in = rec.time_in ? rec.time_in.split('T')[1] : existing.time_in;
+              existing.time_out = rec.time_out ? rec.time_out.split('T')[1] : existing.time_out;
+              existing.status = rec.status || existing.status;
+            } else {
+              att[empId].push({
+                date: td,
+                status: rec.status || 'Present',
+                time_in: rec.time_in ? rec.time_in.split('T')[1] : '—',
+                time_out: rec.time_out ? rec.time_out.split('T')[1] : '—',
+                hours: 0,
+                ot_hours: 0,
+                nd_hours: 0
+              });
+            }
+          });
+          save(KEYS.attendance, att);
+          console.log('✓ Dashboard synced attendance from Supabase');
+        }
+      })
+      .catch(e => console.warn('Dashboard sync failed:', e));
+  }
+  
   const emps=load(KEYS.employees), att=load(KEYS.attendance), leaves=load(KEYS.leaves);
   const branches=load(KEYS.branches)||{};
   const td=today();
@@ -1721,17 +1824,24 @@ function showDashboard(){
   
   const todayRows=Object.entries(att).flatMap(([eid,recs])=>recs.filter(r=>r.date===td).map(r=>({eid,r}))).map(({eid,r})=>{
     const name=(emps[eid]||{}).name||eid;
-    return `<tr><td>${eid}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
   }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
     if(!e || e.status!=='Active') return false;
-    const hasAtt = (att[eid]||[]).some(r=>r.date===td);
+    // Check for CLOCKED IN (has time_in) - not just any attendance record
+    const isClockedIn = (att[eid]||[]).some(r=>r.date===td && r.time_in && r.time_in!=='—');
     const hasLeave = (leaves[eid]||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td);
-    return !hasAtt && !hasLeave;
+    return !isClockedIn && !hasLeave; // Only count if NOT clocked in AND no leave
   }).length;
+  
+  const totalActive = Object.values(emps).filter(e=>e && e.status==='Active').length;
 
-  const alertBanner = noRecord>0 ? `
+  const alertBanner = totalActive === 0 ? `
+    <div style="background:#E0E7FF;border:1.5px solid #6366F1;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">ℹ️</span>
+      <div style="font-weight:700;color:#4F46E5">No active employees yet. Add employees to track attendance.</div>
+    </div>` : noRecord>0 ? `
     <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">⚠️</span>
       <div>
@@ -1845,7 +1955,7 @@ function filterDashboard(filter){
   if(filter==='OnLeave'){
     rows = leaveEids.map(eid=>{
       const name=(emps[eid]||{}).name||eid;
-      return `<tr><td>${eid}</td><td><b>${name}</b></td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-blue">On Leave</span></td></tr>`;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-blue">On Leave</span></td></tr>`;
     }).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No employees on leave today</td></tr>`;
   } else if(filter==='NoRecord'){
@@ -1856,7 +1966,7 @@ function filterDashboard(filter){
       return !hasAtt && !hasLeave;
     });
     rows = noRecEids.map(([eid,e])=>`
-      <tr><td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>—</td><td>—</td><td>—</td>
+      <tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>—</td><td>—</td><td>—</td>
       <td><span class="badge badge-gray">No Record</span></td></tr>`).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">All employees have records today 🎉</td></tr>`;
   } else {
@@ -1865,7 +1975,7 @@ function filterDashboard(filter){
       : todayAll.filter(({r})=>r.status===filter);
     rows = filtered.map(({eid,r})=>{
       const name=(emps[eid]||{}).name||eid;
-      return `<tr><td>${eid}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
     }).join('');
     if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No records for this filter</td></tr>`;
   }
@@ -1877,6 +1987,7 @@ function filterDashboard(filter){
 // ══════════════════════════════════════════════════════════════════════════════
 function showEmployees(q=''){
   let emps=load(KEYS.employees);
+  const currentBranch = getBranch(); // Get selected branch
   
   // Auto-purge ghost records: NO name AND NO role/daily_rate (these slip through soft-delete)
   const isGhost = (e) => {
@@ -1895,9 +2006,10 @@ function showEmployees(q=''){
     emps = cleaned;
   }
   
-  // Filter: show only non-deleted, non-inactive, valid employees
+  // Filter: show only non-deleted, non-inactive, valid employees AND matching current branch
   const filtered=Object.entries(emps).filter(([id,e])=>
     e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive'
+    && (isOwner() ? true : e.branch === currentBranch) // Owner sees all, others see their branch
   );
   
   const rows=filtered.filter(([id,e])=>!q||(e.name+id+e.role+(e.branch||'')).toLowerCase().includes(q.toLowerCase()))
@@ -1906,7 +2018,7 @@ function showEmployees(q=''){
       const empTypeBadge = e.emp_type ? `<span class="badge ${e.emp_type==='Regular'?'badge-blue':e.emp_type==='Probationary'?'badge-yellow':e.emp_type==='Contractual'?'badge-gray':'badge-gray'}">${e.emp_type}</span>` : '—';
       const los = e.date_hired ? `<span style="font-size:11px;color:#555">${e.date_hired}</span><br><span style="font-size:11px;color:var(--blue);font-weight:600">${lengthOfService(e.date_hired)}</span>` : '—';
       return `<tr>
-        <td>${id}</td><td><b>${_esc(e.name)}</b></td><td>${e.role||'—'}</td>
+        <td>${formatEmpId(id, e.branch)}</td><td><b>${_esc(e.name)}</b></td><td>${e.role||'—'}</td>
         <td>${e.branch||'—'}</td>
         <td>${empTypeBadge}</td>
         <td>${los}</td>
@@ -1953,9 +2065,9 @@ function empForm(d={}){
        </div>`
     : `<div class="form-group">
         <label class="form-label">Branch *</label>
-        <input class="form-control" id="f_branch" value="${d.branch||myBranch}" readonly
-          style="background:var(--sky);color:#555;cursor:not-allowed;">
-        <div style="font-size:11px;color:#555;margin-top:3px">🔒 Set automatically to the branch you're currently viewing. To move an employee to another branch, switch to that branch first, then re-add them there.</div>
+        <select class="form-control" id="f_branch">
+          ${ALL_BRANCHES.map(b=>`<option${(d.branch||myBranch)===b?' selected':''}>${b}</option>`).join('')}
+        </select>
        </div>`;
 
   return `
@@ -2106,8 +2218,15 @@ function addEmp(){
     // BranchAdmin: enforce their own branch even if someone tampers with the field
     const branch = isBranchAdmin() ? getBranch() : fval('branch');
     if(!branch){toast('⚠️ Branch is required');return;}
-    const branchCode = branch.substring(0, 3).toUpperCase() + '_';
-    const emps=load(KEYS.employees), id=nextId(emps, branchCode);
+    
+    // Generate ID: BRANCHCODE-###
+    const branchCode = branch.substring(0, 3).toUpperCase();
+    const emps = load(KEYS.employees);
+    const branchEmps = Object.keys(emps).filter(k => k.startsWith(branchCode));
+    const nums = branchEmps.map(k => parseInt(k.split('-')[1])).filter(n => !isNaN(n));
+    const nextNum = (nums.length === 0 ? 0 : Math.max(...nums)) + 1;
+    const id = `${branchCode}-${String(nextNum).padStart(3, '0')}`;
+    
     const photo = document.getElementById('f_photo')?.value || '';
     emps[id]={name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
@@ -2117,7 +2236,10 @@ function addEmp(){
     
     // Auto-create 201 record with photo in Supabase
     try{
-      await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branch,photo});
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+      if(branchData){
+        await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branchData.id,photo});
+      }
     }catch(e){
       console.warn('⚠️ 201 auto-create failed (non-blocking):',e.message);
     }
@@ -2141,9 +2263,11 @@ function editEmp(id){
     
     // Sync to Supabase employees_201 table
     try{
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+      const branchUUID = branchData?.id || branch;
       await _sbInsertOrUpdate('employees_201',{
         employee_id:id, 
-        branch_id:branch,
+        branch_id:branchUUID,
         photo,
         name:fval('name'),
         role:fval('role'),
@@ -2192,7 +2316,21 @@ async function deleteEmp(id){
 
   if(!(await _confirm(`Delete employee "${name}"?${extra}<br><br>This cannot be undone.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
 
-  // Delete employee
+  // Delete from Supabase
+  if(_sb){
+    try {
+      console.log('🗑 Deleting from Supabase:', id);
+      const {error} = await _sb.from('employees_201').delete().eq('employee_id', id);
+      if(error) throw error;
+      console.log('✅ Deleted from Supabase:', id);
+    } catch(e){
+      console.error('❌ Supabase delete failed:', e.message);
+      toast(`⚠️ Supabase delete failed: ${e.message}`);
+      return;
+    }
+  }
+
+  // Delete employee from localStorage
   delete emps[id];
   save(KEYS.employees, emps);
 
@@ -2256,48 +2394,186 @@ function showAttendance(){
       <div class="clock-panel-title">⏱ Quick Clock-In / Out</div>
       <select id="clkEmpSel" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;min-width:200px">
         <option value="">-- Select Employee --</option>
-        ${Object.keys(_clkEidMap).map(n=>`<option value="${n}">${n}</option>`).join('')}
+        ${Object.entries(_clkEidMap).map(([name,id])=>`<option value="${id}">${name}</option>`).join('')}
       </select>
-      <button class="btn btn-success" onclick="clockIn()">⏵ Clock In</button>
-      <button class="btn btn-danger" onclick="clockOut()">⏹ Clock Out</button>
+      <button class="btn btn-success" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} getBranchUUID(getBranch()).then(bid=>clockIn(eid, bid))">⏵ Clock In</button>
+      <button class="btn btn-danger" onclick="let eid=document.getElementById('clkEmpSel')?.value; if(!eid){toast('⚠️ Select employee');return;} getBranchUUID(getBranch()).then(bid=>clockOut(eid, bid))">⏹ Clock Out</button>
       <span id="clkStatus" style="font-size:12px;font-weight:600;color:#555"></span>
     </div>
 
-    <div class="table-wrap" id="attTable"><div class="table-scroll">
+    <!-- Real-time Attendance Status Widget -->
+    <div class="section-header" style="margin-top:20px">
+      <div class="section-title">🟢 Currently Present</div>
+      <button class="btn btn-sm btn-teal" onclick="refreshLiveAttendance()">🔄 Refresh</button>
+    </div>
+    <div id="liveAttendance" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:10px 0"></div>
       <table><thead><tr><th>ID</th><th>Name</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>OT Hours</th><th>ND Hours</th><th>Holiday</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="attBody"></tbody></table>
     </div></div>`;
   loadAtt(); applyRole();
 }
 
-function loadAtt(){
-  const att=load(KEYS.attendance), emps=load(KEYS.employees);
+async function loadAtt(){
+  let emps=load(KEYS.employees);
+  
+  // Sync employees from Supabase
+  if(_sb){
+    try {
+      const {data: sbEmps} = await _sb.from('employees_201').select('*');
+      if(sbEmps && sbEmps.length > 0){
+        sbEmps.forEach(e => {
+          if(!emps[e.employee_id]) {
+            emps[e.employee_id] = e;
+          }
+        });
+      }
+    } catch(e) { console.log('Employee sync error:', e); }
+  }
+  
   const date=document.getElementById('attDate')?.value||_attDate;
   _attDate=date;
   const holType = getHolidayType(date);
   const rows=[];
-  Object.entries(att).forEach(([eid,recs])=>{
-    const name=(emps[eid]||{}).name||eid;
-    recs.filter(r=>r.date===date).forEach((r,idx)=>{
-      const holBadge = r.holiday
-        ? `<span class="badge ${r.holiday.includes('Regular')?'badge-red':'badge-yellow'}">${r.holiday}</span>`
-        : (holType ? `<span class="badge badge-gray">${holType}</span>` : '—');
-      rows.push(`<tr>
-        <td>${eid}</td><td><b>${empHover(eid, name)}</b></td><td>${r.date}</td>
-        <td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td>
-        <td>${r.hours||'0'}h</td>
-        <td>${r.ot_hours>0?`<span style="color:var(--blue);font-weight:700">+${r.ot_hours}h</span>`:'—'}</td>
-        <td>${r.nd_hours>0?`<span style="color:var(--purple);font-weight:700">+${r.nd_hours}h</span>`:'—'}</td>
-        <td>${holBadge}</td>
-        <td>${badge(r.status||'—')}</td>
-        <td>
-          <button class="btn btn-secondary btn-sm admin-only" onclick="editAttRecord('${eid}','${date}')">✏</button>
-          <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
-        </td>
-      </tr>`);
+  
+  if(_sb){
+    try {
+      // Get branch UUID
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
+      if(!branchData) { 
+        const ab = document.getElementById('attBody');
+        if(ab) ab.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">Branch not found</td></tr>`;
+        return;
+      }
+      
+      // Fetch time_clock records for this date and branch
+      const {data: records} = await _sb.from('time_clock')
+        .select('*')
+        .eq('branch_id', branchData.id)
+        .eq('date', date);
+      
+      if(records && records.length > 0){
+        records.forEach(r=>{
+          const emp = emps[r.employee_id] || {name: r.employee_id};
+          const eid = r.employee_id;
+          // Use branch from emp object, or try to get from branch_id, otherwise use current branch
+          const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
+          const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
+          const timeInStr = r.time_in ? (() => {
+            try {
+              const d = new Date(r.time_in.includes('Z') || r.time_in.includes('+') ? r.time_in : r.time_in + 'Z');
+              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+            } catch { return '—'; }
+          })() : '—';
+          const timeOutStr = r.time_out ? (() => {
+            try {
+              const d = new Date(r.time_out.includes('Z') || r.time_out.includes('+') ? r.time_out : r.time_out + 'Z');
+              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+            } catch { return '—'; }
+          })() : '—';
+          
+          rows.push(`<tr>
+            <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
+            <td>${timeInStr}</td><td>${timeOutStr}</td>
+            <td>—</td><td>—</td><td>—</td>
+            <td>${holBadge}</td>
+            <td>${badge(r.status||'—')}</td>
+            <td>
+              <button class="btn btn-secondary btn-sm admin-only" onclick="editAttRecord('${eid}','${date}')">✏</button>
+              <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
+            </td>
+          </tr>`);
+        });
+      }
+    } catch(e) {
+      console.error('Load attendance error:', e);
+    }
+  }
+  
+  const attBody = document.getElementById('attBody');
+  if(attBody) {
+    attBody.innerHTML=rows.length ? rows.join('') : `<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">No records for this date</td></tr>`;
+  }
+  refreshLiveAttendance();
+}
+
+async function refreshLiveAttendance(){
+  if(!_sb || !document.getElementById('liveAttendance')) return;
+  
+  const today = new Date().toISOString().split('T')[0];
+  const emps = load(KEYS.employees);
+  const branch = getBranch();
+  
+  try {
+    // Get branch UUID
+    const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+    if(!branchData) { 
+      const la = document.getElementById('liveAttendance');
+      if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>';
+      return;
+    }
+    
+    // Get all clocked-in employees for today
+    const {data: records} = await _sb.from('time_clock')
+      .select('*')
+      .eq('branch_id', branchData.id)
+      .eq('date', today)
+      .eq('status', 'clocked_in');
+    
+    if(!records || records.length === 0) {
+      const la = document.getElementById('liveAttendance');
+      if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
+      return;
+    }
+    
+    const liveEmps = records.map(rec => {
+      const emp = emps[rec.employee_id] || {name: rec.employee_id};
+      const timeIn = new Date(rec.time_in.includes('Z') ? rec.time_in : rec.time_in + 'Z');
+      const now = new Date();
+      const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
+      const shiftHours = emp.shift_hours || 8;
+      const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
+      const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
+      
+      return {
+        eid: rec.employee_id,
+        name: emp.name,
+        hoursWorked,
+        timeRemaining,
+        timeIn: timeIn.toISOString(), // Store raw ISO
+        branch: emp.branch
+      };
     });
-  });
-  document.getElementById('attBody').innerHTML=rows.join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">No records for this date</td></tr>`;
+    
+    const html = liveEmps.map(e => `
+      <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700;font-size:14px">${e.name}</div>
+            <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
+          </div>
+          <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
+          <div><span style="color:#888">Clocked In:</span> <b>${(() => {
+            try {
+              const d = new Date(e.timeIn);
+              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+            } catch { return '—'; }
+          })()}</b></div>
+          <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
+          <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
+      </div>
+    `).join('');
+    
+    const liveAtt = document.getElementById('liveAttendance');
+    if(liveAtt) liveAtt.innerHTML = html;
+  } catch(e) {
+    console.error('Live attendance fetch error:', e);
+    const liveAtt = document.getElementById('liveAttendance');
+    if(liveAtt) liveAtt.innerHTML = '<div style="color:#e11d48;padding:10px">Error loading live attendance</div>';
+  }
 }
 
 async function clearAllAtt(){
@@ -2318,13 +2594,26 @@ async function clearAllAtt(){
 async function deleteAttRecord(eid, date){
   const name = (load(KEYS.employees)[eid]||{}).name || eid;
   if(!(await _confirm(`Delete attendance for "${name}" on ${date}?`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
-  const att = load(KEYS.attendance);
-  if(att[eid]){
-    att[eid] = att[eid].filter(r=>r.date!==date);
-    if(att[eid].length===0) delete att[eid];
-    save(KEYS.attendance, att);
-    toast(`🗑 Attendance deleted for ${name} on ${date}`);
-    loadAtt();
+  
+  if(_sb){
+    try {
+      // Get branch UUID
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
+      if(!branchData) { toast('⚠️ Branch not found'); return; }
+      
+      // Delete from Supabase
+      await _sb.from('time_clock')
+        .delete()
+        .eq('employee_id', eid)
+        .eq('branch_id', branchData.id)
+        .eq('date', date);
+      
+      toast(`🗑 Attendance deleted for ${name} on ${date}`);
+      loadAtt();
+    } catch(e) {
+      console.error('Delete error:', e);
+      toast('❌ Failed to delete');
+    }
   }
 }
 
@@ -2393,9 +2682,38 @@ async function clockIn(){
   if(existing){ existing.time_in=nowStr; existing.status='Present'; }
   else att[eid].push({date:td,status:'Present',time_in:nowStr,time_out:'—',hours:0,ot_hours:0,nd_hours:0,holiday:''});
   save(KEYS.attendance,att);
+  
+  // SYNC TO SUPABASE with proper format
+  if(_sb){
+    try {
+      const now_iso = new Date().toISOString();
+      const {data, error} = await _sb.from('time_clock').upsert({
+        employee_id: eid,
+        date: td,
+        status: 'Present',
+        time_in: now_iso,
+        time_out: null,
+        updated_at: now_iso
+      }, {onConflict: 'employee_id,date'});
+      if(error) {
+        console.warn('⚠️ Supabase sync error:', error.status, error.message);
+        toast(`⚠️ Sync warning: ${error.message}`);
+      } else {
+        console.log('✓ Synced to Supabase:', data);
+      }
+    } catch(e) { 
+      console.error('Supabase exception:', e);
+      toast(`⚠️ Sync failed: ${e.message}`);
+    }
+  }
+  
   document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
   document.getElementById('clkStatus').style.color='var(--green)';
   loadAtt();
+  // Auto-refresh dashboard if viewing it
+  setTimeout(()=>{
+    if(currentPage==='Dashboard') showDashboard();
+  }, 500);
 }
 
 async function clockOut(){
@@ -2423,9 +2741,38 @@ async function clockOut(){
     if(tinParsed>cutoff) existing.status='Late';
   }
   save(KEYS.attendance,att);
+  
+  // SYNC TO SUPABASE with proper format
+  if(_sb){
+    try {
+      const now_iso = new Date().toISOString();
+      const {data, error} = await _sb.from('time_clock').upsert({
+        employee_id: eid,
+        date: td,
+        status: existing.status,
+        time_in: `${td}T${existing.time_in}`,
+        time_out: `${td}T${nowStr}`,
+        updated_at: now_iso
+      }, {onConflict: 'employee_id,date'});
+      if(error) {
+        console.warn('⚠️ Clock out sync error:', error.status, error.message);
+        toast(`⚠️ Sync warning: ${error.message}`);
+      } else {
+        console.log('✓ Clock out synced to Supabase:', data);
+      }
+    } catch(e) { 
+      console.error('Supabase exception:', e);
+      toast(`⚠️ Sync failed: ${e.message}`);
+    }
+  }
+  
   document.getElementById('clkStatus').textContent=`🔴 Clocked OUT at ${nowStr} (${existing.hours}h)`;
   document.getElementById('clkStatus').style.color='var(--red)';
   loadAtt();
+  // Auto-refresh dashboard if viewing it
+  setTimeout(()=>{
+    if(currentPage==='Dashboard') showDashboard();
+  }, 500);
 }
 
 function showWeeklyAttendance(){
@@ -2988,7 +3335,7 @@ async function deleteLoan(eid,idx){
 // PAYROLL
 // ══════════════════════════════════════════════════════════════════════════════
 let _payrollData=[];
-function showPayroll(){
+async function showPayroll(){
   const now=new Date();
   const defMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   document.getElementById('main').innerHTML=`
@@ -2996,29 +3343,72 @@ function showPayroll(){
       <div class="section-title">Payroll Computation</div>
       <div class="btn-row">
         <input type="month" id="payMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-        <button class="btn btn-primary" onclick="computePayroll()">Compute</button>
-        <button class="btn btn-teal" onclick="exportPayroll()">Export CSV</button>
+        <button class="btn btn-primary" onclick="(async()=>await computePayroll())()">Compute</button>
+        <button class="btn btn-teal" onclick="exportPayroll()">📊 Export CSV</button>
+        <button class="btn btn-success" onclick="exportPayrollPDF()">📄 Export PDF</button>
       </div>
     </div>
+    
     <div class="table-wrap"><div class="table-scroll">
       <table><thead><tr>
         <th>ID</th><th>Name</th><th>Branch</th><th>Daily Rate</th><th>Days Worked</th><th>Gross</th>
         <th>OT Pay</th><th>Night Diff</th><th>Holiday Pay</th><th>Allowances</th>
-        <th>SSS</th><th>PhilHealth</th><th>Pag-IBIG</th><th>Tax</th><th>Loan</th><th>Total Ded.</th><th>Net Pay</th>
+        <th>SSS</th><th>PhilHealth</th><th>Pag-IBIG</th><th>Tax</th><th>Loan</th><th>Total Ded.</th><th>Net Pay</th><th>Actions</th>
       </tr></thead><tbody id="payBody"></tbody></table>
     </div></div>`;
-  computePayroll();
+  await computePayroll();
 }
 
-function computePayroll(){
+async function computePayroll(){
   ownerEnsureBranchData();
   const month=document.getElementById('payMonth')?.value||today().slice(0,7);
-  const emps=load(KEYS.employees), att=load(KEYS.attendance);
+  const emps=load(KEYS.employees);
   _payrollData=[];
-  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active').map(([eid,e])=>{
+  
+  // Fetch attendance from Supabase
+  let att = {};
+  if(_sb){
+    try {
+      const [yr, mo] = month.split('-');
+      const nextMo = parseInt(mo) === 12 ? 1 : parseInt(mo) + 1;
+      const nextYr = parseInt(mo) === 12 ? parseInt(yr) + 1 : parseInt(yr);
+      const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
+      const {data: records} = await _sb.from('time_clock').select('*').gte('date', month + '-01').lt('date', nextMonthStr);
+      if(records){
+        records.forEach(r => {
+          if(!att[r.employee_id]) att[r.employee_id] = [];
+          att[r.employee_id].push({
+            date: r.date,
+            status: r.status,
+            time_in: r.time_in,
+            time_out: r.time_out,
+            ot_hours: 0,
+            nd_hours: 0
+          });
+        });
+      }
+    } catch(e) {
+      console.error('Attendance fetch error:', e);
+      att = load(KEYS.attendance) || {}; // Fallback to localStorage
+    }
+  } else {
+    att = load(KEYS.attendance) || {};
+  }
+  
+  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
     const rate       = parseFloat(e.daily_rate||0);
     const recs       = Object.values(att[eid]||[]).filter(r=>r.date?.startsWith(month));
-    const daysPresent= recs.filter(r=>r.status==='Present'||r.status==='Late').length;
+    
+    // Debug logging
+    if(recs.length === 0){
+      console.log(`⚠️ ${eid} (${e.name}): 0 records found`);
+      console.log(`   Available keys:`, Object.keys(att).slice(0,5));
+    } else {
+      console.log(`✓ ${eid} (${e.name}): ${recs.length} records`);
+      recs.forEach((r, i) => console.log(`   [${i}] ${r.date} - ${r.status}`));
+    }
+    
+    const daysPresent= recs.filter(r=>r.status==='clocked_in'||r.status==='Present'||r.status==='Late').length;
     const absences   = recs.filter(r=>r.status==='Absent').length;
     const halfDays   = recs.filter(r=>r.status==='Half-day').length;
     const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
@@ -3035,7 +3425,7 @@ function computePayroll(){
     _payrollData.push({eid, name:e.name, branch:e.branch||'—', ...pay, days_worked:dw,
       ot_hours:otHours, nd_hours:ndHours, reg_hol:regHolDays, spe_hol:speHolDays});
     return `<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(rate)}/day</td><td>${dw} days</td>
       <td>${fmt(pay.gross)}</td>
       <td>${otHours>0?`<span style="color:var(--blue);font-weight:700">${fmt(pay.otPay)}</span>`:'—'}</td>
@@ -3045,9 +3435,393 @@ function computePayroll(){
       <td>${fmt(pay.sss)}</td><td>${fmt(pay.ph)}</td>
       <td>${fmt(pay.pi)}</td><td>${fmt(pay.tax)}</td><td>${fmt(pay.loanDeduction)}</td>
       <td>${fmt(pay.totalDeductions)}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
+      <td><button class="btn btn-primary btn-sm" onclick="openPayslipGenerator('${eid}','${month}')">📋 Generate</button></td>
     </tr>`;
   }).join('')||`<tr><td colspan="16" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
   document.getElementById('payBody').innerHTML=rows;
+}
+
+async function showPayslip(empId, month, startDate, endDate){
+  const emps = load(KEYS.employees);
+  const emp = emps[empId];
+  if(!emp) { toast('⚠️ Employee not found'); return; }
+  
+  const rate = parseFloat(emp.daily_rate || 0);
+  const [yr, mo] = month.split('-');
+  const year = parseInt(yr);
+  const monthNum = parseInt(mo);
+  const monthName = new Date(year, monthNum - 1).toLocaleString('default', {month:'long', year:'numeric'});
+  
+  // Fetch actual attendance for date range
+  let attRecords = [];
+  if(_sb){
+    try {
+      const {data} = await _sb.from('time_clock').select('*').eq('employee_id', empId).gte('date', startDate).lte('date', endDate);
+      if(data) attRecords = data;
+    } catch(e) { console.error('Supabase attendance fetch error:', e); }
+  }
+  
+  // Fallback to localStorage if Supabase is empty
+  if(attRecords.length === 0){
+    const locAtt = load(KEYS.attendance) || {};
+    const empAtt = locAtt[empId] || {};
+    attRecords = Object.values(empAtt).filter(r => {
+      if(!r.date) return false;
+      return r.date >= startDate && r.date <= endDate;
+    });
+    console.log(`Attendance from localStorage for ${empId}:`, attRecords.length, 'records');
+  }
+  
+  console.log(`Payslip ${empId}: ${startDate} to ${endDate} = ${attRecords.length} records`);
+  
+  // Count actual days worked in range
+  const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present').length;
+  const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
+  let daysWorked = daysPresent + (daysHalfDay * 0.5);
+  
+  // Calculate expected business days in range
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T23:59:59');
+  let expectedDays = 0;
+  for(let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+    const day = d.getDay();
+    if(day !== 0 && day !== 6) expectedDays++; // Skip Sat/Sun
+  }
+  
+  // Use fallback if attendance is too sparse (less than 30% of expected days)
+  if(daysWorked < (expectedDays * 0.3)){
+    console.log(`Sparse attendance (${daysWorked} vs ${expectedDays} expected) → using fallback`);
+    daysWorked = expectedDays;
+  }
+  
+  // Determine if this is 1st half, 2nd half, full month, or custom
+  const startDay = parseInt(startDate.split('-')[2]);
+  const endDay = parseInt(endDate.split('-')[2]);
+  
+  console.log(`=== PAYSLIP DEBUG ===`);
+  console.log(`startDate: ${startDate}, startDay: ${startDay}`);
+  console.log(`endDate: ${endDate}, endDay: ${endDay}`);
+  
+  let periodLabel = `${startDate} to ${endDate}`;
+  let deductionType = 'custom'; // default
+  
+  if(startDay === 1 && endDay >= 28) {
+    // FULL MONTH (1st to 28/29/30/31)
+    periodLabel = 'Full Month';
+    deductionType = 'full_month';
+    console.log('Detected: FULL MONTH - applying ALL deductions (SSS + PH + PI + BIR)');
+  } else if(startDay === 1 && endDay === 15) {
+    periodLabel = '1st Half (1-15)';
+    deductionType = 'first_half';
+    console.log('Detected: 1st HALF');
+  } else if(startDay >= 16 && endDay >= 16) {
+    periodLabel = '2nd Half (16-EOMonth)';
+    deductionType = 'second_half';
+    console.log('Detected: 2nd HALF - applying BIR tax only');
+  } else {
+    console.log('Detected: CUSTOM range');
+  }
+  
+  // Calculate FULL MONTH gross (always 22 business days) for deduction basis
+  const fullMonthDays = 22; // Standard PH workdays
+  const fullMonthGross = rate * fullMonthDays;
+  
+  // Period-specific gross (for display)
+  const basicPay = rate * daysWorked;
+  const gross = basicPay;
+  
+  // Determine deductions based on FULL MONTH gross
+  let pay;
+  if(deductionType === 'full_month'){
+    // FULL MONTH: ALL deductions (SSS + PH + PI + BIR)
+    const monthlySSS = Math.round(fullMonthGross * 0.04);
+    const monthlyPH = Math.round(fullMonthGross * 0.025);
+    const monthlyPI = 100;
+    const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
+    
+    pay = {
+      daysWorked, basic: basicPay, gross,
+      sss: monthlySSS,
+      ph: monthlyPH,
+      pi: monthlyPI,
+      tax: monthlyBIR,
+      loanDeduction: 0,
+      net: 0
+    };
+  } else if(deductionType === 'first_half'){
+    // 1st Half: Deductions calculated from FULL MONTH, payment split
+    const monthlySSS = Math.round(fullMonthGross * 0.04);
+    const monthlyPH = Math.round(fullMonthGross * 0.025);
+    const monthlyPI = 100;
+    
+    pay = {
+      daysWorked, basic: basicPay, gross,
+      sss: monthlySSS,
+      ph: monthlyPH,
+      pi: monthlyPI,
+      tax: 0,
+      loanDeduction: 0,
+      net: 0
+    };
+  } else if(deductionType === 'second_half'){
+    // 2nd Half: BIR calculated from FULL MONTH
+    const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
+    
+    pay = {
+      daysWorked, basic: basicPay, gross,
+      sss: 0, ph: 0, pi: 0,
+      tax: monthlyBIR,
+      loanDeduction: 0,
+      net: 0
+    };
+  } else {
+    // Custom range: Use full month basis too
+    const monthlySSS = Math.round(fullMonthGross * 0.04);
+    const monthlyPH = Math.round(fullMonthGross * 0.025);
+    const monthlyPI = 100;
+    
+    pay = {
+      daysWorked, basic: basicPay, gross,
+      sss: monthlySSS,
+      ph: monthlyPH,
+      pi: monthlyPI,
+      tax: 0,
+      loanDeduction: 0,
+      net: 0
+    };
+  }
+  
+  pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.tax + pay.loanDeduction;
+  pay.net = pay.gross - pay.totalDeductions;
+  
+  const payslipHTML = `
+    <div style="max-width:800px;margin:0 auto;background:#fff;padding:40px;font-family:'Arial',sans-serif">
+      <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #333;padding-bottom:20px">
+        <div style="font-size:24px;font-weight:700;color:#1a1a1a">DENTAL CITY PAYROLL</div>
+        <div style="font-size:14px;color:#555">${monthName} — ${periodLabel}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:30px">
+        <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">ID</div><div style="font-size:14px;font-weight:700">${formatEmpId(empId, emp.branch)}</div></div>
+        <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Name</div><div style="font-size:14px;font-weight:700">${emp.name}</div></div>
+        <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Branch</div><div style="font-size:14px">${emp.branch}</div></div>
+        <div><div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:3px">Daily Rate</div><div style="font-size:14px">${fmt(rate)}</div></div>
+      </div>
+      <div style="background:#f5f5f5;padding:15px;border-radius:8px;margin-bottom:20px">
+        <div style="font-weight:700;font-size:12px;margin-bottom:10px;text-transform:uppercase;color:#333">Period Details</div>
+        <div style="font-weight:700;font-size:13px">Days Worked: <span style="color:#2563eb">${pay.daysWorked.toFixed(1)}</span> days</div>
+        <div style="font-size:12px;color:#666;margin-top:5px">Period: ${startDate} to ${endDate}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+        <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">EARNINGS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
+        <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Basic Pay (${pay.daysWorked.toFixed(1)}d × ${fmt(rate)})</td><td style="padding:10px;text-align:right">${fmt(pay.basic)}</td></tr>
+        <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">GROSS PAY</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
+        <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
+        ${pay.sss > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">SSS</td><td style="padding:10px;text-align:right">${fmt(pay.sss)}</td></tr>` : ''}
+        ${pay.ph > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">PhilHealth</td><td style="padding:10px;text-align:right">${fmt(pay.ph)}</td></tr>` : ''}
+        ${pay.pi > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Pag-IBIG</td><td style="padding:10px;text-align:right">${fmt(pay.pi)}</td></tr>` : ''}
+        ${pay.tax > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Income Tax</td><td style="padding:10px;text-align:right">${fmt(pay.tax)}</td></tr>` : ''}
+        <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">TOTAL DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.totalDeductions)}</td></tr>
+        <tr style="background:#e8f5e9"><td style="padding:15px;font-weight:700;font-size:14px">NET PAY</td><td style="padding:15px;text-align:right;font-weight:700;font-size:16px;color:#16a34a">${fmt(pay.net)}</td></tr>
+      </table>
+      <div style="text-align:center;font-size:11px;color:#999;border-top:1px solid #e5e5e5;padding-top:20px">
+        <div>Electronically generated payslip</div>
+        <div style="margin-top:10px">${new Date().toLocaleDateString('en-PH')}</div>
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('main').innerHTML = `
+    <div style="padding:20px">
+      <div style="display:flex;gap:10px;margin-bottom:20px">
+        <button class="btn btn-secondary" onclick="showPayroll()">← Back</button>
+        <button class="btn btn-primary" onclick="window.print()">🖨 Print</button>
+        <button class="btn btn-success" onclick="downloadPayslipPDF('${empId}','${startDate}','${endDate}')">📥 Download PDF</button>
+      </div>
+      ${payslipHTML}
+    </div>
+  `;
+}
+
+function openPayslipGenerator(empId, month){
+  const [yr, mo] = month.split('-');
+  const startDefault = `${month}-01`;
+  const endDefault = `${month}-15`;
+  
+  openModal('📋 Generate Payslip', `
+    <div style="display:grid;gap:15px">
+      <div>
+        <label style="font-weight:600;margin-bottom:5px;display:block">Start Date:</label>
+        <input type="date" id="payslipStart" value="${startDefault}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px">
+      </div>
+      <div>
+        <label style="font-weight:600;margin-bottom:5px;display:block">End Date:</label>
+        <input type="date" id="payslipEnd" value="${endDefault}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px">
+      </div>
+      <div style="font-size:12px;color:#666;background:#f5f5f5;padding:10px;border-radius:4px">
+        <strong>Auto-detect deductions:</strong><br/>
+        • 1-15: SSS, PhilHealth, Pag-IBIG<br/>
+        • 16-31: BIR Tax only<br/>
+        • Custom: SSS, PhilHealth, Pag-IBIG
+      </div>
+    </div>
+  `, async () => {
+    const start = document.getElementById('payslipStart')?.value;
+    const end = document.getElementById('payslipEnd')?.value;
+    if(!start || !end) { toast('⚠️ Select both dates'); return; }
+    if(start > end) { toast('⚠️ Start date must be before end date'); return; }
+    await showPayslip(empId, month, start, end);
+    closeModal();
+  }, '✅ Generate Payslip');
+}
+
+async function downloadPayslipPDF(empId, month, period){
+  const emps = load(KEYS.employees);
+  const emp = emps[empId];
+  const periodLabel = period === 'first_half' ? '1st Half' : period === 'second_half' ? '2nd Half' : 'Full Month';
+  const fileName = `Payslip_${formatEmpId(empId, emp.branch)}_${month}_${periodLabel}.pdf`;
+  
+  // Load html2pdf from CDN
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  script.onload = () => {
+    const element = document.querySelector('[style*="max-width:800px"]');
+    if(!element) { toast('⚠️ Payslip not found'); return; }
+    
+    const opt = {
+      margin: 10,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+    };
+    html2pdf().set(opt).from(element).save();
+    toast(`✅ Downloaded: ${fileName}`);
+  };
+  document.head.appendChild(script);
+}
+
+async function generatePayslipBatch(period){
+  const month = document.getElementById('payMonth')?.value;
+  if(!month) { toast('⚠️ Select month first'); return; }
+  
+  const emps = load(KEYS.employees);
+  const activeEmps = Object.entries(emps).filter(([id,e]) => e && e.name && e.status !== 'inactive');
+  
+  if(activeEmps.length === 0) { toast('⚠️ No active employees'); return; }
+  
+  toast(`📄 Generating ${activeEmps.length} payslips for ${period}...`);
+  
+  // Build HTML for all payslips
+  let allPayslipsHTML = `<div style="font-family:Arial;margin:20px"><div style="text-align:center;margin-bottom:40px"><h1>PAYROLL BATCH — ${period.toUpperCase()}</h1><p>${month}</p></div>`;
+  
+  for(const [empId, emp] of activeEmps){
+    const [yr, mo] = month.split('-');
+    const year = parseInt(yr);
+    const monthNum = parseInt(mo);
+    const nextYr = monthNum === 12 ? year + 1 : year;
+    const nextMo = monthNum === 12 ? 1 : monthNum + 1;
+    const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
+    
+    // Set date range
+    let startDate, endDate;
+    if(period === 'first_half'){
+      startDate = month + '-01';
+      endDate = month + '-16';
+    } else if(period === 'second_half'){
+      startDate = month + '-16';
+      endDate = nextMonthStr;
+    } else {
+      startDate = month + '-01';
+      endDate = nextMonthStr;
+    }
+    
+    // Fetch attendance
+    let attRecords = [];
+    if(_sb){
+      try {
+        const {data} = await _sb.from('time_clock').select('*').eq('employee_id', empId).gte('date', startDate).lt('date', endDate);
+        if(data) attRecords = data;
+      } catch(e) {}
+    }
+    
+    // Calculate
+    const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present').length;
+    const daysLate = attRecords.filter(r => r.status === 'Late').length;
+    const daysAbsent = attRecords.filter(r => r.status === 'Absent').length;
+    const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
+    const daysWorked = daysPresent + (daysHalfDay * 0.5);
+    
+    const rate = parseFloat(emp.daily_rate || 0);
+    const allowances = emp.allowances || {};
+    const loanDed = period === 'first_half' ? getActiveLoanDeduction(empId) : 0;
+    
+    let pay;
+    if(period === 'first_half'){
+      const basicPay = rate * daysWorked;
+      const gross = basicPay + totalAllowances(allowances);
+      pay = {
+        basic: basicPay, gross: gross,
+        sss: Math.round(gross * 0.04), ph: Math.round(gross * 0.025), pi: 100, tax: 0,
+        loanDeduction: loanDed, net: 0
+      };
+      pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.loanDeduction;
+      pay.net = pay.gross - pay.totalDeductions;
+    } else if(period === 'second_half'){
+      const basicPay = rate * daysWorked;
+      const gross = basicPay + totalAllowances(allowances);
+      const birTax = Math.max(0, (gross - 5000) * 0.08);
+      pay = {
+        basic: basicPay, gross: gross,
+        sss: 0, ph: 0, pi: 0, tax: birTax,
+        loanDeduction: 0, net: 0
+      };
+      pay.totalDeductions = birTax;
+      pay.net = pay.gross - pay.totalDeductions;
+    } else {
+      pay = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, loanDed, 0, 0, {regular:0, special:0}, allowances);
+    }
+    
+    const periodLabel = period === 'first_half' ? '1st Half (1-15)' : period === 'second_half' ? '2nd Half (16-EOMonth)' : 'Full Month';
+    const monthName = new Date(year, monthNum - 1).toLocaleString('default', {month:'long', year:'numeric'});
+    
+    allPayslipsHTML += `
+      <div style="page-break-after:always;padding:40px;border:1px solid #ddd;margin-bottom:20px">
+        <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #333;padding-bottom:15px">
+          <div style="font-size:20px;font-weight:700">DENTAL CITY PAYROLL</div>
+          <div style="font-size:12px;color:#555">${monthName} — ${periodLabel}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;font-size:12px">
+          <div><span style="color:#666">ID:</span> <b>${formatEmpId(empId, emp.branch)}</b></div>
+          <div><span style="color:#666">Name:</span> <b>${emp.name}</b></div>
+          <div><span style="color:#666">Branch:</span> ${emp.branch}</div>
+          <div><span style="color:#666">Rate:</span> ${fmt(rate)}</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:15px">
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Days Worked</td><td style="text-align:right">${daysWorked.toFixed(1)}</td></tr>
+          <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">GROSS PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">SSS</td><td style="text-align:right">${fmt(pay.sss)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">PhilHealth</td><td style="text-align:right">${fmt(pay.ph)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Pag-IBIG</td><td style="text-align:right">${fmt(pay.pi)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Income Tax</td><td style="text-align:right">${fmt(pay.tax)}</td></tr>
+          ${pay.loanDeduction > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Loan</td><td style="text-align:right">${fmt(pay.loanDeduction)}</td></tr>` : ''}
+          <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">NET PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.net)}</td></tr>
+        </table>
+      </div>
+    `;
+  }
+  
+  allPayslipsHTML += `<div style="text-align:center;font-size:11px;color:#999;margin-top:40px">Electronically generated payslips — ${new Date().toLocaleDateString('en-PH')}</div></div>`;
+  
+  // Display all payslips
+  document.getElementById('main').innerHTML = `
+    <div style="padding:20px">
+      <div style="display:flex;gap:10px;margin-bottom:20px">
+        <button class="btn btn-secondary" onclick="showPayroll()">← Back</button>
+        <button class="btn btn-primary" onclick="window.print()">🖨 Print All</button>
+      </div>
+      ${allPayslipsHTML}
+    </div>
+  `;
 }
 
 // Deduct loan balances after confirming payroll run
@@ -3120,6 +3894,99 @@ function exportPayroll(){
     d.ot_hours||0, d.nd_hours||0, d.reg_hol||0, d.spe_hol||0
   ]));
   downloadCSV(`payroll_${today()}.csv`,rows);
+}
+
+function exportPayrollPDF(){
+  if(!_payrollData.length){toast('⚠️ Compute payroll first');return;}
+  
+  const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+  const [yr, mo] = month.split('-');
+  const monthName = new Date(parseInt(yr), parseInt(mo)-1).toLocaleString('default', {month:'long', year:'numeric'});
+  
+  let html = `
+    <div style="font-family:Arial;padding:20px;max-width:1200px">
+      <div style="text-align:center;margin-bottom:30px">
+        <h1 style="margin:0;color:#333">DENTAL CITY PAYROLL SUMMARY</h1>
+        <h2 style="margin:5px 0;font-size:18px;color:#666">${monthName}</h2>
+        <p style="margin:10px 0;color:#999;font-size:12px">Generated: ${new Date().toLocaleDateString('en-PH')}</p>
+      </div>
+      
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:30px">
+        <thead>
+          <tr style="background:#333;color:#fff">
+            <th style="padding:8px;text-align:left;border:1px solid #ddd">ID</th>
+            <th style="padding:8px;text-align:left;border:1px solid #ddd">Name</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Days</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Gross Pay</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">SSS</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">PhilHealth</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Pag-IBIG</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Tax</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Loan</th>
+            <th style="padding:8px;text-align:right;border:1px solid #ddd">Net Pay</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  let totalGross = 0, totalDed = 0, totalNet = 0;
+  _payrollData.forEach(d => {
+    totalGross += d.gross;
+    totalDed += d.totalDeductions;
+    totalNet += d.net;
+    html += `
+      <tr style="border-bottom:1px solid #ddd">
+        <td style="padding:6px;text-align:left">${d.eid}</td>
+        <td style="padding:6px;text-align:left">${d.name}</td>
+        <td style="padding:6px;text-align:right">${d.days_worked}</td>
+        <td style="padding:6px;text-align:right">₱${d.gross.toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.sss||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.ph||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.pi||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.tax||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">₱${(d.loanDeduction||0).toFixed(2)}</td>
+        <td style="padding:6px;text-align:right;font-weight:700">₱${d.net.toFixed(2)}</td>
+      </tr>
+    `;
+  });
+  
+  html += `
+        </tbody>
+        <tfoot>
+          <tr style="background:#f5f5f5;font-weight:700;border-top:2px solid #333">
+            <td colspan="3" style="padding:8px">TOTALS</td>
+            <td style="padding:8px;text-align:right;border:1px solid #ddd">₱${totalGross.toFixed(2)}</td>
+            <td colspan="4" style="padding:8px;text-align:center;border:1px solid #ddd">—</td>
+            <td style="padding:8px;text-align:right;border:1px solid #ddd">₱${totalDed.toFixed(2)}</td>
+            <td style="padding:8px;text-align:right;border:1px solid #ddd;color:#16a34a">₱${totalNet.toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      
+      <div style="font-size:10px;color:#999;text-align:center;margin-top:40px;border-top:1px solid #ddd;padding-top:15px">
+        <p>This is an electronically generated payroll summary. No signature required.</p>
+        <p>Prepared by: Dental City Payroll System v30</p>
+      </div>
+    </div>
+  `;
+  
+  // Load html2pdf and generate PDF
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  script.onload = () => {
+    const element = document.createElement('div');
+    element.innerHTML = html;
+    const opt = {
+      margin: 10,
+      filename: `Payroll_${month}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { orientation: 'landscape', unit: 'mm', format: 'a4' }
+    };
+    html2pdf().set(opt).from(element).save();
+    toast(`✅ Downloaded: Payroll_${month}.pdf`);
+  };
+  document.head.appendChild(script);
 }
 
 // Auto-payroll scheduler + daily attendance check
@@ -3293,7 +4160,7 @@ function computeGovReports(){
     sssEmpTotal += sssEmp; sssErTotal += sssEr;
     _govData.sss.push({eid,name:e.name,branch:e.branch||'—',monthly,sssEmp,sssEr});
     sssRows.push(`<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(monthly)}</td>
       <td><input placeholder="SSS No." style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px"
           oninput="updateGovNo('sss','${eid}',this.value)"></td>
@@ -3308,7 +4175,7 @@ function computeGovReports(){
     phEmpTotal += phEmp; phErTotal += phEr;
     _govData.ph.push({eid,name:e.name,branch:e.branch||'—',monthly,phEmp,phEr});
     phRows.push(`<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(monthly)}</td>
       <td><input placeholder="PhilHealth No." style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px"
           oninput="updateGovNo('ph','${eid}',this.value)"></td>
@@ -3323,7 +4190,7 @@ function computeGovReports(){
     piEmpTotal += piEmp; piErTotal += piEr;
     _govData.pi.push({eid,name:e.name,branch:e.branch||'—',monthly,piEmp,piEr});
     piRows.push(`<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
       <td>${fmt(monthly)}</td>
       <td><input placeholder="Pag-IBIG No." style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px"
           oninput="updateGovNo('pi','${eid}',this.value)"></td>
@@ -3507,7 +4374,7 @@ function compute13th(){
         dateHired:e.date_hired||'—', totalBasic, thirteenth, taxExempt});
 
       return `<tr>
-        <td>${eid}</td>
+        <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td>
         <td><b>${_esc(e.name)}</b>${hiredNote}</td>
         <td>${e.branch||'—'}</td>
         <td>${empTypeTag}</td>
@@ -3682,7 +4549,7 @@ function generateBIR2316List(){
                 addr:localStorage.getItem('bir_emp_addr')||''}});
 
     return `<tr>
-      <td>${eid}</td><td><b>${_esc(e.name)}</b></td>
+      <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td>
       <td><input value="${tin}" placeholder="000-000-000"
         style="border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:110px"
         oninput="localStorage.setItem('bir_tin_${eid}',this.value);
@@ -3805,137 +4672,6 @@ function exportBIR2316(){
   toast('📥 BIR 2316 summary exported!');
 }
 
-function showPayslip(){
-  ownerEnsureBranchData();
-  const emps=load(KEYS.employees);
-  const now=new Date(), defMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  // Default: 1st to 15th (semi-monthly) or full month
-  const y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0');
-  const defFrom=`${y}-${m}-01`, defTo=`${y}-${m}-${String(new Date(y,now.getMonth()+1,0).getDate()).padStart(2,'0')}`;
-  document.getElementById('main').innerHTML=`
-    <div class="section-header">
-      <div class="section-title">Payslip Generator</div>
-      <div class="btn-row">
-        <select id="slipEmp" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;min-width:200px">
-          <option value="">-- Select Employee --</option>
-          ${Object.entries(emps).map(([id,e])=>`<option value="${id}">${e.name} (${id})</option>`).join('')}
-        </select>
-        <input type="month" id="slipMonth" value="${defMonth}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('1st')">1st Half</button>
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('2nd')">2nd Half</button>
-        <button class="btn btn-secondary btn-sm" onclick="setSlipRange('full')">Full Month</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
-      <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;font-weight:700;color:#555">FROM</label>
-        <input type="date" id="slipFrom" value="${defFrom}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-      </div>
-      <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;font-weight:700;color:#555">TO</label>
-        <input type="date" id="slipTo" value="${defTo}" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-      </div>
-      <button class="btn btn-primary" onclick="generateSlip()">Generate Payslip</button>
-      <button class="btn btn-teal" onclick="printSlip()">🖨 Print</button>
-    </div>
-    <div id="slipContent" style="max-width:600px"></div>`;
-}
-
-function setSlipRange(type){
-  const month = document.getElementById('slipMonth')?.value || today().slice(0,7);
-  const [y,m] = month.split('-').map(Number);
-  const lastDay = new Date(y,m,0).getDate();
-  if(type==='1st'){
-    document.getElementById('slipFrom').value=`${month}-01`;
-    document.getElementById('slipTo').value=`${month}-15`;
-  } else if(type==='2nd'){
-    document.getElementById('slipFrom').value=`${month}-16`;
-    document.getElementById('slipTo').value=`${month}-${String(lastDay).padStart(2,'0')}`;
-  } else {
-    document.getElementById('slipFrom').value=`${month}-01`;
-    document.getElementById('slipTo').value=`${month}-${String(lastDay).padStart(2,'0')}`;
-  }
-}
-
-function generateSlip(){
-  ownerEnsureBranchData();
-  const eid=document.getElementById('slipEmp')?.value;
-  const fromDate=document.getElementById('slipFrom')?.value;
-  const toDate=document.getElementById('slipTo')?.value;
-  if(!eid){toast('⚠️ Select an employee');return;}
-  if(!fromDate||!toDate){toast('⚠️ Set date range');return;}
-  const emps=load(KEYS.employees), att=load(KEYS.attendance);
-  const e=emps[eid], rate=parseFloat(e.daily_rate||0);
-  const recs=Object.values(att[eid]||[]).filter(r=>r.date>=fromDate&&r.date<=toDate);
-  const daysPresent= recs.filter(r=>r.status==='Present'||r.status==='Late').length;
-  const absences   = recs.filter(r=>r.status==='Absent').length;
-  const halfDays   = recs.filter(r=>r.status==='Half-day').length;
-  const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
-  const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
-  const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
-  const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
-  const loanDed    = getActiveLoanDeduction(eid);
-  const hasAtt     = daysPresent+absences+halfDays>0;
-  const daysWorked = hasAtt?daysPresent+(halfDays*0.5):null;
-  const allowances = e.allowances || {};
-  const totalAllow = totalAllowances(allowances);
-  const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances);
-  const dw         = daysWorked!==null?daysWorked.toFixed(2):WORKING_DAYS.toFixed(2);
-  const loans      = load(KEYS.loans);
-  const activeLoans= (loans[eid]||[]).filter(l=>l.status==='Active');
-  const loanLines  = activeLoans.length
-    ? activeLoans.map(l=>`  ${(l.type||'Loan').padEnd(28)}₱${parseFloat(l.monthly_amort||0).toLocaleString('en-PH',{minimumFractionDigits:2})}`).join('\n')
-    : '  (none)';
-  const w=48, line='─'.repeat(w);
-  const period = fromDate===toDate ? fromDate : `${fromDate} to ${toDate}`;
-
-  const slip=`
-${'DENTAL CITY PAYROLL SYSTEM'.padStart((w+26)/2)}
-${'PAYSLIP'.padStart((w+7)/2)}
-${line}
-Employee Name : ${e.name}
-Position      : ${e.role||'—'}
-Branch        : ${e.branch||'—'}
-Employee ID   : ${eid}
-Pay Period    : ${period}
-${line}
-EARNINGS
-  Daily Rate                 ₱${rate.toLocaleString('en-PH',{minimumFractionDigits:2})}/day
-  Days Worked                ${dw} days
-  Basic Pay                  ₱${(rate*(parseFloat(dw)||WORKING_DAYS)).toLocaleString('en-PH',{minimumFractionDigits:2})}
-${otHours>0?`  Overtime (${otHours}hrs × ₱${pay.hourlyRate.toFixed(2)} × 1.25)  ₱${pay.otPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${ndHours>0?`  Night Differential (${ndHours}hrs)     ₱${pay.ndPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${regHolDays>0?`  Regular Holiday Pay (${regHolDays} day/s)   ₱${pay.regHolPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${speHolDays>0?`  Special Holiday Pay (${speHolDays} day/s)   ₱${pay.speHolPay.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${totalAllow>0?`${line}\nALLOWANCES\n${allowances.meal>0?`  Meal Allowance                ₱${parseFloat(allowances.meal).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.transport>0?`  Transportation Allowance      ₱${parseFloat(allowances.transport).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.communication>0?`  Communication Allowance       ₱${parseFloat(allowances.communication).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.housing>0?`  Housing Allowance             ₱${parseFloat(allowances.housing).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.medical>0?`  Medical Allowance             ₱${parseFloat(allowances.medical).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}${allowances.other>0?`  Other Allowance               ₱${parseFloat(allowances.other).toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}  Total Allowances               ₱${totalAllow.toLocaleString('en-PH',{minimumFractionDigits:2})}\n`:''}  Gross Pay                  ₱${pay.gross.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-DEDUCTIONS
-  SSS Contribution           ₱${pay.sss.toLocaleString('en-PH',{minimumFractionDigits:2})}
-  PhilHealth Contribution    ₱${pay.ph.toLocaleString('en-PH',{minimumFractionDigits:2})}
-  Pag-IBIG Contribution      ₱${pay.pi.toLocaleString('en-PH',{minimumFractionDigits:2})}
-  Withholding Tax            ₱${pay.tax.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-LOAN DEDUCTIONS
-${loanLines}
-  Total Loan Deductions      ₱${pay.loanDeduction.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-  Total Deductions           ₱${pay.totalDeductions.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-NET PAY                      ₱${pay.net.toLocaleString('en-PH',{minimumFractionDigits:2})}
-${line}
-ATTENDANCE SUMMARY
-  Days Present : ${daysPresent}   Days Absent : ${absences}   Half Days : ${halfDays}
-  OT Hours     : ${otHours}h      Night Diff  : ${ndHours}h
-${regHolDays>0?`  Regular Holidays : ${regHolDays} day/s\n`:''}${speHolDays>0?`  Special Holidays : ${speHolDays} day/s\n`:''}${line}
-Generated: ${new Date().toLocaleString('en-PH')}
-${'This is a system-generated payslip.'.padStart((w+38)/2)}
-`;
-  document.getElementById('slipContent').innerHTML=`<div class="payslip">${slip}</div>`;
-  window._slipContent=slip;
-}
-
-function printSlip(){
-  if(!window._slipContent){toast('⚠️ Generate a payslip first');return;}
-  const win=window.open('','_blank','width=600,height=700');
-  win.document.write(`<!DOCTYPE html><html><head><style>body{font-family:'Courier New',monospace;font-size:12px;padding:20px;white-space:pre;}@media print{@page{size:A4;margin:15mm;}}</style></head><body>${window._slipContent}<script>window.onload=function(){window.print();window.close();}<\/script>`);
-  win.document.close();
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONSOLIDATE ATTENDANCE
@@ -4581,9 +5317,9 @@ const SUPABASE_KEY = 'your-anon-key-here';</pre>
         <b style="color:var(--blue)">Step 4 — Customize Usernames &amp; Passwords</b><br>
         Open the HTML file, find the <b>USERS</b> section and edit:<br>
         <pre style="background:#1A3C5E;color:#93C5FD;padding:10px;border-radius:6px;font-size:11px;margin-top:8px">const USERS = {
-  owner:     { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9', role:'Owner',       name:'Owner'       },
-  manila:    { password:'08c9f2c97386422522a55fd245613b4152a9ec185c780ffaf1be54d0a88d0d0a',role:'BranchAdmin', name:'Manila Admin',branch:'Manila' },
-  bgc:       { password:'240ba9c0868c7f63c338cbbdcefd9a8aff840028aa20c4cce410c56bde9db9e1',   role:'Staff',       name:'BGC Staff',  branch:'BGC' },
+  owner:     { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9', role:'owner',       name:'owner'       },
+  manila:    { password:'08c9f2c97386422522a55fd245613b4152a9ec185c780ffaf1be54d0a88d0d0a',role:'branch_admin', name:'Manila Admin',branch:'Manila' },
+  bgc:       { password:'240ba9c0868c7f63c338cbbdcefd9a8aff840028aa20c4cce410c56bde9db9e1',   role:'employee',       name:'BGC Staff',  branch:'BGC' },
 };</pre>
         Change usernames and passwords before giving to your client! 🔐
       </div>
@@ -4628,7 +5364,7 @@ async function ownerRefresh(){
   hideLoading();
   setSyncBar('ok','☁ All branches refreshed');
   toast('✅ All branch data refreshed!');
-  showOwnerDashboard();
+  showDashboard();
 }
 
 // ── Refresh Data for Admin/Staff ────────────────────────────────────────────────
@@ -4687,9 +5423,20 @@ function showOwnerDashboard(){
   // ADMIN: show only their branch. OWNER: show ALL_BRANCHES
   const branchesToShow = isOwner() ? ALL_BRANCHES : [getBranch()];
   
+  // Use LOCAL cache for quick display — cloud sync happens in background
+  const empsByBranch = {};
+  ALL_BRANCHES.forEach(b => { empsByBranch[b] = {}; });
+  
+  const allEmps = load(KEYS.employees) || {};
+  Object.entries(allEmps).forEach(([eid, e]) => {
+    if(e.branch && empsByBranch[e.branch]) {
+      empsByBranch[e.branch][eid] = e;
+    }
+  });
+  
   const branchCards = branchesToShow.map((b,i)=>{
     const bdata   = _ownerData[b] || {};
-    const emps    = bdata.pr_employees  || {};
+    const emps    = empsByBranch[b] || {};
     const att     = bdata.pr_attendance || {};
     const loans   = bdata.pr_loans      || {};
     const active  = Object.values(emps).filter(e=>e.status==='Active').length;
@@ -4929,7 +5676,7 @@ function showBranchPresent(branchEnc, filterDate=''){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div style="display:flex;align-items:center;gap:10px">
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
         <div class="section-title" style="color:${col}">🏢 ${branch} — Attendance</div>
       </div>
       <div class="btn-row">
@@ -5007,7 +5754,6 @@ function showAllEmployees(q='', filterBranch='All'){
           style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
           ${branches.map(b=>`<option${b===filterBranch?' selected':''}>${b}</option>`).join('')}
         </select>
-        <button class="btn btn-primary" onclick="ownerAddEmp()">＋ Add Employee</button>
         <button class="btn btn-teal btn-sm" onclick="exportAllEmployees()">Export CSV</button>
       </div>
     </div>
@@ -5787,7 +6533,7 @@ function showOwnerAttFilter(status='Present', branchEnc=''){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div style="display:flex;align-items:center;gap:10px">
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
         <div class="section-title">Attendance — <span style="color:${col}">${status}</span></div>
       </div>
       <div class="btn-row">
@@ -6259,7 +7005,7 @@ function showSecurityDashboard(){
   _recordActivity();
   const user = _currentUser;
   const userObj = USERS[user];
-  const isOwner = userObj?.role === 'Owner';
+  const isOwner = userObj?.role === 'owner';
   const totp = userObj?.totp_enabled ? '✅ Enabled' : '❌ Disabled';
   const pwHist = (SEC.passwordHistory[user] || []).length;
   const recentLog = SEC.auditLog.filter(a => a.user === user).slice(-20);
@@ -6315,9 +7061,34 @@ function showSecurityDashboard(){
 // ACCOUNT MANAGER
 // ══════════════════════════════════════════════════════════════════════════════
 function showAccountManager(){
-  const roleColors = {Owner:'#B7860B', Admin:'var(--blue)', BranchAdmin:'var(--teal)', Staff:'var(--green)'};
-  const byRole = {Owner:[], Admin:[], BranchAdmin:[], Staff:[]};
-  Object.entries(USERS).forEach(([u,d])=>{ if(!d._hidden)(byRole[d.role]||[]).push([u,d]); });
+  const roleColors = {owner:'#B7860B', admin:'var(--blue)', staff:'var(--green)'};
+  
+  // Load accounts from Supabase first
+  if(_sb){
+    _sb.from('payroll_accounts').select('*').then(({data, error})=>{
+      if(data){
+        data.forEach(acc=>{
+          USERS[acc.username] = {
+            password: acc.password_hash,
+            role: (acc.role||'employee').toLowerCase(),
+            name: acc.name,
+            branch: acc.branch
+          };
+        });
+      }
+      renderAccounts(roleColors);
+    });
+  } else {
+    renderAccounts(roleColors);
+  }
+}
+
+function renderAccounts(roleColors){
+  const byRole = {owner:[], admin:[], staff:[]};
+  Object.entries(USERS).forEach(([u,d])=>{ 
+    const role = (d.role||'employee').toLowerCase();
+    if(!d._hidden) (byRole[role]||[]).push([u,d]); 
+  });
 
   const buildTable = (role, list)=>{
     if(!list.length) return '';
@@ -6331,7 +7102,7 @@ function showAccountManager(){
         ${u!=='owner'&&!d._hidden?`<button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">🗑</button>`:''}
       </td>
     </tr>`).join('');
-    const icons={Owner:'👑',Admin:'🛡',BranchAdmin:'🏢',Staff:'👤'};
+    const icons={owner:'👑',admin:'🛡',staff:'👤'};
     return `<div style="margin-bottom:20px">
       <div style="font-weight:700;font-size:13px;color:${roleColors[role]};margin-bottom:8px;padding:8px 14px;
                   background:var(--sky);border-radius:8px;border-left:4px solid ${roleColors[role]}">
@@ -6355,9 +7126,8 @@ function showAccountManager(){
     <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#92400E">
       ⚠️ Password changes take effect on next login. Share credentials securely with staff.
     </div>
-    ${buildTable('Owner',byRole.Owner||[])}
-    ${buildTable('Admin',byRole.Admin||[])}
-    ${buildTable('BranchAdmin',byRole.BranchAdmin||[])}
+    ${buildTable('owner',byRole.owner||[])}
+    ${buildTable('branch_admin',byRole.admin||[])}
     ${buildTable('Staff',byRole.Staff||[])}`;
 }
 
@@ -6375,10 +7145,10 @@ function accountForm(d={}){
     <div class="form-group">
       <label class="form-label">Role *</label>
       <select class="form-control" id="f_acc_role" onchange="toggleBranchField()">
-        ${(isOwner()?['Owner','Admin','BranchAdmin','Staff']:['BranchAdmin','Staff']).map(r=>`<option${(d.role||'Staff')===r?' selected':''}>${r}</option>`).join('')}
+        ${(isOwner()?['owner','branch_admin','employee']:['branch_admin','employee']).map(r=>`<option${(d.role||'employee')===r?' selected':''}>${r}</option>`).join('')}
       </select>
     </div>
-    <div class="form-group" id="branchFieldGroup" style="display:${['BranchAdmin','Staff'].includes(d.role||'Staff')?'block':'none'}">
+    <div class="form-group" id="branchFieldGroup" style="display:${['branch_admin','employee'].includes(d.role||'employee')?'block':'none'}">
       <label class="form-label">Branch *</label>
       <select class="form-control" id="f_acc_branch">${branchOpts}</select>
     </div>`;
@@ -6387,7 +7157,7 @@ function accountForm(d={}){
 function toggleBranchField(){
   const role = document.getElementById('f_acc_role')?.value;
   const grp  = document.getElementById('branchFieldGroup');
-  if(grp) grp.style.display = ['BranchAdmin','Staff'].includes(role)?'block':'none';
+  if(grp) grp.style.display = ['branch_admin','Staff'].includes(role)?'block':'none';
 }
 
 function addAccount(){
@@ -6399,10 +7169,29 @@ function addAccount(){
     const branch = fval('acc_branch');
     if(!u||!name||!pass){ toast('⚠️ Username, name and password are required'); return; }
     if(USERS[u]){ toast(`⚠️ Username "${u}" already exists!`); return; }
-    if(['BranchAdmin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
-    USERS[u] = {password: await _sha256(pass), role, name, ...(branch?{branch}:{})};
-    _saveAccountToCloud(u, USERS[u]);
-    toast(`✅ Account "${u}" created!`); closeModal(); showAccountManager();
+    if(['employee','branch_admin'].includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
+    
+    try {
+      const pwHash = await _sha256(pass);
+      const newAccount = {password: pwHash, role, name, ...(branch?{branch}:{})};
+      console.log('📝 Saving account:', u, newAccount);
+      
+      // Save to Supabase FIRST - if this fails, don't add to USERS
+      await _saveAccountToCloud(u, newAccount);
+      
+      // Only add to USERS after successful Supabase save
+      USERS[u] = newAccount;
+      save(KEYS.accounts, USERS);
+      
+      toast(`✅ Account "${u}" created!`); 
+      closeModal(); 
+      showAccountManager();
+    } catch(e) {
+      console.error('❌ Account creation failed:', e);
+      toast(`❌ Error: ${e.message}`);
+      // Remove from USERS if it was added
+      if(USERS[u]) delete USERS[u];
+    }
   },'✅ Create Account');
 }
 
@@ -6420,7 +7209,7 @@ function editAccount(username){
     const role  = fval('acc_role');
     const branch= fval('acc_branch');
     if(!name){ toast('⚠️ Name is required'); return; }
-    if(['BranchAdmin','Staff'].includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
+    if(['branch_admin','employee'].includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
     
     // ✅ NEW: Prevent branch escalation (BranchAdmin can't create Owner accounts)
     if(isBranchAdmin() && role !== 'Staff'){
@@ -6599,6 +7388,14 @@ function renameBranch(idx, oldName){
     if(ALL_BRANCHES.includes(newName)){ toast('⚠️ Name already exists!'); return; }
     ALL_BRANCHES[idx] = newName;
     Object.values(USERS).forEach(u=>{ if(u.branch===oldName) u.branch=newName; });
+    
+    // UPDATE SUPABASE branches TABLE
+    if(_sb){
+      try {
+        await _sb.from('branches').update({name: newName}).eq('name', oldName);
+      } catch(e) { console.error('Branch update failed:', e); }
+    }
+    
     await _renameBranchInCloudAccounts(oldName, newName);
 
     const bdata = _ownerData[oldName] || {};
@@ -7360,17 +8157,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 // ── 201 EMPLOYEE FILE MODAL ────────────────────────────────────────────────
-const SECTIONS_201 = {
-  'Personal': ['full_name','birthdate','civil_status','address','phone'],
-  'Emergency': ['emergency_contact','emergency_phone','dependents_count'],
-  'IDs': ['sss_id','pag_ibig_id','philhealth_id','tin'],
-  'Other': ['health_insurance','education']
-};
-
 function open201(empId){
   const role = currentRole;
-  if(!['Owner','Admin','BranchAdmin','Developer','dev'].includes(role)){ toast('❌ Access denied'); return; }
-  const isReadOnly = role === 'Developer' || role === 'dev';
+  if(!['owner','branch_admin','branch_admin','dev','dev'].includes(role)){ toast('❌ Access denied'); return; }
+  const isReadOnly = role === 'dev' || role === 'dev';
   
   let html = '';
   for(let [section, fields] of Object.entries(SECTIONS_201)){
@@ -7427,7 +8217,7 @@ async function showPayrollApprovals(){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div class="section-title">💰 Payroll Approvals</div>
-      <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+      <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
     </div>
     <div style="text-align:center;padding:40px;color:#555">⏳ Loading approvals...</div>`;
   
@@ -7438,7 +8228,7 @@ async function showPayrollApprovals(){
     document.getElementById('main').innerHTML=`
       <div class="section-header">
         <div class="section-title">💰 Payroll Approvals</div>
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
       </div>
       <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:16px;color:#991B1B">
         ❌ Supabase not connected
@@ -7481,7 +8271,7 @@ async function showPayrollApprovals(){
     document.getElementById('main').innerHTML=`
       <div class="section-header">
         <div class="section-title">💰 Payroll Approvals</div>
-        <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
       </div>
       <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:16px;color:#991B1B">
         ❌ Failed to load: ${err.message}
@@ -7516,7 +8306,7 @@ function renderPayrollApprovals(approvals){
   document.getElementById('main').innerHTML=`
     <div class="section-header">
       <div class="section-title">💰 Payroll Approvals</div>
-      <button class="btn btn-secondary btn-sm" onclick="showOwnerDashboard()">← Back</button>
+      <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
     </div>
     ${pendingRuns.length===0?`<div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:16px;text-align:center;color:#16A34A">✅ No pending payroll approvals</div>`:`
     <div style="font-size:13px;color:#555;margin-bottom:10px"><b>${pendingRuns.length}</b> payroll run${pendingRuns.length>1?'s':''} awaiting your approval</div>
@@ -7720,7 +8510,7 @@ function runPayrollNow(){
         if(error) throw error;
       }
       
-      toast(`✅ Payroll submitted! ₱${fmt(total_net)}`);
+      toast(`✅ Payroll submitted! ${fmt(total_net)}`);
       setTimeout(() => showPayroll(), 1000);
     } catch(err) {
       console.error('[Payroll]', err);
@@ -7895,14 +8685,14 @@ async function clockIn(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const timeIn = now.toTimeString().slice(0, 5);
-    const existing = await supabase.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
+    const timeIn = now.toISOString(); // Full timestamp
+    const existing = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(existing.data && existing.data.status === 'clocked_in') {
       throw new Error('Already clocked in at ' + existing.data.time_in);
     }
-    const {data, error} = await supabase.from('time_clock').upsert({
+    const {data, error} = await _sb.from('time_clock').upsert({
       employee_id: empId, branch_id: branchId, date: today, time_in: timeIn, 
-      status: 'clocked_in', validation_status: 'valid', created_at: now.toISOString()
+      status: 'clocked_in', created_at: now.toISOString()
     }, {onConflict: 'employee_id,branch_id,date'}).select();
     if(error) throw error;
     toast(`✅ Clocked in at ${timeIn}`);
@@ -7917,11 +8707,11 @@ async function startBreak(empId, branchId, breakType = 'Lunch') {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const breakInTime = now.toTimeString().slice(0, 5);
-    const {data: clock} = await supabase.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
+    const breakInTime = now.toISOString();
+    const {data: clock} = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || clock.status !== 'clocked_in') throw new Error('Not clocked in');
-    await supabase.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
-    const {data: breakRecord} = await supabase.from('time_breaks').insert({
+    await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
+    const {data: breakRecord} = await _sb.from('time_breaks').insert({
       clock_id: clock.id, employee_id: empId, branch_id: branchId, date: today, 
       break_type: breakType, break_in: breakInTime, auto_deducted: true
     }).select();
@@ -7937,14 +8727,14 @@ async function endBreak(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const breakOutTime = now.toTimeString().slice(0, 5);
-    const {data: breaks} = await supabase.from('time_breaks').select('*')
+    const breakOutTime = now.toISOString();
+    const {data: breaks} = await _sb.from('time_breaks').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today)
       .is('break_out', null).order('created_at', {ascending: false}).limit(1).single();
     if(!breaks) throw new Error('No active break');
     const breakDurationMins = _calcTime(breaks.break_in, breakOutTime);
-    await supabase.from('time_breaks').update({break_out: breakOutTime, approval_status: 'auto_approved'}).eq('id', breaks.id);
-    await supabase.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', today);
+    await _sb.from('time_breaks').update({break_out: breakOutTime, approval_status: 'auto_approved'}).eq('id', breaks.id);
+    await _sb.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', today);
     toast(`✅ Break ended. ${breakDurationMins} mins deducted`);
     return {breakDurationMins};
   } catch(e) {
@@ -7957,13 +8747,13 @@ async function clockOut(empId, branchId) {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const timeOut = now.toTimeString().slice(0, 5);
-    const {data: clock} = await supabase.from('time_clock').select('*')
+    const timeOut = now.toISOString();
+    const {data: clock} = await _sb.from('time_clock').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
     if(!clock || !clock.time_in) throw new Error('Not clocked in');
     const grossMins = _calcTime(clock.time_in, timeOut);
     const grossHours = (grossMins / 60).toFixed(2);
-    const {data: breaks} = await supabase.from('time_breaks').select('break_in, break_out')
+    const {data: breaks} = await _sb.from('time_breaks').select('break_in, break_out')
       .eq('employee_id', empId).eq('date', today);
     let totalBreakMins = 0;
     if(breaks) breaks.forEach(b => {
@@ -7972,10 +8762,8 @@ async function clockOut(empId, branchId) {
     const totalBreakHours = (totalBreakMins / 60).toFixed(2);
     const netHours = (grossHours - totalBreakHours).toFixed(2);
     const otHours = Math.max(0, netHours - 8).toFixed(2);
-    await supabase.from('time_clock').update({
-      time_out: timeOut, status: 'clocked_out', hours_gross: grossHours, 
-      break_hours: totalBreakHours, hours_net: netHours, ot_hours: otHours, 
-      validation_status: 'valid', updated_at: now.toISOString()
+    await _sb.from('time_clock').update({
+      time_out: timeOut, status: 'clocked_out', updated_at: now.toISOString()
     }).eq('id', clock.id);
     await _syncPayroll(empId, branchId, today, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
     toast(`✅ Clocked out at ${timeOut}\nNet: ${netHours}h | OT: ${otHours}h`);
@@ -7997,24 +8785,19 @@ function _calcTime(timeIn, timeOut) {
 
 async function _syncPayroll(empId, branchId, date, timeData) {
   try {
-    const {data: emp} = await supabase.from('employees_201').select('daily_rate').eq('employee_id', empId).single();
+    const {data: emp} = await _sb.from('employees_201').select('daily_rate').eq('employee_id', empId).single();
     const dailyRate = emp?.daily_rate || 1000;
     const hourlyRate = dailyRate / 8;
     const netHours = parseFloat(timeData.hours_net) || 0;
     const otHours = parseFloat(timeData.ot_hours) || 0;
     const basePay = netHours * hourlyRate;
     const otPay = otHours * hourlyRate * 1.25;
-    const {data: clock} = await supabase.from('time_clock').select('time_in').eq('employee_id', empId).eq('branch_id', branchId).eq('date', date).single();
+    const {data: clock} = await _sb.from('time_clock').select('time_in').eq('employee_id', empId).eq('branch_id', branchId).eq('date', date).single();
     const timeIn = clock?.time_in || '00:00';
     const minutesLate = _calcTime('08:00', timeIn);
     const onTime = minutesLate <= 0;
-    await supabase.from('time_analytics').upsert({
-      employee_id: empId, branch_id: branchId, date: date, time_in: timeIn, 
-      minutes_late: Math.max(0, minutesLate), gross_hours: timeData.hours_gross || 0,
-      break_hours: timeData.break_hours || 0, net_hours: netHours, ot_hours: otHours,
-      on_time: onTime, daily_rate: dailyRate, base_pay: basePay, ot_pay: otPay,
-      total_daily_pay: basePay + otPay, updated_at: new Date().toISOString()
-    }, {onConflict: 'employee_id,branch_id,date'});
+    // time_analytics upsert disabled - table not yet created in Supabase
+    // await _sb.from('time_analytics').upsert({...}, {onConflict: 'employee_id,branch_id,date'});
     console.log(`✅ Synced: ${empId} | ${netHours}h × ₱${hourlyRate.toFixed(2)} = ₱${basePay.toFixed(2)}`);
   } catch(e) {
     console.error('Sync error:', e);
@@ -8027,7 +8810,7 @@ async function _syncPayroll(empId, branchId, date, timeData) {
 
 async function showAnalyticsDashboard(branchId, startDate, endDate) {
   try {
-    const {data} = await supabase.from('time_analytics').select('employee_id, employees_201!inner(name), minutes_late')
+    const {data} = await _sb.from('time_analytics').select('employee_id, employees_201!inner(name), minutes_late')
       .eq('branch_id', branchId).gte('date', startDate).lte('date', endDate).gt('minutes_late', 0);
     if(!data || data.length === 0) {
       document.getElementById('main').innerHTML = '<div style="padding:20px"><p>📊 No late arrivals</p></div>';
@@ -8058,7 +8841,7 @@ async function showPayrollPreview(empId, branchId) {
     const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const monthStart = month + '-01';
     const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().split('T')[0];
-    const {data: analytics} = await supabase.from('time_analytics').select('*')
+    const {data: analytics} = await _sb.from('time_analytics').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).gte('date', monthStart).lte('date', monthEnd);
     if(!analytics || analytics.length === 0) {
       document.getElementById('main').innerHTML = '<div style="padding:20px"><p>No payroll data yet</p></div>';
@@ -8142,13 +8925,6 @@ function checkAdminAccess(feature) {
   }
   return true;
 }
-
-// Wrapper for Attendance Tracker
-const _originalShowAttendanceTracker = showAttendanceTracker;
-window.showAttendanceTracker = function(period='week') {
-  if(!checkAdminAccess('showAttendanceTracker')) return;
-  _originalShowAttendanceTracker(period);
-};
 
 // Wrapper for Analytics Dashboard
 const _originalShowAnalyticsDashboard = showAnalyticsDashboard;
