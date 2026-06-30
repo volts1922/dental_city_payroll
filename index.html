@@ -2687,14 +2687,16 @@ async function clockIn(){
   if(_sb){
     try {
       const now_iso = new Date().toISOString();
+      const branchUUID = await getBranchUUID(getBranch());
       const {data, error} = await _sb.from('time_clock').upsert({
         employee_id: eid,
+        branch_id: branchUUID,
         date: td,
         status: 'Present',
         time_in: now_iso,
         time_out: null,
         updated_at: now_iso
-      }, {onConflict: 'employee_id,date'});
+      }, {onConflict: 'employee_id,branch_id,date'});
       if(error) {
         console.warn('⚠️ Supabase sync error:', error.status, error.message);
         toast(`⚠️ Sync warning: ${error.message}`);
@@ -2746,14 +2748,20 @@ async function clockOut(){
   if(_sb){
     try {
       const now_iso = new Date().toISOString();
+      const branchUUID = await getBranchUUID(getBranch());
+      // Convert time strings to ISO timestamps for this date
+      const timeInISO = new Date(`${td}T${existing.time_in}`).toISOString();
+      const timeOutISO = new Date(`${td}T${nowStr}`).toISOString();
+      
       const {data, error} = await _sb.from('time_clock').upsert({
         employee_id: eid,
+        branch_id: branchUUID,
         date: td,
         status: existing.status,
-        time_in: `${td}T${existing.time_in}`,
-        time_out: `${td}T${nowStr}`,
+        time_in: timeInISO,
+        time_out: timeOutISO,
         updated_at: now_iso
-      }, {onConflict: 'employee_id,date'});
+      }, {onConflict: 'employee_id,branch_id,date'});
       if(error) {
         console.warn('⚠️ Clock out sync error:', error.status, error.message);
         toast(`⚠️ Sync warning: ${error.message}`);
@@ -3369,17 +3377,24 @@ async function computePayroll(){
   let att = {};
   if(_sb){
     try {
+      const branchUUID = await getBranchUUID(getBranch());
       const [yr, mo] = month.split('-');
       const nextMo = parseInt(mo) === 12 ? 1 : parseInt(mo) + 1;
       const nextYr = parseInt(mo) === 12 ? parseInt(yr) + 1 : parseInt(yr);
       const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
-      const {data: records} = await _sb.from('time_clock').select('*').gte('date', month + '-01').lt('date', nextMonthStr);
+      
+      const {data: records} = await _sb.from('time_clock')
+        .select('*')
+        .eq('branch_id', branchUUID)
+        .gte('date', month + '-01')
+        .lt('date', nextMonthStr);
+      
       if(records){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
           att[r.employee_id].push({
             date: r.date,
-            status: r.status,
+            status: r.status || 'Present',
             time_in: r.time_in,
             time_out: r.time_out,
             ot_hours: 0,
