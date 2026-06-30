@@ -1613,20 +1613,32 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function today(){ 
-  // Get UTC time, then add 8 hours for Philippines timezone (GMT+8)
-  const utcTime = new Date().toISOString(); // "2026-07-01T12:30:45.123Z" (in UTC)
-  const utcDate = new Date(utcTime); // Parse as UTC
-  const phTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000)); // Add 8 hours
-  return phTime.toISOString().split('T')[0]; // "2026-07-01"
+  // Get current time and convert to Philippines timezone (GMT+8)
+  const now = new Date();
+  // Convert local time to UTC, then add 8 hours for GMT+8
+  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+  const phMs = utcMs + (8 * 60 * 60 * 1000);
+  const phDate = new Date(phMs);
+  // Extract date as YYYY-MM-DD using UTC methods
+  const year = phDate.getUTCFullYear();
+  const month = String(phDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(phDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // ✅ NEW: Get current date/time in PH timezone (UTC+8)
 function todayPH(){
-  // Get UTC time, then add 8 hours for Philippines timezone (GMT+8)
-  const utcTime = new Date().toISOString();
-  const utcDate = new Date(utcTime);
-  const phDate = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
-  return phDate.toISOString().split('T')[0];
+  // Get current time and convert to Philippines timezone (GMT+8)
+  const now = new Date();
+  // Convert local time to UTC, then add 8 hours for GMT+8
+  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+  const phMs = utcMs + (8 * 60 * 60 * 1000);
+  const phDate = new Date(phMs);
+  // Extract date as YYYY-MM-DD using UTC methods
+  const year = phDate.getUTCFullYear();
+  const month = String(phDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(phDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function nowPH(){
