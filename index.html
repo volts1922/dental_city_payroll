@@ -1395,6 +1395,7 @@ const NAV_OWNER=[
   {icon:'🎁',label:'13th Month',       fn:'show13thMonth'},
   {icon:'🏛',label:'Gov Reports',      fn:'showGovReports'},
   {icon:'📄',label:'BIR 2316',         fn:'showBIR2316'},
+  {icon:'📊',label:'Attendance Analytics', fn:'showAttendanceAnalytics'},
   // ── Management ────────────────────────────────────────────────────────────
   {icon:'🎉',label:'Holidays',         fn:'showHolidayManager'},
   {icon:'🕐',label:'Shift Manager',    fn:'showShiftManager'},
@@ -1419,6 +1420,7 @@ const NAV_ADMIN=[
   {icon:'🎁',label:'13th Month',  fn:'show13thMonth'},
   {icon:'🏛',label:'Gov Reports', fn:'showGovReports'},
   {icon:'📄',label:'BIR 2316',    fn:'showBIR2316'},
+  {icon:'📊',label:'Analytics',   fn:'showAttendanceAnalytics'},
   {icon:'💾',label:'Backup',      fn:'showBackupManager'},
   {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
   {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
@@ -4672,10 +4674,115 @@ function exportBIR2316(){
   toast('📥 BIR 2316 summary exported!');
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ATTENDANCE ANALYTICS — Employee Performance Dashboard (PREMIUM)
+// ══════════════════════════════════════════════════════════════════════════════
+function showAttendanceAnalytics(){
+  const emps=load(KEYS.employees), att=load(KEYS.attendance);
+  const now=new Date(), thisMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  
+  const analyticsData=Object.entries(emps)
+    .filter(([,e])=>e.status==='Active')
+    .map(([eid,e])=>{
+      const empAtt=(att[eid]||[]).filter(r=>r.date?.startsWith(thisMonth));
+      const present=empAtt.filter(r=>r.status==='Present'||r.status==='clocked_in').length;
+      const late=empAtt.filter(r=>r.status==='Late').length;
+      const absent=empAtt.filter(r=>r.status==='Absent').length;
+      const halfday=empAtt.filter(r=>r.status==='Half-day').length;
+      const total=present+late+absent+halfday;
+      const attendanceRate=total>0?Math.round((present+halfday*0.5)/total*100):0;
+      const lateRate=total>0?Math.round(late/total*100):0;
+      
+      return{
+        eid, name:e.name, branch:e.branch,
+        present, late, absent, halfday, total,
+        attendanceRate, lateRate,
+        status: lateRate>20?'⚠️ High Late':attendanceRate<80?'🔴 Low Attendance':'✅ Good'
+      };
+    })
+    .sort((a,b)=>b.lateRate-a.lateRate);
+  
+  const avgAttendance=Math.round(analyticsData.reduce((s,e)=>s+e.attendanceRate,0)/analyticsData.length);
+  const avgLate=Math.round(analyticsData.reduce((s,e)=>s+e.lateRate,0)/analyticsData.length);
+  const highLateCount=analyticsData.filter(e=>e.lateRate>20).length;
+  
+  document.getElementById('main').innerHTML=`
+    <div class="section-header">
+      <div class="section-title">📊 Attendance Analytics — ${thisMonth}</div>
+      <div class="btn-row">
+        <button class="btn btn-teal" onclick="exportAttendanceAnalytics()">📥 Export CSV</button>
+      </div>
+    </div>
+    
+    <!-- Summary Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+      <div style="background:#e8f5e9;border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#16a34a">${avgAttendance}%</div>
+        <div style="font-size:12px;color:#555;margin-top:4px">Avg Attendance Rate</div>
+      </div>
+      <div style="background:#fff3cd;border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#f59e0b">${avgLate}%</div>
+        <div style="font-size:12px;color:#555;margin-top:4px">Avg Late Rate</div>
+      </div>
+      <div style="background:#fee2e2;border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#ef4444">${highLateCount}</div>
+        <div style="font-size:12px;color:#555;margin-top:4px">High Late Risk (>20%)</div>
+      </div>
+      <div style="background:#eff6ff;border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#3b82f6">${analyticsData.length}</div>
+        <div style="font-size:12px;color:#555;margin-top:4px">Total Active Employees</div>
+      </div>
+    </div>
+    
+    <!-- Employee Table -->
+    <div class="table-wrap"><div class="table-scroll">
+      <table><thead><tr>
+        <th>ID</th><th>Name</th><th>Branch</th><th>Present</th><th>Late</th><th>Absent</th><th>Attendance %</th><th>Late %</th><th>Status</th>
+      </tr></thead><tbody>
+        ${analyticsData.map(e=>`<tr style="background:${e.lateRate>20?'#fee2e2':e.attendanceRate<80?'#fef3c7':'transparent'}">
+          <td>${formatEmpId(e.eid,e.branch)}</td>
+          <td>${e.name}</td>
+          <td>${e.branch||'—'}</td>
+          <td>${e.present}</td>
+          <td style="color:#ef4444;font-weight:700">${e.late}</td>
+          <td>${e.absent}</td>
+          <td><span style="background:${e.attendanceRate>=90?'#d1fae5':e.attendanceRate>=80?'#dbeafe':'#fee2e2'};padding:4px 8px;border-radius:4px">${e.attendanceRate}%</span></td>
+          <td><span style="background:${e.lateRate>20?'#fee2e2':e.lateRate>10?'#fef3c7':'#d1fae5'};padding:4px 8px;border-radius:4px">${e.lateRate}%</span></td>
+          <td>${e.status}</td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div></div>
+    
+    <div style="margin-top:16px;padding:12px;background:#f0f9ff;border-radius:8px;font-size:12px;color:#1e40af">
+      📌 <b>Red Flags:</b> Employees with Late % >20% or Attendance <80% need manager review
+    </div>
+  `;
+}
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CONSOLIDATE ATTENDANCE
-// ══════════════════════════════════════════════════════════════════════════════
+function exportAttendanceAnalytics(){
+  const emps=load(KEYS.employees), att=load(KEYS.attendance);
+  const now=new Date(), thisMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  
+  const rows=[['ATTENDANCE ANALYTICS — '+thisMonth],
+    ['Generated:',new Date().toLocaleString('en-PH')],[],
+    ['ID','Name','Branch','Present','Late','Absent','Half-day','Total Days','Attendance %','Late %','Status']];
+  
+  Object.entries(emps).filter(([,e])=>e.status==='Active').forEach(([eid,e])=>{
+    const empAtt=(att[eid]||[]).filter(r=>r.date?.startsWith(thisMonth));
+    const present=empAtt.filter(r=>r.status==='Present'||r.status==='clocked_in').length;
+    const late=empAtt.filter(r=>r.status==='Late').length;
+    const absent=empAtt.filter(r=>r.status==='Absent').length;
+    const halfday=empAtt.filter(r=>r.status==='Half-day').length;
+    const total=present+late+absent+halfday;
+    const attendanceRate=total>0?Math.round((present+halfday*0.5)/total*100):0;
+    const lateRate=total>0?Math.round(late/total*100):0;
+    const status=lateRate>20?'⚠️ High Late':attendanceRate<80?'🔴 Low Attendance':'✅ Good';
+    rows.push([formatEmpId(eid,e.branch),e.name,e.branch||'—',present,late,absent,halfday,total,attendanceRate+'%',lateRate+'%',status]);
+  });
+  
+  downloadCSV(`Attendance_Analytics_${thisMonth}.csv`,rows);
+  toast('📥 Analytics exported!');
+}
 let _branches={};
 function showConsolidate(){
   _branches=DB.get('pr_branches')||{};
