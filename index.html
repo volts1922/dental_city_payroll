@@ -2745,7 +2745,8 @@ async function clockIn(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,8), td=today();
+  const nowStr=now.toTimeString().slice(0,5); // Just HH:MM, no seconds!
+  const td=today();
   const empName = sel.split(' (')[0];
   if(!(await _confirm(`Clock IN "${empName}" at ${nowStr}?<br>Date: ${td}`, {ok:'Clock In', cancel:'Cancel', icon:'⏵'}))) return;
   if(!att[eid]) att[eid]=[];
@@ -2792,10 +2793,11 @@ async function clockOut(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,8), td=today();
+  const nowStr=now.toTimeString().slice(0,5); // Just HH:MM, no seconds!
+  const td=today();
   const existing=(att[eid]||[]).find(r=>r.date===td);
   if(!existing||!existing.time_in||existing.time_in==='—'){toast('⚠️ Not clocked in yet. Please clock in first.');return;}
-  if(existing.time_out&&existing.time_out!=='—'&&existing.time_out.split(':').length===3){toast(`⚠️ Already clocked out at ${existing.time_out}`);return;}
+  if(existing.time_out&&existing.time_out!=='—'){toast(`⚠️ Already clocked out at ${existing.time_out}`);return;}
   const empName = sel.split(' (')[0];
   if(!(await _confirm(`Clock OUT "${empName}" at ${nowStr}?<br>Clocked in at: ${existing.time_in}`, {ok:'Clock Out', cancel:'Cancel', icon:'⏹'}))) return;
   existing.time_out=nowStr;
@@ -2806,8 +2808,6 @@ async function clockOut(){
   const {ot,nd}=computeOT(existing.time_in,nowStr);
   existing.ot_hours=Math.round(ot*100)/100;
   existing.nd_hours=Math.round(nd*100)/100;
-  // Auto-flag Late if clocked in after 08:10
-  if(existing.time_in){
     const tinParsed=parseTime(existing.time_in);
     const cutoff=new Date(0,0,0,8,10,0);
     if(tinParsed>cutoff) existing.status='Late';
