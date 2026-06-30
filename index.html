@@ -2519,83 +2519,104 @@ async function loadAtt(){
 }
 
 async function refreshLiveAttendance(){
-  if(!_sb || !document.getElementById('liveAttendance')) return;
+  if(!document.getElementById('liveAttendance')) return;
   
   const today = new Date().toISOString().split('T')[0];
   const emps = load(KEYS.employees);
-  const branch = getBranch();
+  const att = load(KEYS.attendance); // Read from localStorage too!
   
-  try {
-    // Get branch UUID
-    const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
-    if(!branchData) { 
-      const la = document.getElementById('liveAttendance');
-      if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>';
-      return;
-    }
-    
-    // Get all clocked-in employees for today
-    const {data: records} = await _sb.from('time_clock')
-      .select('*')
-      .eq('branch_id', branchData.id)
-      .eq('date', today)
-      .eq('status', 'clocked_in');
-    
-    if(!records || records.length === 0) {
-      const la = document.getElementById('liveAttendance');
-      if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
-      return;
-    }
-    
-    const liveEmps = records.map(rec => {
-      const emp = emps[rec.employee_id] || {name: rec.employee_id};
-      const timeIn = new Date(rec.time_in.includes('Z') ? rec.time_in : rec.time_in + 'Z');
+  let liveEmps = [];
+  
+  // First: Get from localStorage (Mark Attendance records)
+  Object.entries(att).forEach(([eid, recs]) => {
+    const rec = recs.find(r => r.date === today && (r.status === 'Present' || r.status === 'Late'));
+    if(rec) {
+      const emp = emps[eid] || {name: eid};
+      const timeIn = rec.time_in ? new Date(`2000-01-01T${rec.time_in}`) : null;
       const now = new Date();
-      const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
+      const hoursWorked = timeIn ? ((now - timeIn) / (1000 * 60 * 60)).toFixed(2) : '—';
       const shiftHours = emp.shift_hours || 8;
-      const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
-      const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
+      const shiftEnd = timeIn ? new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000) : null;
+      const timeRemaining = shiftEnd ? Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60))) : '—';
       
-      return {
-        eid: rec.employee_id,
+      liveEmps.push({
+        eid,
         name: emp.name,
         hoursWorked,
         timeRemaining,
-        timeIn: timeIn.toISOString(), // Store raw ISO
-        branch: emp.branch
-      };
-    });
-    
-    const html = liveEmps.map(e => `
-      <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div>
-            <div style="font-weight:700;font-size:14px">${e.name}</div>
-            <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
-          </div>
-          <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
-          <div><span style="color:#888">Clocked In:</span> <b>${(() => {
-            try {
-              const d = new Date(e.timeIn);
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-            } catch { return '—'; }
-          })()}</b></div>
-          <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
-          <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
-        </div>
-        <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
-      </div>
-    `).join('');
-    
-    const liveAtt = document.getElementById('liveAttendance');
-    if(liveAtt) liveAtt.innerHTML = html;
-  } catch(e) {
-    console.error('Live attendance fetch error:', e);
-    const liveAtt = document.getElementById('liveAttendance');
-    if(liveAtt) liveAtt.innerHTML = '<div style="color:#e11d48;padding:10px">Error loading live attendance</div>';
+        timeIn: rec.time_in || '—',
+        branch: emp.branch,
+        source: 'local'
+      });
+    }
+  });
+  
+  // Then: Get from Supabase (Clock In/Out records) - skip if already in localStorage
+  if(_sb){
+    try {
+      const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
+      if(branchData) {
+        const {data: records} = await _sb.from('time_clock')
+          .select('*')
+          .eq('branch_id', branchData.id)
+          .eq('date', today)
+          .eq('status', 'clocked_in');
+        
+        if(records) {
+          records.forEach(rec => {
+            const alreadyExists = liveEmps.some(e => e.eid === rec.employee_id);
+            if(!alreadyExists) {
+              const emp = emps[rec.employee_id] || {name: rec.employee_id};
+              const timeIn = new Date(rec.time_in.includes('Z') ? rec.time_in : rec.time_in + 'Z');
+              const now = new Date();
+              const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
+              const shiftHours = emp.shift_hours || 8;
+              const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
+              const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
+              
+              liveEmps.push({
+                eid: rec.employee_id,
+                name: emp.name,
+                hoursWorked,
+                timeRemaining,
+                timeIn: extractTime(rec.time_in),
+                branch: emp.branch,
+                source: 'sb'
+              });
+            }
+          });
+        }
+      }
+    } catch(e) { console.log('Supabase live attendance error:', e); }
   }
+  
+  const liveAtt = document.getElementById('liveAttendance');
+  if(!liveAtt) return;
+  
+  if(liveEmps.length === 0) {
+    liveAtt.innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees present today</div>';
+    return;
+  }
+  
+  const html = liveEmps.map(e => `
+    <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${e.name}</div>
+          <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
+        </div>
+        <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
+        <div><span style="color:#888">Time In:</span> <b>${e.timeIn}</b></div>
+        <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
+        <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
+    </div>
+  `).join('');
+  
+  liveAtt.innerHTML = html;
 }
 
 async function clearAllAtt(){
@@ -3392,8 +3413,8 @@ async function computePayroll(){
   const emps=load(KEYS.employees);
   _payrollData=[];
   
-  // Fetch attendance from Supabase
-  let att = {};
+  // Fetch attendance from Supabase + localStorage
+  let att = load(KEYS.attendance) || {}; // Start with localStorage
   if(_sb){
     try {
       const [yr, mo] = month.split('-');
@@ -3404,22 +3425,29 @@ async function computePayroll(){
       if(records){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
-          att[r.employee_id].push({
-            date: r.date,
-            status: r.status,
-            time_in: r.time_in,
-            time_out: r.time_out,
-            ot_hours: 0,
-            nd_hours: 0
-          });
+          // Check if record already exists for this date
+          const existing = att[r.employee_id].find(rec => rec.date === r.date);
+          if(existing){
+            // Update with Supabase data if it has time info
+            if(r.time_in) existing.time_in = r.time_in;
+            if(r.time_out) existing.time_out = r.time_out;
+            if(r.status && r.status !== 'clocked_in') existing.status = r.status;
+          } else {
+            // Add new Supabase record
+            att[r.employee_id].push({
+              date: r.date,
+              status: r.status === 'clocked_in' ? 'Present' : r.status,
+              time_in: r.time_in,
+              time_out: r.time_out,
+              ot_hours: 0,
+              nd_hours: 0
+            });
+          }
         });
       }
     } catch(e) {
       console.error('Attendance fetch error:', e);
-      att = load(KEYS.attendance) || {}; // Fallback to localStorage
     }
-  } else {
-    att = load(KEYS.attendance) || {};
   }
   
   const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
