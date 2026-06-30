@@ -1763,7 +1763,7 @@ function showDashboard(){
   
   const td = today();
   
-  // SYNC ATTENDANCE FROM SUPABASE FIRST (ASYNC)
+  // SYNC ATTENDANCE FROM SUPABASE FIRST (ASYNC - NO REFRESH LOOP)
   if(_sb){
     _sb.from('time_clock')
       .select('*')
@@ -1793,7 +1793,6 @@ function showDashboard(){
           });
           save(KEYS.attendance, att);
           console.log('✓ Dashboard synced', data.length, 'records from Supabase');
-          showDashboard(); // REFRESH after sync
         }
       })
       .catch(e => console.warn('Dashboard sync failed:', e));
