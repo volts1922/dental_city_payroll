@@ -2673,17 +2673,36 @@ function editAttRecord(eid, date){
   const name = (emps[eid]||{}).name || eid;
   const rec  = (att[eid]||[]).find(r=>r.date===date);
   if(!rec){toast('Record not found');return;}
+  
+  // Convert 12-hour format back to 24-hour for input field
+  const convertTo24H = (timeStr) => {
+    if(!timeStr || timeStr==='—') return '08:00';
+    // If already 24-hour format, return as-is
+    if(timeStr.match(/^\d{2}:\d{2}$/)) return timeStr;
+    // If 12-hour format with AM/PM, parse it
+    const match = timeStr.match(/(\d{1,2}):(\d{2})\s?(AM|PM)/i);
+    if(!match) return '08:00';
+    let [,hours,mins,period] = match;
+    hours = parseInt(hours);
+    if(period.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+    if(period.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    return `${String(hours).padStart(2,'0')}:${mins}`;
+  };
+  
+  const tinValue = convertTo24H(rec.time_in);
+  const toutValue = convertTo24H(rec.time_out);
+  
   openModal(`✏ Edit Attendance — ${name}`,`
     <div style="font-size:12px;color:#555;margin-bottom:12px">Date: <b>${date}</b></div>
     ${formRow('Status','att_status',rec.status||'Present',null,['Present','Absent','Late','Half-day','Rest Day','On Leave'])}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group">
         <label class="form-label">Time In</label>
-        <input class="form-control" id="f_att_tin" type="time" value="${(rec.time_in||'08:00').slice(0,5)}">
+        <input class="form-control" id="f_att_tin" type="time" value="${tinValue}">
       </div>
       <div class="form-group">
         <label class="form-label">Time Out</label>
-        <input class="form-control" id="f_att_tout" type="time" value="${(rec.time_out||'17:00').slice(0,5)}">
+        <input class="form-control" id="f_att_tout" type="time" value="${toutValue}">
       </div>
       <div class="form-group">
         <label class="form-label">OT Hours</label>
