@@ -1763,35 +1763,55 @@ function showDashboard(){
   if(_sb){
     (async ()=>{
       const td = today();
+      const branchUUID = await getBranchUUID(getBranch());
       try {
-        const {data, error} = await _sb.from('time_clock')
+        const {data, error} = await _sb.from('payroll_data')
           .select('*')
-          .eq('date', td);
+          .eq('branch_key', branchUUID)
+          .like('data_type', 'attendance_%');
           
         if(!error && data && data.length > 0){
           let att = load(KEYS.attendance) || {};
           data.forEach(rec => {
-            const empId = rec.employee_id;
-            if(!att[empId]) att[empId] = [];
-            const existing = att[empId].find(r => r.date === td);
-            if(existing){
-              existing.time_in = rec.time_in ? rec.time_in.split('T')[1] : existing.time_in;
-              existing.time_out = rec.time_out ? rec.time_out.split('T')[1] : existing.time_out;
-              existing.status = rec.status || existing.status;
-            } else {
-              att[empId].push({
-                date: td,
-                status: rec.status || 'Present',
-                time_in: rec.time_in ? rec.time_in.split('T')[1] : '—',
-                time_out: rec.time_out ? rec.time_out.split('T')[1] : '—',
-                hours: 0,
-                ot_hours: 0,
-                nd_hours: 0
-              });
+            try {
+              const parsed = JSON.parse(rec.data);
+              const [_, empId, recDate] = rec.data_type.split('_');
+              
+              if(recDate !== td) return; // Only today's records
+              
+              if(!att[empId]) att[empId] = [];
+              const existing = att[empId].find(r => r.date === recDate);
+              
+              // Apply GMT+8 timezone conversion
+              const formatTimeGMT8 = (timeStr) => {
+                if(!timeStr || timeStr === '—') return '—';
+                try {
+                  const d = new Date(timeStr.includes('T') ? timeStr : timeStr + 'Z');
+                  return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+                } catch { return '—'; }
+              };
+              
+              if(existing){
+                existing.time_in = formatTimeGMT8(parsed.time_in || existing.time_in);
+                existing.time_out = formatTimeGMT8(parsed.time_out || existing.time_out);
+                existing.status = parsed.status || existing.status;
+              } else {
+                att[empId].push({
+                  date: recDate,
+                  status: parsed.status || 'Present',
+                  time_in: formatTimeGMT8(parsed.time_in),
+                  time_out: formatTimeGMT8(parsed.time_out),
+                  hours: 0,
+                  ot_hours: 0,
+                  nd_hours: 0
+                });
+              }
+            } catch(e) {
+              console.warn('Parse error for record:', rec, e);
             }
           });
           save(KEYS.attendance, att);
-          console.log('✓ Dashboard synced attendance from Supabase');
+          console.log('✓ Dashboard synced attendance from Supabase (GMT+8)');
           renderDashboard(); // Render AFTER sync
         } else {
           renderDashboard(); // Render even if no new data
