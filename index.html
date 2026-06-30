@@ -1761,9 +1761,10 @@ function showDashboard(){
   
   ownerEnsureBranchData();
   
-  // SYNC ATTENDANCE FROM SUPABASE FIRST
+  const td = today();
+  
+  // SYNC ATTENDANCE FROM SUPABASE FIRST (ASYNC)
   if(_sb){
-    const td = today();
     _sb.from('time_clock')
       .select('*')
       .eq('date', td)
@@ -1791,7 +1792,8 @@ function showDashboard(){
             }
           });
           save(KEYS.attendance, att);
-          console.log('✓ Dashboard synced attendance from Supabase');
+          console.log('✓ Dashboard synced', data.length, 'records from Supabase');
+          showDashboard(); // REFRESH after sync
         }
       })
       .catch(e => console.warn('Dashboard sync failed:', e));
@@ -1799,7 +1801,6 @@ function showDashboard(){
   
   const emps=load(KEYS.employees), att=load(KEYS.attendance), leaves=load(KEYS.leaves);
   const branches=load(KEYS.branches)||{};
-  const td=today();
   
   // Branch selector
   const branchList = Object.keys(branches).filter(b=>b);
@@ -1808,9 +1809,9 @@ function showDashboard(){
   // Filtered by branch
   const filterByBranch = (arr, bid) => Object.entries(arr).filter(([eid,_])=>(emps[eid]||{}).branch===bid);
   
-  // Global stats
+  // Global stats - COUNT BOTH 'Present' AND 'clocked_in'
   const active  = Object.values(emps).filter(e=>e&&e.status==='Active').length;
-  const present = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present').length,0);
+  const present = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&(r.status==='Present'||r.status==='clocked_in')).length,0);
   const late    = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Late').length,0);
   const absent  = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Absent').length,0);
   const onLeave = Object.values(leaves).reduce((s,recs)=>s+recs.filter(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td).length,0);
@@ -1818,7 +1819,7 @@ function showDashboard(){
   // Branch-specific stats
   const branchStats = activeBranch==='All' ? null : (() => {
     const bEmps = Object.entries(emps).filter(([,e])=>e&&e.branch===activeBranch&&e.status==='Active').map(([id])=>id);
-    const bPresent = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present'&&bEmps.includes(r.employee_id||Object.keys(att).find(eid=>att[eid]===recs))).length,0);
+    const bPresent = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&(r.status==='Present'||r.status==='clocked_in')&&bEmps.includes(r.employee_id||Object.keys(att).find(eid=>att[eid]===recs))).length,0);
     const bAbsent = bEmps.length - bPresent - bOnLeave;
     const bOnLeave = Object.values(leaves).reduce((s,recs)=>s+recs.filter(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td&&bEmps.includes(r.employee_id||Object.keys(leaves).find(eid=>leaves[eid]===recs))).length,0);
     return {total:bEmps.length, present:bPresent, absent:bAbsent, onLeave:bOnLeave};
@@ -1831,10 +1832,9 @@ function showDashboard(){
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
     if(!e || e.status!=='Active') return false;
-    // Check for CLOCKED IN (has time_in) - not just any attendance record
     const isClockedIn = (att[eid]||[]).some(r=>r.date===td && r.time_in && r.time_in!=='—');
     const hasLeave = (leaves[eid]||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td);
-    return !isClockedIn && !hasLeave; // Only count if NOT clocked in AND no leave
+    return !isClockedIn && !hasLeave;
   }).length;
   
   const totalActive = Object.values(emps).filter(e=>e && e.status==='Active').length;
@@ -1863,6 +1863,25 @@ function showDashboard(){
   const onLeaveEids = Object.entries(leaves).filter(([eid,recs])=>
     (recs||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td)
   ).map(([eid])=>eid);
+
+  // ANALYTICS THIS MONTH
+  const thisMonth = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+  const analyticsData = Object.entries(emps)
+    .filter(([,e])=>e.status==='Active')
+    .map(([eid,e])=>{
+      const empAtt=(att[eid]||[]).filter(r=>r.date?.startsWith(thisMonth));
+      const p=empAtt.filter(r=>r.status==='Present'||r.status==='clocked_in').length;
+      const l=empAtt.filter(r=>r.status==='Late').length;
+      const a=empAtt.filter(r=>r.status==='Absent').length;
+      const h=empAtt.filter(r=>r.status==='Half-day').length;
+      const tot=p+l+a+h;
+      const attRate=tot>0?Math.round((p+h*0.5)/tot*100):0;
+      const lateRate=tot>0?Math.round(l/tot*100):0;
+      return{eid,name:e.name,attRate,lateRate};
+    });
+  const avgAtt=analyticsData.length>0?Math.round(analyticsData.reduce((s,e)=>s+e.attRate,0)/analyticsData.length):0;
+  const avgLate=analyticsData.length>0?Math.round(analyticsData.reduce((s,e)=>s+e.lateRate,0)/analyticsData.length):0;
+  const highLateCount=analyticsData.filter(e=>e.lateRate>20).length;
 
   document.getElementById('main').innerHTML=`
     <div class="section-header" style="margin-bottom:12px">
@@ -1915,6 +1934,29 @@ function showDashboard(){
     </div>
     `}
     ${alertBanner}
+    
+    <!-- ANALYTICS THIS MONTH -->
+    <div class="section-header" style="margin-top:20px;margin-bottom:12px">
+      <div class="section-title">📊 Analytics — ${thisMonth}</div>
+    </div>
+    <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+      <div class="card" style="border-color:var(--green);text-align:center">
+        <div class="card-val" style="color:var(--green);font-size:24px">${avgAtt}%</div>
+        <div class="card-lbl">Avg Attendance</div>
+        <div style="font-size:11px;color:#555">${analyticsData.length} employees</div>
+      </div>
+      <div class="card" style="border-color:var(--yellow);text-align:center">
+        <div class="card-val" style="color:var(--yellow);font-size:24px">${avgLate}%</div>
+        <div class="card-lbl">Avg Late Rate</div>
+        <div style="font-size:11px;color:#555">this month</div>
+      </div>
+      <div class="card" style="border-color:var(--red);text-align:center">
+        <div class="card-val" style="color:var(--red);font-size:24px">${highLateCount}</div>
+        <div class="card-lbl">High Late Risk</div>
+        <div style="font-size:11px;color:#555">>20% late rate</div>
+      </div>
+    </div>
+    
     <div class="section-header" id="dashAttHeader">
       <div class="section-title">Today's Attendance <span id="dashFilterLabel" style="font-size:12px;color:#555;font-weight:400"></span></div>
       <div class="btn-row">
