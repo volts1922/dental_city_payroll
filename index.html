@@ -2692,7 +2692,7 @@ async function clockIn(){
         employee_id: eid,
         branch_id: branchUUID,
         date: td,
-        status: 'Present',
+        status: 'clocked_in',
         time_in: now_iso,
         time_out: null,
         updated_at: now_iso
@@ -2753,11 +2753,17 @@ async function clockOut(){
       const timeInISO = new Date(`${td}T${existing.time_in}`).toISOString();
       const timeOutISO = new Date(`${td}T${nowStr}`).toISOString();
       
+      // Determine final status
+      let finalStatus = existing.status || 'Present';
+      if(finalStatus === 'Late' || finalStatus === 'clocked_in') {
+        finalStatus = 'clocked_out'; // Mark as completed
+      }
+      
       const {data, error} = await _sb.from('time_clock').upsert({
         employee_id: eid,
         branch_id: branchUUID,
         date: td,
-        status: existing.status,
+        status: finalStatus,
         time_in: timeInISO,
         time_out: timeOutISO,
         updated_at: now_iso
