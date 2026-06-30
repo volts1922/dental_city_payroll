@@ -2702,8 +2702,8 @@ async function clockIn(){
       const {data, error} = await _sb.from('payroll_data').upsert({
         branch_key: branchUUID,
         data_type: `attendance_${eid}_${td}`,
-        time_in: nowStr,
-        synced_at: now_iso
+        data: JSON.stringify({ time_in: nowStr, status: 'Present' }),
+        updated_at: now_iso
       });
       if(error) {
         console.warn('⚠️ Supabase sync error:', error.status, error.message);
