@@ -1648,6 +1648,18 @@ function badge(status){
   const cls=map[status]||'gray';
   return `<span class="badge badge-${cls}">${status}</span>`;
 }
+// ── Extract time from ISO timestamp consistently (12-hour format) ──────────────
+function extractTime(isoString){
+  if(!isoString || isoString==='—') return '—';
+  // Handle ISO format: 2026-06-30T08:05:30.123Z → 08:05 AM
+  const match = String(isoString).match(/T(\d{2}):(\d{2})/);
+  if(!match) return '—';
+  let hours = parseInt(match[1]);
+  const mins = match[2];
+  const period = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12; // Convert 0 to 12, keep others
+  return `${String(hours).padStart(2, '0')}:${mins} ${period}`;
+}
 function empOptions(sel=''){
   const emps=load(KEYS.employees);
   return Object.entries(emps).map(([id,e])=>`<option value="${id}"${sel===id?' selected':''}>${e.name} (${formatEmpId(id, e.branch)})</option>`).join('');
@@ -1776,15 +1788,15 @@ function showDashboard(){
             if(!att[empId]) att[empId] = [];
             const existing = att[empId].find(r => r.date === td);
             if(existing){
-              existing.time_in = rec.time_in ? rec.time_in.split('T')[1] : existing.time_in;
-              existing.time_out = rec.time_out ? rec.time_out.split('T')[1] : existing.time_out;
+              existing.time_in = rec.time_in ? extractTime(rec.time_in) : existing.time_in;
+              existing.time_out = rec.time_out ? extractTime(rec.time_out) : existing.time_out;
               existing.status = rec.status || existing.status;
             } else {
               att[empId].push({
                 date: td,
                 status: rec.status || 'Present',
-                time_in: rec.time_in ? rec.time_in.split('T')[1] : '—',
-                time_out: rec.time_out ? rec.time_out.split('T')[1] : '—',
+                time_in: rec.time_in ? extractTime(rec.time_in) : '—',
+                time_out: rec.time_out ? extractTime(rec.time_out) : '—',
                 hours: 0,
                 ot_hours: 0,
                 nd_hours: 0
@@ -1933,29 +1945,6 @@ function showDashboard(){
     </div>
     `}
     ${alertBanner}
-    
-    <!-- ANALYTICS THIS MONTH -->
-    <div class="section-header" style="margin-top:20px;margin-bottom:12px">
-      <div class="section-title">📊 Analytics — ${thisMonth}</div>
-    </div>
-    <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
-      <div class="card" style="border-color:var(--green);text-align:center">
-        <div class="card-val" style="color:var(--green);font-size:24px">${avgAtt}%</div>
-        <div class="card-lbl">Avg Attendance</div>
-        <div style="font-size:11px;color:#555">${analyticsData.length} employees</div>
-      </div>
-      <div class="card" style="border-color:var(--yellow);text-align:center">
-        <div class="card-val" style="color:var(--yellow);font-size:24px">${avgLate}%</div>
-        <div class="card-lbl">Avg Late Rate</div>
-        <div style="font-size:11px;color:#555">this month</div>
-      </div>
-      <div class="card" style="border-color:var(--red);text-align:center">
-        <div class="card-val" style="color:var(--red);font-size:24px">${highLateCount}</div>
-        <div class="card-lbl">High Late Risk</div>
-        <div style="font-size:11px;color:#555">>20% late rate</div>
-      </div>
-    </div>
-    
     <div class="section-header" id="dashAttHeader">
       <div class="section-title">Today's Attendance <span id="dashFilterLabel" style="font-size:12px;color:#555;font-weight:400"></span></div>
       <div class="btn-row">
@@ -2501,18 +2490,8 @@ async function loadAtt(){
           // Use branch from emp object, or try to get from branch_id, otherwise use current branch
           const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
-          const timeInStr = r.time_in ? (() => {
-            try {
-              const d = new Date(r.time_in.includes('Z') || r.time_in.includes('+') ? r.time_in : r.time_in + 'Z');
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-            } catch { return '—'; }
-          })() : '—';
-          const timeOutStr = r.time_out ? (() => {
-            try {
-              const d = new Date(r.time_out.includes('Z') || r.time_out.includes('+') ? r.time_out : r.time_out + 'Z');
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-            } catch { return '—'; }
-          })() : '—';
+          const timeInStr = extractTime(r.time_in);
+          const timeOutStr = extractTime(r.time_out);
           
           rows.push(`<tr>
             <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
@@ -2699,7 +2678,10 @@ function editAttRecord(eid, date){
       rec.nd_hours  = parseFloat(document.getElementById('f_att_nd').value||0);
       rec.holiday   = fval('att_hol');
       save(KEYS.attendance, att);
-      closeModal(); toast(`✅ Attendance updated for ${name}!`); loadAtt();
+      closeModal(); toast(`✅ Attendance updated for ${name}!`); 
+      loadAtt();
+      // Force refresh live attendance panel immediately
+      setTimeout(()=>refreshLiveAttendance(), 100);
     }, '💾 Update'
   );
 }
@@ -3057,6 +3039,8 @@ function showAttendanceTracker(period='week'){
       });
     });
     save(KEYS.attendance,att); closeModal(); toast('✅ Attendance saved!'); loadAtt();
+    // Force refresh live attendance panel immediately
+    setTimeout(()=>refreshLiveAttendance(), 100);
   },'💾 Save Attendance');
 }
 
