@@ -1613,14 +1613,19 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function today(){ 
-  const now = new Date();
-  const phTime = new Date(now.getTime() + (8 * 60 * 60 * 1000)); // UTC+8
-  return phTime.toISOString().split('T')[0];
+  // Get UTC time, then add 8 hours for Philippines timezone (GMT+8)
+  const utcTime = new Date().toISOString(); // "2026-07-01T12:30:45.123Z" (in UTC)
+  const utcDate = new Date(utcTime); // Parse as UTC
+  const phTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000)); // Add 8 hours
+  return phTime.toISOString().split('T')[0]; // "2026-07-01"
 }
 
 // ✅ NEW: Get current date/time in PH timezone (UTC+8)
 function todayPH(){
-  const phDate = new Date(new Date().getTime() + (8 * 60 * 60 * 1000));
+  // Get UTC time, then add 8 hours for Philippines timezone (GMT+8)
+  const utcTime = new Date().toISOString();
+  const utcDate = new Date(utcTime);
+  const phDate = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
   return phDate.toISOString().split('T')[0];
 }
 
@@ -2729,13 +2734,29 @@ async function clockOut(){
   const empName = sel.split(' (')[0];
   if(!(await _confirm(`Clock OUT "${empName}" at ${nowStr}?<br>Clocked in at: ${existing.time_in}`, {ok:'Clock Out', cancel:'Cancel', icon:'⏹'}))) return;
   existing.time_out=nowStr;
-  const tin=parseTime(existing.time_in);
-  let tout=parseTime(nowStr);
-  if(tin&&tout&&tout<tin) tout=new Date(tout.getTime()+24*3600000); // overnight shift
-  existing.hours=tin&&tout?Math.round(Math.max((tout-tin)/3600000,0)*100)/100:0;
-  const {ot,nd}=computeOT(existing.time_in,nowStr);
-  existing.ot_hours=Math.round(ot*100)/100;
-  existing.nd_hours=Math.round(nd*100)/100;
+  
+  // Calculate hours worked - robust version
+  let hours = 0;
+  try {
+    const tin = parseTime(existing.time_in);
+    const tout = parseTime(nowStr);
+    
+    if(tin && tout){
+      let diffMs = tout.getTime() - tin.getTime();
+      if(diffMs < 0) diffMs += 24 * 60 * 60 * 1000; // overnight shift
+      hours = Math.round(Math.max(diffMs / (1000 * 60 * 60), 0) * 100) / 100;
+    }
+  } catch(e) {
+    console.warn('Hours calculation error:', e);
+    hours = 0;
+  }
+  
+  existing.hours = hours || 0;
+  
+  // Calculate OT/ND
+  const {ot, nd} = computeOT(existing.time_in, nowStr);
+  existing.ot_hours = Math.round(ot * 100) / 100;
+  existing.nd_hours = Math.round(nd * 100) / 100;
   // Auto-flag Late if clocked in after 08:10
   if(existing.time_in){
     const tinParsed=parseTime(existing.time_in);
