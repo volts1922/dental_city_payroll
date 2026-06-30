@@ -290,7 +290,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   <div id="userBadge" style="display:none;align-items:center;gap:8px;margin-right:6px">
     <span id="roleBadge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;"></span>
     <span id="userLabel" style="font-size:13px;font-weight:600;"></span>
-    <button id="installBtn" style="display:none;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.12)'" onmouseout="this.style.background='#E5E5E7';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'">📥 Install</button>
     <button onclick="openAccountSettings()" style="background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:4px;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.12)'" onmouseout="this.style.background='#E5E5E7';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'" title="Change password or username">⚙️</button>
     <button onclick="doLogout()" style="background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.12)'" onmouseout="this.style.background='#E5E5E7';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'">⏻ Logout</button>
   </div>
@@ -1759,6 +1758,43 @@ function showDashboard(){
   }
   
   ownerEnsureBranchData();
+  
+  // SYNC ATTENDANCE FROM SUPABASE FIRST
+  if(_sb){
+    const td = today();
+    _sb.from('time_clock')
+      .select('*')
+      .eq('date', td)
+      .then(({data, error}) => {
+        if(!error && data && data.length > 0){
+          let att = load(KEYS.attendance) || {};
+          data.forEach(rec => {
+            const empId = rec.employee_id;
+            if(!att[empId]) att[empId] = [];
+            const existing = att[empId].find(r => r.date === td);
+            if(existing){
+              existing.time_in = rec.time_in ? rec.time_in.split('T')[1] : existing.time_in;
+              existing.time_out = rec.time_out ? rec.time_out.split('T')[1] : existing.time_out;
+              existing.status = rec.status || existing.status;
+            } else {
+              att[empId].push({
+                date: td,
+                status: rec.status || 'Present',
+                time_in: rec.time_in ? rec.time_in.split('T')[1] : '—',
+                time_out: rec.time_out ? rec.time_out.split('T')[1] : '—',
+                hours: 0,
+                ot_hours: 0,
+                nd_hours: 0
+              });
+            }
+          });
+          save(KEYS.attendance, att);
+          console.log('✓ Dashboard synced attendance from Supabase');
+        }
+      })
+      .catch(e => console.warn('Dashboard sync failed:', e));
+  }
+  
   const emps=load(KEYS.employees), att=load(KEYS.attendance), leaves=load(KEYS.leaves);
   const branches=load(KEYS.branches)||{};
   const td=today();
@@ -1793,9 +1829,10 @@ function showDashboard(){
 
   const noRecord = Object.entries(emps).filter(([eid,e])=>{
     if(!e || e.status!=='Active') return false;
-    const hasAtt = (att[eid]||[]).some(r=>r.date===td);
+    // Check for CLOCKED IN (has time_in) - not just any attendance record
+    const isClockedIn = (att[eid]||[]).some(r=>r.date===td && r.time_in && r.time_in!=='—');
     const hasLeave = (leaves[eid]||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td);
-    return !hasAtt && !hasLeave;
+    return !isClockedIn && !hasLeave; // Only count if NOT clocked in AND no leave
   }).length;
   
   const totalActive = Object.values(emps).filter(e=>e && e.status==='Active').length;
@@ -2673,7 +2710,10 @@ async function clockIn(){
   document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
   document.getElementById('clkStatus').style.color='var(--green)';
   loadAtt();
-  if(currentPage==='Dashboard') showDashboard(); // Refresh dashboard
+  // Auto-refresh dashboard if viewing it
+  setTimeout(()=>{
+    if(currentPage==='Dashboard') showDashboard();
+  }, 500);
 }
 
 async function clockOut(){
@@ -2729,7 +2769,10 @@ async function clockOut(){
   document.getElementById('clkStatus').textContent=`🔴 Clocked OUT at ${nowStr} (${existing.hours}h)`;
   document.getElementById('clkStatus').style.color='var(--red)';
   loadAtt();
-  if(currentPage==='Dashboard') showDashboard(); // Refresh dashboard
+  // Auto-refresh dashboard if viewing it
+  setTimeout(()=>{
+    if(currentPage==='Dashboard') showDashboard();
+  }, 500);
 }
 
 function showWeeklyAttendance(){
