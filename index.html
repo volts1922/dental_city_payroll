@@ -2698,14 +2698,13 @@ async function clockIn(){
   if(_sb){
     try {
       const now_iso = new Date().toISOString();
-      const {data, error} = await _sb.from('time_clock').upsert({
-        employee_id: eid,
-        date: td,
-        status: 'Present',
-        time_in: now_iso,
-        time_out: null,
-        updated_at: now_iso
-      }, {onConflict: 'employee_id,date'});
+      const branchUUID = await getBranchUUID(getBranch());
+      const {data, error} = await _sb.from('payroll_data').upsert({
+        branch_key: branchUUID,
+        data_type: `attendance_${eid}_${td}`,
+        time_in: nowStr,
+        synced_at: now_iso
+      });
       if(error) {
         console.warn('⚠️ Supabase sync error:', error.status, error.message);
         toast(`⚠️ Sync warning: ${error.message}`);
