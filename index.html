@@ -1159,7 +1159,7 @@ function _finishLogin(){
   if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='dev' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
-    // Owner sees branch picker + Attendance
+    // Owner sees branch picker + regular dashboard (branch-specific)
     ownerShowBranchPicker(true);
     navigate('Attendance','showAttendance');
     initBranch();
@@ -1382,6 +1382,7 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // ── NAV ───────────────────────────────────────────────────────────────────────
 const NAV_OWNER=[
   // ── Overview ──────────────────────────────────────────────────────────────
+  
   {icon:'👥',label:'All Employees',    fn:'showAllEmployees'},
   {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals'},
   {icon:'💰',label:'Payroll Summary',  fn:'showPayrollSummary'},
@@ -1404,10 +1405,12 @@ const NAV_OWNER=[
 
 const NAV_DEVELOPER=[
   ...NAV_OWNER,
+  {icon:'📊',label:'Dev Dashboard',     fn:'showDeveloperDashboard'},
   {icon:'🔍',label:'System Audit',     fn:'comprehensiveSystemAudit'},
 ];
 
 const NAV_ADMIN=[
+  
   {icon:'👥',label:'Employees',   fn:'showEmployees'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
@@ -1741,7 +1744,247 @@ function getActiveLoanDeduction(eid){
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
+function showDashboard(){
+  // Owner/Dev: Show branch picker prompt if no branch selected
+  if(isOwner() && !getBranch()){
+    document.getElementById('main').innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:500px;gap:20px;text-align:center">
+        <div style="font-size:48px">🏢</div>
+        <div style="font-size:24px;font-weight:700">Select a Branch</div>
+        <div style="font-size:14px;color:#555;max-width:400px">Use the branch dropdown in the top bar to select a branch and view its operations</div>
+        <div style="font-size:12px;color:#999;margin-top:20px">Branch Picker: <span style="background:var(--sky);padding:2px 6px;border-radius:4px;font-weight:600">🏢 Branch:</span></div>
+      </div>`;
+    return;
+  }
+  
+  ownerEnsureBranchData();
+  
+  // SYNC ATTENDANCE FROM SUPABASE FIRST
+  if(_sb){
+    const td = today();
+    _sb.from('time_clock')
+      .select('*')
+      .eq('date', td)
+      .then(({data, error}) => {
+        if(!error && data && data.length > 0){
+          let att = load(KEYS.attendance) || {};
+          data.forEach(rec => {
+            const empId = rec.employee_id;
+            if(!att[empId]) att[empId] = [];
+            const existing = att[empId].find(r => r.date === td);
+            if(existing){
+              existing.time_in = rec.time_in ? rec.time_in.split('T')[1] : existing.time_in;
+              existing.time_out = rec.time_out ? rec.time_out.split('T')[1] : existing.time_out;
+              existing.status = rec.status || existing.status;
+            } else {
+              att[empId].push({
+                date: td,
+                status: rec.status || 'Present',
+                time_in: rec.time_in ? rec.time_in.split('T')[1] : '—',
+                time_out: rec.time_out ? rec.time_out.split('T')[1] : '—',
+                hours: 0,
+                ot_hours: 0,
+                nd_hours: 0
+              });
+            }
+          });
+          save(KEYS.attendance, att);
+          console.log('✓ Dashboard synced attendance from Supabase');
+        }
+      })
+      .catch(e => console.warn('Dashboard sync failed:', e));
+  }
+  
+  const emps=load(KEYS.employees), att=load(KEYS.attendance), leaves=load(KEYS.leaves);
+  const branches=load(KEYS.branches)||{};
+  const td=today();
+  
+  // Branch selector
+  const branchList = Object.keys(branches).filter(b=>b);
+  const activeBranch = window._dashBranch || branchList[0] || 'All';
+  
+  // Filtered by branch
+  const filterByBranch = (arr, bid) => Object.entries(arr).filter(([eid,_])=>(emps[eid]||{}).branch===bid);
+  
+  // Global stats
+  const active  = Object.values(emps).filter(e=>e&&e.status==='Active').length;
+  const present = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present').length,0);
+  const late    = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Late').length,0);
+  const absent  = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Absent').length,0);
+  const onLeave = Object.values(leaves).reduce((s,recs)=>s+recs.filter(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td).length,0);
+  
+  // Branch-specific stats
+  const branchStats = activeBranch==='All' ? null : (() => {
+    const bEmps = Object.entries(emps).filter(([,e])=>e&&e.branch===activeBranch&&e.status==='Active').map(([id])=>id);
+    const bPresent = Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Present'&&bEmps.includes(r.employee_id||Object.keys(att).find(eid=>att[eid]===recs))).length,0);
+    const bAbsent = bEmps.length - bPresent - bOnLeave;
+    const bOnLeave = Object.values(leaves).reduce((s,recs)=>s+recs.filter(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td&&bEmps.includes(r.employee_id||Object.keys(leaves).find(eid=>leaves[eid]===recs))).length,0);
+    return {total:bEmps.length, present:bPresent, absent:bAbsent, onLeave:bOnLeave};
+  })();
+  
+  const todayRows=Object.entries(att).flatMap(([eid,recs])=>recs.filter(r=>r.date===td).map(r=>({eid,r}))).map(({eid,r})=>{
+    const name=(emps[eid]||{}).name||eid;
+    return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+  }).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No attendance records today</td></tr>`;
 
+  const noRecord = Object.entries(emps).filter(([eid,e])=>{
+    if(!e || e.status!=='Active') return false;
+    // Check for CLOCKED IN (has time_in) - not just any attendance record
+    const isClockedIn = (att[eid]||[]).some(r=>r.date===td && r.time_in && r.time_in!=='—');
+    const hasLeave = (leaves[eid]||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td);
+    return !isClockedIn && !hasLeave; // Only count if NOT clocked in AND no leave
+  }).length;
+  
+  const totalActive = Object.values(emps).filter(e=>e && e.status==='Active').length;
+
+  const alertBanner = totalActive === 0 ? `
+    <div style="background:#E0E7FF;border:1.5px solid #6366F1;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">ℹ️</span>
+      <div style="font-weight:700;color:#4F46E5">No active employees yet. Add employees to track attendance.</div>
+    </div>` : noRecord>0 ? `
+    <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">⚠️</span>
+      <div>
+        <div style="font-weight:700;color:#D97706">${noRecord} employee${noRecord>1?'s':''} have not clocked in today</div>
+        <div style="font-size:12px;color:#92400E">Check attendance or mark them manually</div>
+      </div>
+      <button class="btn btn-warning btn-sm" style="margin-left:auto" onclick="navigate('Attendance','showAttendance')">View →</button>
+    </div>` : `
+    <div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">✅</span>
+      <div style="font-weight:700;color:#16A34A">All employees accounted for today!</div>
+    </div>`;
+
+  const _todayAll = Object.entries(att).flatMap(([eid,recs])=>
+    recs.filter(r=>r.date===td).map(r=>({eid,r}))
+  );
+  const onLeaveEids = Object.entries(leaves).filter(([eid,recs])=>
+    (recs||[]).some(r=>r.status==='Approved'&&r.start_date<=td&&r.end_date>=td)
+  ).map(([eid])=>eid);
+
+  document.getElementById('main').innerHTML=`
+    <div class="section-header" style="margin-bottom:12px">
+      <div class="section-title">📊 Real-Time Status</div>
+      <select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
+        ${getBranchOptions().map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
+      </select>
+    </div>
+    ${branchStats ? `
+    <div class="cards" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div class="card" style="border-color:var(--green);text-align:center">
+        <div class="card-val" style="color:var(--green);font-size:24px">${branchStats.present}</div>
+        <div class="card-lbl">✅ Present</div>
+        <div style="font-size:11px;color:#555">of ${branchStats.total}</div>
+      </div>
+      <div class="card" style="border-color:var(--red);text-align:center">
+        <div class="card-val" style="color:var(--red);font-size:24px">${branchStats.absent}</div>
+        <div class="card-lbl">❌ Absent</div>
+        <div style="font-size:11px;color:#555">of ${branchStats.total}</div>
+      </div>
+      <div class="card" style="border-color:var(--purple);text-align:center">
+        <div class="card-val" style="color:var(--purple);font-size:24px">${branchStats.onLeave}</div>
+        <div class="card-lbl">🌴 On Leave</div>
+        <div style="font-size:11px;color:#555">of ${branchStats.total}</div>
+      </div>
+      <div class="card" style="border-color:var(--blue);text-align:center">
+        <div class="card-val" style="color:var(--blue);font-size:24px">${Math.round((branchStats.present/branchStats.total)*100)}%</div>
+        <div class="card-lbl">📈 Attendance</div>
+        <div style="font-size:11px;color:#555">rate today</div>
+      </div>
+    </div>
+    ` : `
+    <div class="cards" style="grid-template-columns:repeat(5,1fr)">
+      <div class="card" style="border-color:var(--green);cursor:pointer;transition:transform .15s" onclick="filterDashboard('Present')"
+        onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+        <div class="card-val" style="color:var(--green)">${present}</div><div class="card-lbl">✅ Present</div></div>
+      <div class="card" style="border-color:var(--yellow);cursor:pointer;transition:transform .15s" onclick="filterDashboard('Late')"
+        onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+        <div class="card-val" style="color:var(--yellow)">${late}</div><div class="card-lbl">⏰ Late</div></div>
+      <div class="card" style="border-color:var(--red);cursor:pointer;transition:transform .15s" onclick="filterDashboard('Absent')"
+        onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+        <div class="card-val" style="color:var(--red)">${absent}</div><div class="card-lbl">❌ Absent</div></div>
+      <div class="card" style="border-color:var(--purple);cursor:pointer;transition:transform .15s" onclick="filterDashboard('OnLeave')"
+        onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+        <div class="card-val" style="color:var(--purple)">${onLeave}</div><div class="card-lbl">🌴 On Leave</div></div>
+      <div class="card" style="border-color:#555;cursor:pointer;transition:transform .15s" onclick="filterDashboard('HalfDay')"
+        onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+        <div class="card-val" style="color:#555">${Object.values(att).reduce((s,recs)=>s+recs.filter(r=>r.date===td&&r.status==='Half-day').length,0)}</div>
+        <div class="card-lbl">🌗 Half-day</div></div>
+    </div>
+    `}
+    ${alertBanner}
+    <div class="section-header" id="dashAttHeader">
+      <div class="section-title">Today's Attendance <span id="dashFilterLabel" style="font-size:12px;color:#555;font-weight:400"></span></div>
+      <div class="btn-row">
+        <button class="btn btn-sm" style="background:var(--sky);color:var(--navy)" onclick="filterDashboard('All')">Show All</button>
+        <button class="btn btn-success btn-sm" onclick="navigate('Attendance','showAttendance')">Go to Attendance →</button>
+      </div>
+    </div>
+    <div class="table-wrap"><div class="table-scroll">
+      <table><thead><tr><th>ID</th><th>Name</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>Status</th></tr></thead>
+      <tbody id="dashAttBody">${todayRows}</tbody></table>
+    </div></div>`;
+
+  window._dashAtt    = _todayAll;
+  window._dashEmps   = emps;
+
+  window._dashLeaves = onLeaveEids;
+  window._dashDate   = td;
+  window._dashAttAll = att;
+}
+
+function filterDashboard(filter){
+  const emps      = window._dashEmps   || {};
+  const todayAll  = window._dashAtt    || [];
+  const leaveEids = window._dashLeaves || [];
+  const td        = window._dashDate   || today();
+  const att       = window._dashAttAll || {};
+
+  let rows = '';
+  const labelMap = {
+    All:      '— showing all',
+    Present:  '— ✅ Present',
+    Late:     '— ⏰ Late',
+    Absent:   '— ❌ Absent',
+    OnLeave:  '— 🌴 On Leave',
+    HalfDay:  '— 🌗 Half-day',
+    NoRecord: '— ⚠️ No Record Today',
+  };
+  document.getElementById('dashFilterLabel').textContent = labelMap[filter]||'';
+
+  if(filter==='OnLeave'){
+    rows = leaveEids.map(eid=>{
+      const name=(emps[eid]||{}).name||eid;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-blue">On Leave</span></td></tr>`;
+    }).join('');
+    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No employees on leave today</td></tr>`;
+  } else if(filter==='NoRecord'){
+    const noRecEids = Object.entries(emps).filter(([eid,e])=>{
+      if(e.status!=='Active') return false;
+      const hasAtt   = (att[eid]||[]).some(r=>r.date===td);
+      const hasLeave = leaveEids.includes(eid);
+      return !hasAtt && !hasLeave;
+    });
+    rows = noRecEids.map(([eid,e])=>`
+      <tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>—</td><td>—</td><td>—</td>
+      <td><span class="badge badge-gray">No Record</span></td></tr>`).join('');
+    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">All employees have records today 🎉</td></tr>`;
+  } else {
+    const filtered = filter==='All' ? todayAll
+      : filter==='HalfDay' ? todayAll.filter(({r})=>r.status==='Half-day')
+      : todayAll.filter(({r})=>r.status===filter);
+    rows = filtered.map(({eid,r})=>{
+      const name=(emps[eid]||{}).name||eid;
+      return `<tr><td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${name}</b></td><td>${r.time_in||'—'}</td><td>${r.time_out||'—'}</td><td>${r.hours||'—'}</td><td>${badge(r.status||'—')}</td></tr>`;
+    }).join('');
+    if(!rows) rows=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">No records for this filter</td></tr>`;
+  }
+  document.getElementById('dashAttBody').innerHTML = rows;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EMPLOYEES
+// ══════════════════════════════════════════════════════════════════════════════
 function showEmployees(q=''){
   let emps=load(KEYS.employees);
   const currentBranch = getBranch(); // Get selected branch
@@ -2467,9 +2710,9 @@ async function clockIn(){
   document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
   document.getElementById('clkStatus').style.color='var(--green)';
   loadAtt();
-  // Auto-refresh attendance if viewing it
+  // Auto-refresh dashboard if viewing it
   setTimeout(()=>{
-    if(currentPage==='Attendance') showAttendance();
+    // Dashboard removed
   }, 500);
 }
 
@@ -2528,7 +2771,7 @@ async function clockOut(){
   loadAtt();
   // Auto-refresh dashboard if viewing it
   setTimeout(()=>{
-    if(currentPage==='Attendance') showAttendance();
+    // Dashboard removed
   }, 500);
 }
 
@@ -5013,7 +5256,7 @@ function importEmployeesFromMain(e){
       save(KEYS.employees, {...existing, ...employees});
       toast(`✅ ${count} employee(s) imported from ${fromBranch||'Main Branch'}!`);
       if(currentPage==='Employees') showEmployees();
-      if(currentPage==='Attendance') showAttendance();
+      // Dashboard removed
     }catch(err){ _alert('❌ Couldn\'t read this file. Please check the format and try again.', '❌'); }
   };
   reader.readAsText(file);
@@ -5165,6 +5408,305 @@ async function softRefreshWithSync(){
   }
 }
 
+// ── All Branches Dashboard ────────────────────────────────────────────────────
+function showOwnerDashboard(){
+  // Only Admin and above can view dashboard
+  if(!isAdmin()){
+    toast('⛔ Access denied.');
+    navigate('Attendance','showAttendance');
+    return;
+  }
+  
+  const td = today();
+  let totalEmps=0, totalPresent=0, totalPayroll=0;
+
+  // ADMIN: show only their branch. OWNER: show ALL_BRANCHES
+  const branchesToShow = isOwner() ? ALL_BRANCHES : [getBranch()];
+  
+  // Use LOCAL cache for quick display — cloud sync happens in background
+  const empsByBranch = {};
+  ALL_BRANCHES.forEach(b => { empsByBranch[b] = {}; });
+  
+  const allEmps = load(KEYS.employees) || {};
+  Object.entries(allEmps).forEach(([eid, e]) => {
+    if(e.branch && empsByBranch[e.branch]) {
+      empsByBranch[e.branch][eid] = e;
+    }
+  });
+  
+  const branchCards = branchesToShow.map((b,i)=>{
+    const bdata   = _ownerData[b] || {};
+    const emps    = empsByBranch[b] || {};
+    const att     = bdata.pr_attendance || {};
+    const loans   = bdata.pr_loans      || {};
+    const active  = Object.values(emps).filter(e=>e.status==='Active').length;
+    const present = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Present').length,0);
+    const absent  = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Absent').length,0);
+    const late    = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Late').length,0);
+    const netPay  = Object.entries(emps).filter(([,e])=>e.status==='Active')
+      .reduce((s,[eid,e])=>{
+        const loanDed=(loans[eid]||[]).filter(l=>l.status==='Active').reduce((x,l)=>x+parseFloat(l.monthly_amort||0),0);
+        return s+computeNetPay(parseFloat(e.daily_rate||0),null,0,0,loanDed).net;
+      },0);
+    totalEmps+=active; totalPresent+=present; totalPayroll+=netPay;
+    const COLS=['#2A7FBF','#16A34A','#D97706','#DC2626','#7C3AED','#0D9488','#B45309','#1D4ED8','#BE185D'];
+    const col=COLS[i%COLS.length];
+    const hasData = active>0;
+    const benc = encodeURIComponent(b);
+    return `
+      <div onclick="showBranchPresent('${benc}')"
+        style="background:var(--white);border-radius:12px;padding:16px;box-shadow:var(--shadow);
+               border-top:4px solid ${col};cursor:pointer;transition:transform .15s,box-shadow .15s"
+        onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 6px 24px rgba(0,0,0,0.13)'"
+        onmouseout="this.style.transform='';this.style.boxShadow='var(--shadow)'">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-weight:700;font-size:14px;color:${col}">🏢 ${b}</div>
+          <div style="font-size:10px;color:#555;background:var(--sky);padding:3px 8px;border-radius:20px">Click to view →</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div onclick="showOwnerAttFilter('Present','${benc}')" style="background:var(--sky);border-radius:8px;padding:10px;text-align:center;cursor:pointer" title="View Present">
+            <div style="font-size:22px;font-weight:700;color:var(--blue)">${active}</div>
+            <div style="font-size:10px;color:#555">Employees</div>
+          </div>
+          <div onclick="showOwnerAttFilter('Present','${benc}')" style="background:var(--green-bg);border-radius:8px;padding:10px;text-align:center;cursor:pointer" title="View Present">
+            <div style="font-size:22px;font-weight:700;color:var(--green)">${present}</div>
+            <div style="font-size:10px;color:#555">Present Today</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <div onclick="showOwnerAttFilter('Late','${benc}')" style="background:#FEF3C7;border-radius:8px;padding:8px;text-align:center;cursor:pointer" title="View Late">
+            <div style="font-size:16px;font-weight:700;color:#D97706">${late}</div>
+            <div style="font-size:10px;color:#555">Late ⏰</div>
+          </div>
+          <div onclick="showOwnerAttFilter('Absent','${benc}')" style="background:#FEE2E2;border-radius:8px;padding:8px;text-align:center;cursor:pointer" title="View Absent">
+            <div style="font-size:16px;font-weight:700;color:#DC2626">${absent}</div>
+            <div style="font-size:10px;color:#555">Absent ❌</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:8px 12px;background:#F8FAFC;border-radius:8px;text-align:center">
+          <div style="font-size:13px;font-weight:700;color:var(--teal)">${fmt(netPay)}</div>
+          <div style="font-size:10px;color:#555">Est. Net Payroll</div>
+        </div>
+        ${!hasData?`<div style="margin-top:8px;font-size:11px;color:#555;text-align:center">No data yet</div>`:''}
+      </div>`;
+  }).join('');
+
+  // ── Pending notifications ────────────────────────────────────────────────
+  const pendingLeaves = [];
+  const activeLoans   = [];
+  const pendingPayruns = [];
+  ALL_BRANCHES.forEach(b=>{
+    const bdata  = _ownerData[b] || {};
+    const emps   = bdata.pr_employees || {};
+    const leaves = bdata.pr_leaves    || {};
+    const loans  = bdata.pr_loans     || {};
+    // Pending leave requests
+    Object.entries(leaves).forEach(([eid, recs])=>{
+      (recs||[]).filter(r=>r.status==='Pending').forEach(r=>{
+        const name = (emps[eid]||{}).name || eid;
+        pendingLeaves.push({branch:b, name, type:r.type||'Leave', start:r.start_date, end:r.end_date, eid});
+      });
+    });
+    // New / recently added active loans (filed today)
+    Object.entries(loans).forEach(([eid, llist])=>{
+      (llist||[]).filter(l=>l.status==='Active'&&l.date===today()).forEach(l=>{
+        const name = (emps[eid]||{}).name || eid;
+        activeLoans.push({branch:b, name, type:l.type||'Loan', amount:l.total_amount||l.amount||0, eid});
+      });
+    });
+  });
+  
+  // Pending payroll approvals
+  const approvals = load(KEYS.payroll_approvals) || {};
+  Object.entries(approvals).forEach(([runId, run])=>{
+    if(run.status==='Pending'){
+      const empCount = Object.keys(run.employees||{}).length;
+      const totalAmt = Object.values(run.employees||{}).reduce((s,e)=>s+parseFloat(e.net||0),0);
+      pendingPayruns.push({runId, branch:run.branch, date:run.date, empCount, totalAmt, status:run.status});
+    }
+  });
+
+  const leaveAlert = pendingLeaves.length ? `
+    <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:18px">🌴</span>
+        <span style="font-weight:700;color:#D97706">${pendingLeaves.length} Pending Leave Request${pendingLeaves.length>1?'s':''} — Action Required</span>
+        <button class="btn btn-sm" style="margin-left:auto;background:#D97706;color:#fff" onclick="navigate('Approvals','showOwnerApprovals')">Review →</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${pendingLeaves.slice(0,5).map(l=>`
+          <div style="font-size:12px;color:#92400E;background:#FFF8E7;border-radius:6px;padding:5px 10px;display:flex;gap:8px;align-items:center">
+            <span style="font-weight:600">${l.name}</span>
+            <span style="color:#B45309">${l.branch}</span>
+            <span>·</span>
+            <span>${l.type}</span>
+            <span>·</span>
+            <span>${l.start} → ${l.end}</span>
+          </div>`).join('')}
+        ${pendingLeaves.length>5?`<div style="font-size:11px;color:#92400E;padding:4px 10px">...and ${pendingLeaves.length-5} more</div>`:''}
+      </div>
+    </div>` : '';
+
+  const loanAlert = activeLoans.length ? `
+    <div style="background:#EFF6FF;border:1.5px solid #2A7FBF;border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:18px">💳</span>
+        <span style="font-weight:700;color:#1D4ED8">${activeLoans.length} New Loan${activeLoans.length>1?'s':''} Filed Today</span>
+        <button class="btn btn-sm" style="margin-left:auto;background:#2A7FBF;color:#fff" onclick="navigate('Loans','showLoans')">View Loans →</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${activeLoans.slice(0,5).map(l=>`
+          <div style="font-size:12px;color:#1E40AF;background:#DBEAFE;border-radius:6px;padding:5px 10px;display:flex;gap:8px;align-items:center">
+            <span style="font-weight:600">${l.name}</span>
+            <span style="color:#3B82F6">${l.branch}</span>
+            <span>·</span>
+            <span>${l.type}</span>
+            <span>·</span>
+            <span style="font-weight:700">${fmt(parseFloat(l.amount)||0)}</span>
+          </div>`).join('')}
+        ${activeLoans.length>5?`<div style="font-size:11px;color:#1E40AF;padding:4px 10px">...and ${activeLoans.length-5} more</div>`:''}
+      </div>
+    </div>` : '';
+
+  const payrollAlert = pendingPayruns.length ? `
+    <div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:18px">💰</span>
+        <span style="font-weight:700;color:#DC2626">${pendingPayruns.length} Payroll Run${pendingPayruns.length>1?'s':''} Awaiting Approval</span>
+        <button class="btn btn-sm" style="margin-left:auto;background:#DC2626;color:#fff;font-weight:600" onclick="showPayrollApprovals()">Review & Approve →</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${pendingPayruns.slice(0,5).map(p=>`
+          <div style="font-size:12px;color:#7F1D1D;background:#FECACA;border-radius:6px;padding:5px 10px;display:flex;gap:8px;align-items:center;justify-content:space-between">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-weight:600">${p.branch}</span>
+              <span style="color:#991B1B">·</span>
+              <span>${p.date}</span>
+              <span style="color:#991B1B">·</span>
+              <span>${p.empCount} employees</span>
+            </div>
+            <span style="font-weight:700;color:#991B1B">${fmt(p.totalAmt)}</span>
+          </div>`).join('')}
+        ${pendingPayruns.length>5?`<div style="font-size:11px;color:#991B1B;padding:4px 10px">...and ${pendingPayruns.length-5} more</div>`:''};
+      </div>
+    </div>` : '';
+
+  const noAlerts = !pendingLeaves.length && !activeLoans.length && !pendingPayruns.length ? `
+    <div style="background:#DCFCE7;border:1.5px solid #16A34A;border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">✅</span>
+      <span style="font-weight:600;color:#16A34A;font-size:13px">No pending leaves or new loans today — all clear!</span>
+    </div>` : '';
+
+  // Update nav badge for pending leaves
+  _ownerPendingLeaves = pendingLeaves.length;
+  updateOwnerNavBadges();
+  startOwnerDashRefresh();
+
+  document.getElementById('main').innerHTML=`
+    <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+      <div class="card" style="border-color:var(--blue);cursor:pointer" onclick="showAllEmployees('','All')" title="View all employees">
+        <div class="card-val" style="color:var(--blue)">${totalEmps}</div><div class="card-lbl">👥 Total Employees</div></div>
+      <div class="card" style="border-color:var(--green);cursor:pointer" onclick="showOwnerAttFilter('Present')" title="Filter Present">
+        <div class="card-val" style="color:var(--green)">${totalPresent}</div><div class="card-lbl">✅ Present Today</div></div>
+      <div class="card" style="border-color:var(--teal);cursor:pointer" onclick="showPayrollSummary()" title="View payroll">
+        <div class="card-val" style="color:var(--teal);font-size:16px">${fmt(totalPayroll)}</div><div class="card-lbl">💰 Total Payroll</div></div>
+      <div class="card" style="border-color:var(--purple)">
+        <div class="card-val" style="color:var(--purple)">9</div><div class="card-lbl">🏢 Branches</div></div>
+    </div>
+    ${leaveAlert}${payrollAlert}${loanAlert}${noAlerts}
+    <div class="section-header">
+      <div class="section-title">All Branches Overview <span style="font-size:12px;color:#555;font-weight:400">— click any branch to see today's attendance</span></div>
+      <button class="btn btn-primary btn-sm" onclick="ownerRefresh()">🔄 Refresh</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">${branchCards}</div>`;
+}
+
+// ── Branch Present Today detail view ─────────────────────────────────────────
+function showBranchPresent(branchEnc, filterDate=''){
+  // Only Owner/Developer can view cross-branch attendance
+  if(!isOwner()){
+    toast('⛔ Access denied. Owner only.');
+    return;
+  }
+  
+  const branch = decodeURIComponent(branchEnc);
+  const td     = filterDate || today();
+  const bdata  = _ownerData[branch] || {};
+  const emps   = bdata.pr_employees  || {};
+  const att    = bdata.pr_attendance || {};
+
+  // Build attendance rows for selected date
+  const rows = [];
+  Object.entries(emps).forEach(([eid, emp])=>{
+    if(emp.status !== 'Active') return;
+    const rec = (att[eid]||[]).find(r=>r.date===td);
+    rows.push({
+      eid, name:emp.name, role:emp.role||'—',
+      status: rec?.status || 'No Record',
+      time_in: rec?.time_in || '—',
+      time_out: rec?.time_out || '—',
+      hours: rec?.hours || '—',
+      ot: rec?.ot_hours || '0',
+    });
+  });
+
+  // Sort: Present first, then Late, then rest
+  const order = {Present:0, Late:1, 'Half-day':2, Absent:3, 'No Record':4};
+  rows.sort((a,b)=>(order[a.status]??5)-(order[b.status]??5));
+
+  const present  = rows.filter(r=>r.status==='Present').length;
+  const late     = rows.filter(r=>r.status==='Late').length;
+  const absent   = rows.filter(r=>r.status==='Absent').length;
+  const halfday  = rows.filter(r=>r.status==='Half-day').length;
+  const noRecord = rows.filter(r=>r.status==='No Record').length;
+
+  const tableRows = rows.map(r=>`<tr>
+    <td><b>${_esc(r.name)}</b></td>
+    <td style="color:#555">${r.role}</td>
+    <td>${badge(r.status)}</td>
+    <td>${r.time_in}</td>
+    <td>${r.time_out}</td>
+    <td>${r.hours}</td>
+    <td>${r.ot!=='0'?`<span style="color:var(--blue);font-weight:700">+${r.ot}h</span>`:'—'}</td>
+  </tr>`).join('')||`<tr><td colspan="7" style="text-align:center;padding:20px;color:#555">No attendance records for this date</td></tr>`;
+
+  const COLS=['#2A7FBF','#16A34A','#D97706','#DC2626','#7C3AED','#0D9488','#B45309','#1D4ED8','#BE185D'];
+  const col = COLS[ALL_BRANCHES.indexOf(branch)%COLS.length];
+
+  document.getElementById('main').innerHTML=`
+    <div class="section-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-secondary btn-sm" onclick="showDashboard()">← Back</button>
+        <div class="section-title" style="color:${col}">🏢 ${branch} — Attendance</div>
+      </div>
+      <div class="btn-row">
+        <input type="date" value="${td}"
+          onchange="showBranchPresent('${branchEnc}',this.value)"
+          style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
+        <button class="btn btn-teal btn-sm" onclick="exportBranchPresent('${branchEnc}','${td}')">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="cards" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
+      <div class="card" style="border-color:var(--green)"><div class="card-val" style="color:var(--green)">${present}</div><div class="card-lbl">✅ Present</div></div>
+      <div class="card" style="border-color:var(--yellow)"><div class="card-val" style="color:var(--yellow)">${late}</div><div class="card-lbl">⏰ Late</div></div>
+      <div class="card" style="border-color:#F97316"><div class="card-val" style="color:#F97316">${halfday}</div><div class="card-lbl">🌓 Half Day</div></div>
+      <div class="card" style="border-color:var(--red)"><div class="card-val" style="color:var(--red)">${absent}</div><div class="card-lbl">❌ Absent</div></div>
+      <div class="card" style="border-color:#555"><div class="card-val" style="color:#555">${noRecord}</div><div class="card-lbl">— No Record</div></div>
+    </div>
+
+    <div class="table-wrap"><div class="table-scroll">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>OT</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div></div>`;
+
+  // Store for export
+  window._branchPresentRows = rows.map(r=>[branch, td, r.name, r.role, r.status, r.time_in, r.time_out, r.hours, r.ot]);
+}
+
+function exportBranchPresent(branchEnc, td){
   if(!window._branchPresentRows?.length){ toast('No data to export'); return; }
   const rows=[['Branch','Date','Name','Role','Status','Time In','Time Out','Hours','OT Hours'],
               ...window._branchPresentRows];
@@ -6248,6 +6790,118 @@ function getShiftHours(empId){
 // ══════════════════════════════════════════════════════════════════════════════
 // DEVELOPER DASHBOARD (v29.8.1)
 // ══════════════════════════════════════════════════════════════════════════════
+function showDeveloperDashboard(){
+  const branches = JSON.parse(localStorage.getItem('pr_branches') || '[]');
+  const employees = JSON.parse(localStorage.getItem('pr_employees') || '[]');
+  const payroll = JSON.parse(localStorage.getItem('pr_payroll') || '[]');
+  
+  const html = `
+    <div class="section-header">
+      <div class="section-title">👨‍💻 Developer Dashboard</div>
+    </div>
+    <div style="padding:20px;font-size:13px">
+      <h4>System Status</h4>
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td>App Version:</td><td><strong>v29.8.1</strong></td></tr>
+        <tr><td>Current Role:</td><td><strong>${currentRole}</strong></td></tr>
+        <tr><td>Current User:</td><td><strong>${_currentUser}</strong></td></tr>
+        <tr><td>Branch:</td><td><strong>${getBranch() || 'All'}</strong></td></tr>
+        <tr><td>Supabase:</td><td><strong>${_sb ? '✅ Connected' : '❌ Offline'}</strong></td></tr>
+        <tr><td>localStorage Size:</td><td><strong>${(Object.keys(localStorage).reduce((t,k)=>t+(localStorage.getItem(k)||'').length,0)/1024).toFixed(1)} KB</strong></td></tr>
+      </table>
+      
+      <h4 style="margin-top:20px">Quick Actions</h4>
+      <button class="btn btn-primary" onclick="comprehensiveSystemAudit()" style="margin-right:8px">🔍 Run Audit</button>
+      <button class="btn btn-secondary" onclick="console.log('LocalStorage:', localStorage); alert('Check DevTools Console (F12)')">📋 View Storage</button>
+      
+      <h4 style="margin-top:20px">Operations</h4>
+      
+      <!-- Branch Operations Tab -->
+      <div style="background:#f5f5f5;border:1px solid #ccc;margin:10px 0">
+        <button onclick="const el=document.getElementById('branchOpContent');el.style.display=el.style.display==='none'?'block':'none'" style="width:100%;padding:10px;font-weight:bold;background:#f5f5f5;border:none;text-align:left;cursor:pointer;font-size:13px">
+          ▶ Branch Operations
+        </button>
+        <div id="branchOpContent" style="display:none;padding:15px;border-top:1px solid #ccc">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tr style="background:#e0e0e0;font-weight:bold">
+              <th style="padding:8px;text-align:left;border:1px solid #ccc">Branch</th>
+              <th style="padding:8px;text-align:center;border:1px solid #ccc">Employees</th>
+              <th style="padding:8px;text-align:center;border:1px solid #ccc">Payroll</th>
+            </tr>
+            ${branches.map(b => {
+              const empCount = employees.filter(e => e.branch === b).length;
+              const payCount = payroll.filter(p => p.branch === b).length;
+              return `
+              <tr style="border:1px solid #ccc">
+                <td style="padding:8px">${b}</td>
+                <td style="padding:8px;text-align:center">${empCount}</td>
+                <td style="padding:8px;text-align:center">${payCount}</td>
+              </tr>`;
+            }).join('')}
+            <tr style="background:#f0f0f0;font-weight:bold;border:1px solid #ccc">
+              <td style="padding:8px">TOTAL</td>
+              <td style="padding:8px;text-align:center">${employees.length}</td>
+              <td style="padding:8px;text-align:center">${payroll.length}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Management Tab -->
+      <div style="background:#f5f5f5;border:1px solid #ccc;margin:10px 0">
+        <button onclick="const el=document.getElementById('managementContent');el.style.display=el.style.display==='none'?'block':'none'" style="width:100%;padding:10px;font-weight:bold;background:#f5f5f5;border:none;text-align:left;cursor:pointer;font-size:13px">
+          ▶ Management
+        </button>
+        <div id="managementContent" style="display:none;padding:15px;border-top:1px solid #ccc">
+          <h5>User Accounts</h5>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+            <tr style="background:#e0e0e0;font-weight:bold">
+              <th style="padding:8px;text-align:left;border:1px solid #ccc">Username</th>
+              <th style="padding:8px;text-align:left;border:1px solid #ccc">Role</th>
+              <th style="padding:8px;text-align:left;border:1px solid #ccc">Branch</th>
+            </tr>
+            ${Object.entries(USERS).map(([u, d]) => `
+              <tr style="border:1px solid #ccc">
+                <td style="padding:8px"><code>${u}</code></td>
+                <td style="padding:8px">${d.role}</td>
+                <td style="padding:8px">${d.branch || 'N/A'}</td>
+              </tr>
+            `).join('')}
+          </table>
+          
+          <h5>Security Status</h5>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tr style="background:#e0e0e0">
+              <th style="padding:8px;text-align:left;border:1px solid #ccc">Feature</th>
+              <th style="padding:8px;text-align:center;border:1px solid #ccc">Status</th>
+            </tr>
+            <tr style="border:1px solid #ccc"><td style="padding:8px">2FA Module</td><td style="padding:8px;text-align:center">${typeof _enable2FA === 'function' ? '✅' : '❌'}</td></tr>
+            <tr style="border:1px solid #ccc"><td style="padding:8px">Audit Logging</td><td style="padding:8px;text-align:center">${SEC.auditLog.length > 0 ? '✅' : '⚠️'}</td></tr>
+            <tr style="border:1px solid #ccc"><td style="padding:8px">Password History</td><td style="padding:8px;text-align:center">${Object.keys(SEC.passwordHistory).length > 0 ? '✅' : '⚠️'}</td></tr>
+            <tr style="border:1px solid #ccc"><td style="padding:8px">Auto-Logout</td><td style="padding:8px;text-align:center">✅</td></tr>
+          </table>
+        </div>
+      </div>
+      
+      <h4 style="margin-top:20px">Dev Tools</h4>
+      <p><code style="background:#f5f5f5;padding:8px;display:block;margin:10px 0;font-size:12px">Press F12 to open DevTools Console</code></p>
+      <p><strong>Useful commands:</strong></p>
+      <ul style="margin-left:20px;font-size:12px">
+        <li><code>USERS</code> - View all accounts</li>
+        <li><code>_ownerData</code> - View all branch data</li>
+        <li><code>SEC</code> - View security module</li>
+        <li><code>localStorage</code> - View all local data</li>
+      </ul>
+    </div>
+  `;
+  document.getElementById('main').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ACCOUNT SETTINGS - Change Password & Username
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function changePassword(){
   try {
     const old = document.getElementById('oldPass').value;
     const newP = document.getElementById('newPass').value;
