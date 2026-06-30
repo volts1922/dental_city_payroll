@@ -1159,12 +1159,12 @@ function _finishLogin(){
   if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='dev' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
-    // Owner sees branch picker + Attendance
+    // Owner sees branch picker + regular dashboard (branch-specific)
     ownerShowBranchPicker(true);
-    navigate('Attendance','showAttendance');
+    navigate('Dashboard','showDashboard');
     initBranch();
   } else {
-    navigate('Attendance','showAttendance');
+    navigate('Dashboard','showDashboard');
     initBranch();
   }
   toast(`👋 Welcome, ${currentUser}!`);
@@ -1382,6 +1382,7 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // ── NAV ───────────────────────────────────────────────────────────────────────
 const NAV_OWNER=[
   // ── Overview ──────────────────────────────────────────────────────────────
+  {icon:'📊',label:'Dashboard',        fn:'showDashboard'},
   {icon:'👥',label:'All Employees',    fn:'showAllEmployees'},
   {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals'},
   {icon:'💰',label:'Payroll Summary',  fn:'showPayrollSummary'},
@@ -1409,6 +1410,7 @@ const NAV_DEVELOPER=[
 ];
 
 const NAV_ADMIN=[
+  {icon:'📊',label:'Dashboard',   fn:'showDashboard'},
   {icon:'👥',label:'Employees',   fn:'showEmployees'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
@@ -2384,7 +2386,7 @@ let _clkEidMap = {};
 function showAttendance(){
   ownerEnsureBranchData();
   const emps=load(KEYS.employees);
-  const activeEmps=Object.entries(emps).filter(([,e])=>e.status!=='Resigned');
+  const activeEmps=Object.entries(emps).filter(([,e])=>e&&e.status!=='Resigned');
   _clkEidMap={};
   activeEmps.forEach(([id,e])=>{ _clkEidMap[`${e.name} (${id})`]=id; });
 
@@ -2448,50 +2450,51 @@ async function loadAtt(){
   if(_sb){
     try {
       // Get branch UUID
-      const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
-      if(!branchData) { 
-        const ab = document.getElementById('attBody');
-        if(ab) ab.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">Branch not found</td></tr>`;
-        return;
-      }
+      const branchUUID = await getBranchUUID(getBranch());
       
-      // Fetch time_clock records for this date and branch
-      const {data: records} = await _sb.from('time_clock')
+      // Fetch attendance from payroll_data (not time_clock)
+      const {data: records} = await _sb.from('payroll_data')
         .select('*')
-        .eq('branch_id', branchData.id)
-        .eq('date', date);
+        .eq('branch_key', branchUUID)
+        .like('data_type', `attendance_%_${date}`);
       
       if(records && records.length > 0){
         records.forEach(r=>{
-          const emp = emps[r.employee_id] || {name: r.employee_id};
-          const eid = r.employee_id;
-          // Use branch from emp object, or try to get from branch_id, otherwise use current branch
-          const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
-          const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
-          const timeInStr = r.time_in ? (() => {
-            try {
-              const d = new Date(r.time_in.includes('Z') || r.time_in.includes('+') ? r.time_in : r.time_in + 'Z');
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-            } catch { return '—'; }
-          })() : '—';
-          const timeOutStr = r.time_out ? (() => {
-            try {
-              const d = new Date(r.time_out.includes('Z') || r.time_out.includes('+') ? r.time_out : r.time_out + 'Z');
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-            } catch { return '—'; }
-          })() : '—';
-          
-          rows.push(`<tr>
-            <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
-            <td>${timeInStr}</td><td>${timeOutStr}</td>
-            <td>—</td><td>—</td><td>—</td>
-            <td>${holBadge}</td>
-            <td>${badge(r.status||'—')}</td>
-            <td>
-              <button class="btn btn-secondary btn-sm admin-only" onclick="editAttRecord('${eid}','${date}')">✏</button>
-              <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
-            </td>
-          </tr>`);
+          try {
+            const parsed = JSON.parse(r.data);
+            const [_, empId, recDate] = r.data_type.split('_');
+            
+            const emp = emps[empId] || {name: empId || 'Unknown', branch: getBranch()};
+            const eid = empId;
+            const empBranch = emp?.branch || getBranch();
+            const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
+            const timeInStr = parsed?.time_in ? (() => {
+              try {
+                const d = new Date(parsed.time_in.includes('Z') || parsed.time_in.includes('+') ? parsed.time_in : parsed.time_in + 'Z');
+                return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+              } catch { return '—'; }
+            })() : '—';
+            const timeOutStr = parsed?.time_out ? (() => {
+              try {
+                const d = new Date(parsed.time_out.includes('Z') || parsed.time_out.includes('+') ? parsed.time_out : parsed.time_out + 'Z');
+                return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+              } catch { return '—'; }
+            })() : '—';
+            
+            rows.push(`<tr>
+              <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp?.name || 'Unknown'}</b></td><td>${recDate}</td>
+              <td>${timeInStr}</td><td>${timeOutStr}</td>
+              <td>—</td><td>—</td><td>—</td>
+              <td>${holBadge}</td>
+              <td>${badge(parsed?.status || '—')}</td>
+              <td>
+                <button class="btn btn-secondary btn-sm admin-only" onclick="editAttRecord('${eid}','${date}')">✏</button>
+                <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
+              </td>
+            </tr>`);
+          } catch(e) {
+            console.warn('Parse error for record:', r, e);
+          }
         });
       }
     } catch(e) {
@@ -2515,19 +2518,18 @@ async function refreshLiveAttendance(){
   
   try {
     // Get branch UUID
-    const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
-    if(!branchData) { 
+    const branchUUID = await getBranchUUID(branch);
+    if(!branchUUID) { 
       const la = document.getElementById('liveAttendance');
       if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>';
       return;
     }
     
-    // Get all clocked-in employees for today
-    const {data: records} = await _sb.from('time_clock')
+    // Get all clocked-in employees for today from payroll_data
+    const {data: records} = await _sb.from('payroll_data')
       .select('*')
-      .eq('branch_id', branchData.id)
-      .eq('date', today)
-      .eq('status', 'clocked_in');
+      .eq('branch_key', branchUUID)
+      .like('data_type', `attendance_%_${today}`);
     
     if(!records || records.length === 0) {
       const la = document.getElementById('liveAttendance');
@@ -2536,27 +2538,35 @@ async function refreshLiveAttendance(){
     }
     
     const liveEmps = records.map(rec => {
-      const emp = emps[rec.employee_id] || {name: rec.employee_id};
-      const timeIn = new Date(rec.time_in.includes('Z') ? rec.time_in : rec.time_in + 'Z');
-      const now = new Date();
-      const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
-      const shiftHours = emp.shift_hours || 8;
-      const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
-      const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
-      
-      // Format time_in for display (HH:MM 24-hour format)
-      const timeInFormatted = isNaN(timeIn.getTime()) ? '—' : new Date(timeIn.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
-      
-      return {
-        eid: rec.employee_id,
-        name: emp.name,
-        hoursWorked,
-        timeRemaining,
-        timeIn: timeIn.toISOString(), // Store raw ISO
-        timeInFormatted, // Add formatted version for display
-        branch: emp.branch
-      };
-    });
+      try {
+        const parsed = JSON.parse(rec.data);
+        const [_, empId, recDate] = rec.data_type.split('_');
+        const emp = emps[empId] || {name: empId || 'Unknown', shift_hours: 8};
+        
+        const timeIn = new Date(parsed.time_in?.includes('Z') ? parsed.time_in : (parsed.time_in + 'Z'));
+        const now = new Date();
+        const hoursWorked = isNaN(timeIn.getTime()) ? '0.00' : ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
+        const shiftHours = emp?.shift_hours || 8;
+        const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
+        const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
+        
+        // Format time_in for display (HH:MM 24-hour format)
+        const timeInFormatted = isNaN(timeIn.getTime()) ? '—' : new Date(timeIn.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+        
+        return {
+          eid: empId,
+          name: emp?.name || 'Unknown',
+          hoursWorked,
+          timeRemaining,
+          timeIn: timeIn.toISOString(), // Store raw ISO
+          timeInFormatted, // Add formatted version for display
+          branch: emp?.branch || branch
+        };
+      } catch(e) {
+        console.warn('Parse error in liveAttendance:', e);
+        return null;
+      }
+    }).filter(e => e !== null);
     
     const html = liveEmps.map(e => `
       <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
@@ -3377,22 +3387,39 @@ async function computePayroll(){
   let att = {};
   if(_sb){
     try {
+      const branchUUID = await getBranchUUID(getBranch());
       const [yr, mo] = month.split('-');
       const nextMo = parseInt(mo) === 12 ? 1 : parseInt(mo) + 1;
       const nextYr = parseInt(mo) === 12 ? parseInt(yr) + 1 : parseInt(yr);
       const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
-      const {data: records} = await _sb.from('time_clock').select('*').gte('date', month + '-01').lt('date', nextMonthStr);
+      
+      // Read from payroll_data instead of time_clock
+      const {data: records} = await _sb.from('payroll_data')
+        .select('*')
+        .eq('branch_key', branchUUID)
+        .like('data_type', 'attendance_%');
+      
       if(records){
         records.forEach(r => {
-          if(!att[r.employee_id]) att[r.employee_id] = [];
-          att[r.employee_id].push({
-            date: r.date,
-            status: r.status,
-            time_in: r.time_in,
-            time_out: r.time_out,
-            ot_hours: 0,
-            nd_hours: 0
-          });
+          try {
+            const parsed = JSON.parse(r.data);
+            const [_, empId, recDate] = r.data_type.split('_');
+            
+            // Only include records for this month
+            if(!recDate.startsWith(month)) return;
+            
+            if(!att[empId]) att[empId] = [];
+            att[empId].push({
+              date: recDate,
+              status: parsed?.status || 'Present',
+              time_in: parsed?.time_in || '—',
+              time_out: parsed?.time_out || '—',
+              ot_hours: 0,
+              nd_hours: 0
+            });
+          } catch(e) {
+            console.warn('Parse error in payroll:', e);
+          }
         });
       }
     } catch(e) {
@@ -3403,7 +3430,7 @@ async function computePayroll(){
     att = load(KEYS.attendance) || {};
   }
   
-  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
+  const rows=Object.entries(emps).filter(([,e])=>e&&e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
     const rate       = parseFloat(e.daily_rate||0);
     const recs       = Object.values(att[eid]||[]).filter(r=>r.date?.startsWith(month));
     
@@ -8689,128 +8716,6 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
 // BREAK TRACKING & PAYROLL SYNC
 // ════════════════════════════════════════════════════════════════
 
-async function clockIn(empId, branchId) {
-  try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const timeIn = now.toISOString(); // Full timestamp
-    const existing = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
-    if(existing.data && existing.data.status === 'clocked_in') {
-      throw new Error('Already clocked in at ' + existing.data.time_in);
-    }
-    const {data, error} = await _sb.from('time_clock').upsert({
-      employee_id: empId, branch_id: branchId, date: today, time_in: timeIn, 
-      status: 'clocked_in', created_at: now.toISOString()
-    }, {onConflict: 'employee_id,branch_id,date'}).select();
-    if(error) throw error;
-    toast(`✅ Clocked in at ${timeIn}`);
-    return data[0];
-  } catch(e) {
-    console.error(e);
-    toast(`❌ ${e.message}`);
-  }
-}
-
-async function startBreak(empId, branchId, breakType = 'Lunch') {
-  try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const breakInTime = now.toISOString();
-    const {data: clock} = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
-    if(!clock || clock.status !== 'clocked_in') throw new Error('Not clocked in');
-    await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
-    const {data: breakRecord} = await _sb.from('time_breaks').insert({
-      clock_id: clock.id, employee_id: empId, branch_id: branchId, date: today, 
-      break_type: breakType, break_in: breakInTime, auto_deducted: true
-    }).select();
-    toast(`☕ ${breakType} started`);
-    return breakRecord[0];
-  } catch(e) {
-    console.error(e);
-    toast(`❌ ${e.message}`);
-  }
-}
-
-async function endBreak(empId, branchId) {
-  try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const breakOutTime = now.toISOString();
-    const {data: breaks} = await _sb.from('time_breaks').select('*')
-      .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today)
-      .is('break_out', null).order('created_at', {ascending: false}).limit(1).single();
-    if(!breaks) throw new Error('No active break');
-    const breakDurationMins = _calcTime(breaks.break_in, breakOutTime);
-    await _sb.from('time_breaks').update({break_out: breakOutTime, approval_status: 'auto_approved'}).eq('id', breaks.id);
-    await _sb.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', today);
-    toast(`✅ Break ended. ${breakDurationMins} mins deducted`);
-    return {breakDurationMins};
-  } catch(e) {
-    console.error(e);
-    toast(`❌ ${e.message}`);
-  }
-}
-
-async function clockOut(empId, branchId) {
-  try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const timeOut = now.toISOString();
-    const {data: clock} = await _sb.from('time_clock').select('*')
-      .eq('employee_id', empId).eq('branch_id', branchId).eq('date', today).single();
-    if(!clock || !clock.time_in) throw new Error('Not clocked in');
-    const grossMins = _calcTime(clock.time_in, timeOut);
-    const grossHours = (grossMins / 60).toFixed(2);
-    const {data: breaks} = await _sb.from('time_breaks').select('break_in, break_out')
-      .eq('employee_id', empId).eq('date', today);
-    let totalBreakMins = 0;
-    if(breaks) breaks.forEach(b => {
-      if(b.break_in && b.break_out) totalBreakMins += _calcTime(b.break_in, b.break_out);
-    });
-    const totalBreakHours = (totalBreakMins / 60).toFixed(2);
-    const netHours = (grossHours - totalBreakHours).toFixed(2);
-    const otHours = Math.max(0, netHours - 8).toFixed(2);
-    await _sb.from('time_clock').update({
-      time_out: timeOut, status: 'clocked_out', updated_at: now.toISOString()
-    }).eq('id', clock.id);
-    await _syncPayroll(empId, branchId, today, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
-    toast(`✅ Clocked out at ${timeOut}\nNet: ${netHours}h | OT: ${otHours}h`);
-    return {gross: grossHours, break: totalBreakHours, net: netHours, ot: otHours};
-  } catch(e) {
-    console.error(e);
-    toast(`❌ ${e.message}`);
-  }
-}
-
-function _calcTime(timeIn, timeOut) {
-  const [inHr, inMin] = timeIn.split(':').map(Number);
-  const [outHr, outMin] = timeOut.split(':').map(Number);
-  const inTotalMins = inHr * 60 + inMin;
-  const outTotalMins = outHr * 60 + outMin;
-  if(outTotalMins < inTotalMins) return (outTotalMins + 1440) - inTotalMins;
-  return outTotalMins - inTotalMins;
-}
-
-async function _syncPayroll(empId, branchId, date, timeData) {
-  try {
-    const {data: emp} = await _sb.from('employees_201').select('daily_rate').eq('employee_id', empId).single();
-    const dailyRate = emp?.daily_rate || 1000;
-    const hourlyRate = dailyRate / 8;
-    const netHours = parseFloat(timeData.hours_net) || 0;
-    const otHours = parseFloat(timeData.ot_hours) || 0;
-    const basePay = netHours * hourlyRate;
-    const otPay = otHours * hourlyRate * 1.25;
-    const {data: clock} = await _sb.from('time_clock').select('time_in').eq('employee_id', empId).eq('branch_id', branchId).eq('date', date).single();
-    const timeIn = clock?.time_in || '00:00';
-    const minutesLate = _calcTime('08:00', timeIn);
-    const onTime = minutesLate <= 0;
-    // time_analytics upsert disabled - table not yet created in Supabase
-    // await _sb.from('time_analytics').upsert({...}, {onConflict: 'employee_id,branch_id,date'});
-    console.log(`✅ Synced: ${empId} | ${netHours}h × ₱${hourlyRate.toFixed(2)} = ₱${basePay.toFixed(2)}`);
-  } catch(e) {
-    console.error('Sync error:', e);
-  }
-}
 
 // ════════════════════════════════════════════════════════════════
 // ANALYTICS & PAYROLL PREVIEW
