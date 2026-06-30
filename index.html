@@ -2744,6 +2744,14 @@ function parseTime(t){
 async function clockIn(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
+  
+  // ENSURE employee map is loaded
+  if(Object.keys(_clkEidMap).length === 0) {
+    const emps = load(KEYS.employees);
+    const activeEmps = Object.entries(emps || {}).filter(([,e])=>e.status!=='Resigned');
+    activeEmps.forEach(([id,e])=>{ _clkEidMap[`${e.name} (${id})`]=id; });
+  }
+  
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
   const nowStr=now.toTimeString().slice(0,5); // Just HH:MM, no seconds!
   const td=today();
@@ -2756,8 +2764,8 @@ async function clockIn(){
   else att[eid].push({date:td,status:'Present',time_in:nowStr,time_out:'—',hours:0,ot_hours:0,nd_hours:0,holiday:''});
   save(KEYS.attendance,att);
   
-  // SYNC TO SUPABASE with proper format
-  if(_sb){
+  // SYNC TO SUPABASE with proper format - only if eid is valid
+  if(_sb && eid){
     try {
       const now_iso = new Date().toISOString();
       const {data, error} = await _sb.from('time_clock').upsert({
@@ -2792,6 +2800,14 @@ async function clockIn(){
 async function clockOut(){
   const sel=document.getElementById('clkEmpSel').value;
   if(!sel){toast('⚠️ Select an employee first');return;}
+  
+  // ENSURE employee map is loaded
+  if(Object.keys(_clkEidMap).length === 0) {
+    const emps = load(KEYS.employees);
+    const activeEmps = Object.entries(emps || {}).filter(([,e])=>e.status!=='Resigned');
+    activeEmps.forEach(([id,e])=>{ _clkEidMap[`${e.name} (${id})`]=id; });
+  }
+  
   const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
   const nowStr=now.toTimeString().slice(0,5); // Just HH:MM, no seconds!
   const td=today();
@@ -2814,8 +2830,8 @@ async function clockOut(){
   if(tinParsed>cutoff) existing.status='Late';
   save(KEYS.attendance,att);
   
-  // SYNC TO SUPABASE with proper format
-  if(_sb){
+  // SYNC TO SUPABASE with proper format - only if eid is valid
+  if(_sb && eid){
     try {
       const now_iso = new Date().toISOString();
       const {data, error} = await _sb.from('time_clock').upsert({
