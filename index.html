@@ -2663,11 +2663,23 @@ function editAttRecord(eid, date){
     </div>
     ${formRow('Holiday','att_hol',rec.holiday||'',null,['','Regular Holiday','Special Holiday'])}`,
     ()=>{
-      const tin  = document.getElementById('f_att_tin').value;
-      const tout = document.getElementById('f_att_tout').value;
+      const tin  = document.getElementById('f_att_tin').value;  // "14:30" (24-hour)
+      const tout = document.getElementById('f_att_tout').value; // "17:00" (24-hour)
+      
+      // Convert 24-hour format to 12-hour format for calculateWorkHours
+      const convertTo12Hour = (time24) => {
+        if(!time24) return null;
+        const [hours, minutes] = time24.split(':').map(Number);
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hours12 = hours % 12 || 12;
+        return `${hours12}:${String(minutes).padStart(2, '0')} ${ampm}`;
+      };
+      
+      const tin12 = convertTo12Hour(tin);
+      const tout12 = convertTo12Hour(tout);
       
       // Calculate hours using 12-hour format
-      const result = calculateWorkHours(tin, tout);
+      const result = calculateWorkHours(tin12, tout12);
       
       rec.status    = fval('att_status');
       rec.time_in   = tin; 
@@ -2684,15 +2696,9 @@ function editAttRecord(eid, date){
           try {
             const branchUUID = await getBranchUUID(getBranch());
             
-            // Convert time strings (HH:MM) to ISO timestamps correctly
-            // Assume input times are Philippines time (GMT+8)
-            const utcMs_in = new Date(`${date}T${tin}`).getTime() + (new Date().getTimezoneOffset() * 60 * 1000);
-            const phMs_in = utcMs_in - (8 * 60 * 60 * 1000); // Convert to UTC from GMT+8
-            const timeInISO = new Date(phMs_in).toISOString();
-            
-            const utcMs_out = new Date(`${date}T${tout}`).getTime() + (new Date().getTimezoneOffset() * 60 * 1000);
-            const phMs_out = utcMs_out - (8 * 60 * 60 * 1000);
-            const timeOutISO = new Date(phMs_out).toISOString();
+            // Convert 24-hour time (14:30) to ISO timestamp
+            const timeInISO = new Date(`${date}T${tin}:00`).toISOString();
+            const timeOutISO = new Date(`${date}T${tout}:00`).toISOString();
             
             const {data, error} = await _sb.from('time_clock').upsert({
               employee_id: eid,
@@ -2709,12 +2715,13 @@ function editAttRecord(eid, date){
               console.warn('Edit sync error:', error);
             } else {
               toast(`✅ Attendance updated & synced to Supabase!`);
+              closeModal(); loadAtt(); refreshLiveAttendance();
             }
           } catch(e) {
             console.error('Edit sync exception:', e);
             toast(`⚠️ Sync error: ${e.message}`);
+            closeModal();
           }
-          closeModal(); loadAtt();
         })();
       } else {
         closeModal(); toast(`✅ Attendance updated for ${name}!`); loadAtt();
