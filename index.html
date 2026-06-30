@@ -5165,19 +5165,6 @@ async function softRefreshWithSync(){
   }
 }
 
-// ── All Branches Dashboard ────────────────────────────────────────────────────
-  // Only Owner/Developer can view cross-branch attendance
-  if(!isOwner()){
-    toast('⛔ Access denied. Owner only.');
-    return;
-  }
-  
-  const branch = decodeURIComponent(branchEnc);
-  const td     = filterDate || today();
-  const bdata  = _ownerData[branch] || {};
-  const emps   = bdata.pr_employees  || {};
-  const att    = bdata.pr_attendance || {};
-
   // Build attendance rows for selected date
   const rows = [];
   Object.entries(emps).forEach(([eid, emp])=>{
