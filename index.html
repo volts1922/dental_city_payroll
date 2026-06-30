@@ -2710,7 +2710,7 @@ async function clockIn(){
       const {data, error} = await _sb.from('payroll_data').upsert({
         branch_key: branchUUID,
         data_type: `attendance_${eid}_${td}`,
-        data: JSON.stringify({ time_in: nowStr, status: 'Present' }),
+        data: JSON.stringify({ time_in: now_iso, status: 'Present' }),
         updated_at: now_iso
       });
       if(error) {
@@ -2728,9 +2728,9 @@ async function clockIn(){
   document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
   document.getElementById('clkStatus').style.color='var(--green)';
   loadAtt();
-  // Auto-refresh dashboard if viewing it
+  // Auto-refresh attendance if viewing it
   setTimeout(()=>{
-    if(currentPage==='Dashboard') showDashboard();
+    if(currentPage==='Attendance') showAttendance();
   }, 500);
 }
 
@@ -2764,14 +2764,13 @@ async function clockOut(){
   if(_sb){
     try {
       const now_iso = new Date().toISOString();
-      const {data, error} = await _sb.from('time_clock').upsert({
-        employee_id: eid,
-        date: td,
-        status: existing.status,
-        time_in: `${td}T${existing.time_in}`,
-        time_out: `${td}T${nowStr}`,
+      const branchUUID = await getBranchUUID(getBranch());
+      const {data, error} = await _sb.from('payroll_data').upsert({
+        branch_key: branchUUID,
+        data_type: `attendance_${eid}_${td}`,
+        data: JSON.stringify({ time_in: existing.time_in, time_out: now_iso, status: existing.status, hours: existing.hours }),
         updated_at: now_iso
-      }, {onConflict: 'employee_id,date'});
+      });
       if(error) {
         console.warn('⚠️ Clock out sync error:', error.status, error.message);
         toast(`⚠️ Sync warning: ${error.message}`);
@@ -2787,9 +2786,9 @@ async function clockOut(){
   document.getElementById('clkStatus').textContent=`🔴 Clocked OUT at ${nowStr} (${existing.hours}h)`;
   document.getElementById('clkStatus').style.color='var(--red)';
   loadAtt();
-  // Auto-refresh dashboard if viewing it
+  // Auto-refresh attendance if viewing it
   setTimeout(()=>{
-    if(currentPage==='Dashboard') showDashboard();
+    if(currentPage==='Attendance') showAttendance();
   }, 500);
 }
 
