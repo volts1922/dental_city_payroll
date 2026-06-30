@@ -1648,7 +1648,7 @@ function badge(status){
   const cls=map[status]||'gray';
   return `<span class="badge badge-${cls}">${status}</span>`;
 }
-// ── Extract time from ISO timestamp consistently (12-hour format) ──────────────
+// ── Extract time from ISO timestamp consistently (12-hour format FOR DISPLAY) ──────────────
 function extractTime(isoString){
   if(!isoString || isoString==='—') return '—';
   // Handle ISO format: 2026-06-30T08:05:30.123Z → 08:05 AM
@@ -1659,6 +1659,13 @@ function extractTime(isoString){
   const period = hours >= 12 ? 'PM' : 'AM';
   hours = hours % 12 || 12; // Convert 0 to 12, keep others
   return `${String(hours).padStart(2, '0')}:${mins} ${period}`;
+}
+
+// ── Extract time for storage (HH:MM format only, no AM/PM) ──────────────────────────
+function extractTimeForStorage(isoString){
+  if(!isoString || isoString==='—') return '—';
+  const match = String(isoString).match(/T(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : '—';
 }
 function empOptions(sel=''){
   const emps=load(KEYS.employees);
@@ -1788,15 +1795,15 @@ function showDashboard(){
             if(!att[empId]) att[empId] = [];
             const existing = att[empId].find(r => r.date === td);
             if(existing){
-              existing.time_in = rec.time_in ? extractTime(rec.time_in) : existing.time_in;
-              existing.time_out = rec.time_out ? extractTime(rec.time_out) : existing.time_out;
+              existing.time_in = rec.time_in ? extractTimeForStorage(rec.time_in) : existing.time_in;
+              existing.time_out = rec.time_out ? extractTimeForStorage(rec.time_out) : existing.time_out;
               existing.status = rec.status || existing.status;
             } else {
               att[empId].push({
                 date: td,
                 status: rec.status || 'Present',
-                time_in: rec.time_in ? extractTime(rec.time_in) : '—',
-                time_out: rec.time_out ? extractTime(rec.time_out) : '—',
+                time_in: rec.time_in ? extractTimeForStorage(rec.time_in) : '—',
+                time_out: rec.time_out ? extractTimeForStorage(rec.time_out) : '—',
                 hours: 0,
                 ot_hours: 0,
                 nd_hours: 0
