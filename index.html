@@ -2544,7 +2544,25 @@ async function refreshLiveAttendance(){
     
     const liveEmps = records.map(rec => {
       const emp = emps[rec.employee_id] || {name: rec.employee_id};
-      const timeIn = new Date(rec.time_in.includes('Z') ? rec.time_in : rec.time_in + 'Z');
+      
+      // Parse time_in: "2026-07-01 14:30:00" format (timestamp without timezone)
+      let timeIn;
+      try {
+        if(rec.time_in.includes('Z') || rec.time_in.includes('+')) {
+          // ISO format with timezone
+          timeIn = new Date(rec.time_in);
+        } else if(rec.time_in.includes(' ')) {
+          // Format: "2026-07-01 14:30:00" - convert to ISO
+          timeIn = new Date(rec.time_in.replace(' ', 'T') + 'Z');
+        } else {
+          // Fallback
+          timeIn = new Date(rec.time_in + 'Z');
+        }
+      } catch(e) {
+        console.warn('Time parse error:', rec.time_in, e);
+        timeIn = new Date();
+      }
+      
       const now = new Date();
       const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
       const shiftHours = emp.shift_hours || 8;
