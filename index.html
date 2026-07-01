@@ -3234,6 +3234,9 @@ async function markAttRecordIndividual(eid, date){
 }
 
 function markAttModal(){
+  const pickedDate = document.getElementById('attDate')?.value || today();  // Read FRESH from picker!
+  _attDate = pickedDate;  // Update global
+  
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const active=Object.entries(emps).filter(([,e])=>e.status!=='Resigned');
   const holType = getHolidayType(_attDate);
