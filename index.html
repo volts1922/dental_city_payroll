@@ -3750,15 +3750,7 @@ async function computePayroll(){
   
   const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
     const rate       = parseFloat(e.daily_rate||0);
-    
-    // Fetch ALL attendance records for this employee in the payroll period from Supabase
-    let recs = [];
-    if(_sb && payroll && payroll.start_date && payroll.end_date){
-      // Will be filled by async fetch below
-      recs = Object.values(att[eid]||[]).filter(r=>r.date>=payroll.start_date && r.date<=payroll.end_date);
-    } else {
-      recs = Object.values(att[eid]||[]).filter(r=>r.date?.startsWith(month));
-    }
+    const recs       = Object.values(att[eid]||[]);
     
     // Debug logging
     if(recs.length === 0){
