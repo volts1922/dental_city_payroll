@@ -3331,11 +3331,12 @@ function markAttModal(){
               branch_id: branchUUID,
               date: _attDate,
               time_in: timeInStr,
-              status: markStatus,  // ← Use actual status!
+              status: markStatus,
               updated_at: new Date().toISOString()
             };
             
-            // Only include time_out if it's provided
+            console.log(`[MARK ATT] Payload for ${empId}:`, payload);
+            
             if(timeOutStr) payload.time_out = timeOutStr;
             
             await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
