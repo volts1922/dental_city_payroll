@@ -2465,14 +2465,20 @@ async function loadAtt(){
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
           const timeInStr = r.time_in ? (() => {
             try {
-              const d = new Date(r.time_in.includes('Z') || r.time_in.includes('+') ? r.time_in : r.time_in + 'Z');
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+              // Format: "2026-07-01 10:00:00" - extract just the time part
+              if(r.time_in.includes(' ')) {
+                return r.time_in.split(' ')[1].slice(0, 5); // Get "10:00"
+              }
+              return '—';
             } catch { return '—'; }
           })() : '—';
           const timeOutStr = r.time_out ? (() => {
             try {
-              const d = new Date(r.time_out.includes('Z') || r.time_out.includes('+') ? r.time_out : r.time_out + 'Z');
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+              // Format: "2026-07-01 19:00:00" - extract just the time part
+              if(r.time_out.includes(' ')) {
+                return r.time_out.split(' ')[1].slice(0, 5); // Get "19:00"
+              }
+              return '—';
             } catch { return '—'; }
           })() : '—';
           
@@ -2533,18 +2539,24 @@ async function refreshLiveAttendance(){
     const liveEmps = records.map(rec => {
       const emp = emps[rec.employee_id] || {name: rec.employee_id};
       
-      // Parse time_in: "2026-07-01 14:30:00" format (timestamp without timezone)
+      // Parse time_in: "2026-07-01 10:00:00" format (timestamp without timezone)
+      // IMPORTANT: This is already Philippines time, DON'T add Z (which means UTC)
       let timeIn;
       try {
         if(rec.time_in.includes('Z') || rec.time_in.includes('+')) {
-          // ISO format with timezone
+          // ISO format with timezone - already has timezone info
           timeIn = new Date(rec.time_in);
         } else if(rec.time_in.includes(' ')) {
-          // Format: "2026-07-01 14:30:00" - convert to ISO
-          timeIn = new Date(rec.time_in.replace(' ', 'T') + 'Z');
+          // Format: "2026-07-01 10:00:00" (Philippines time, no timezone)
+          // Parse directly without adding Z
+          const [datePart, timePart] = rec.time_in.split(' ');
+          const [year, month, day] = datePart.split('-');
+          const [hour, min, sec] = timePart.split(':');
+          // Create date in Philippines timezone offset
+          timeIn = new Date(year, month - 1, day, hour, min, sec);
         } else {
           // Fallback
-          timeIn = new Date(rec.time_in + 'Z');
+          timeIn = new Date(rec.time_in);
         }
       } catch(e) {
         console.warn('Time parse error:', rec.time_in, e);
