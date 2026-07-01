@@ -3313,7 +3313,8 @@ function markAttModal(){
       (async ()=>{
         try {
           const branchUUID = await getBranchUUID(getBranch());
-          console.log(`[MARK ATT] Syncing ${active.length} records to Supabase...`);
+          console.log(`[MARK ATT] Date from picker: ${pickedDate}`);
+          console.log(`[MARK ATT] Syncing ${active.length} records for ${pickedDate} to Supabase...`);
           
           for(const [empId] of active){
             const tin = document.getElementById(`ti_${empId}`)?.value;
