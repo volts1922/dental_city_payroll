@@ -2489,7 +2489,7 @@ async function loadAtt(){
             <td>${holBadge}</td>
             <td>${badge(r.status||'—')}</td>
             <td>
-              <button class="btn btn-secondary btn-sm admin-only" onclick="editAttRecord('${eid}','${date}')">✏</button>
+              <button class="btn btn-success btn-sm admin-only" onclick="markAttRecordIndividual('${eid}','${date}')">✚ Mark</button>
               <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
             </td>
           </tr>`);
@@ -2564,7 +2564,7 @@ async function refreshLiveAttendance(){
       }
       
       const now = new Date();
-      const hoursWorked = ((now - timeIn) / (1000 * 60 * 60)).toFixed(2);
+      const hoursWorked = Math.max(0, ((now - timeIn) / (1000 * 60 * 60)).toFixed(2));  // Ensure no negative
       const shiftHours = emp.shift_hours || 8;
       const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
       const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
@@ -3109,6 +3109,123 @@ function showAttendanceTracker(period='week'){
     </div>
   `;
   applyRole();
+}
+
+// ── Mark Attendance for Individual Employee ─────────────────────────────────
+function markAttRecordIndividual(eid, date){
+  const emps=load(KEYS.employees), att=load(KEYS.attendance);
+  const emp = emps[eid];
+  if(!emp) {toast('Employee not found'); return;}
+  
+  const holType = getHolidayType(date);
+  const holBadge = holType
+    ? `<div style="background:${holType.includes('Regular')?'#FEE2E2':'#FEF3C7'};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:${holType.includes('Regular')?'#DC2626':'#D97706'};margin-bottom:12px">
+        🎉 ${holType} — ${holType.includes('Regular')?'200%':'130%'} pay applies!
+       </div>` : '';
+  
+  const html = `
+    <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;">
+      <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:15px">${_esc(emp.name)} <span style="color:#555;font-weight:400">(${emp.role||'—'})</span></div>
+      ${holBadge}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">STATUS</label>
+          <select id="ind_status" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+            ${['Present','Absent','Half-day','Late','Rest Day'].map(s=>`<option>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">HOLIDAY</label>
+          <select id="ind_holiday" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+            <option value="">None</option>
+            <option value="Regular Holiday"${holType==='Regular Holiday'?' selected':''}>Regular Holiday (200%)</option>
+            <option value="Special Holiday"${holType==='Special Holiday'?' selected':''}>Special Holiday (130%)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">TIME IN</label>
+          <input id="ind_tin" type="time" value="09:00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+        </div>
+        <div class="form-group">
+          <label class="form-label">TIME OUT</label>
+          <input id="ind_tout" type="time" value="17:00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+        </div>
+        <div class="form-group">
+          <label class="form-label">OT HOURS</label>
+          <input id="ind_ot" type="number" step="0.5" min="0" value="0" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ND HOURS</label>
+          <input id="ind_nd" type="number" step="0.5" min="0" value="0" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+        </div>
+      </div>
+    </div>`;
+  
+  openModal(`✚ Mark Attendance — ${_esc(emp.name)} (${date})`, html, ()=>{
+    if(!att[eid]) att[eid]=[];
+    att[eid]=att[eid].filter(r=>r.date!==date);
+    
+    const tin=document.getElementById('ind_tin')?.value;
+    const tout=document.getElementById('ind_tout')?.value;
+    const tIn=parseTime(tin), tOut=parseTime(tout);
+    const hours=tIn&&tOut?Math.round(Math.max((tOut-tIn)/3600000,0)*100)/100:0;
+    const {ot, nd}=computeOT(tin, tout);
+    const holiday=document.getElementById('ind_holiday')?.value||'';
+    const status=document.getElementById('ind_status').value;
+    
+    const otHours = parseFloat(document.getElementById('ind_ot')?.value || ot);
+    const ndHours = parseFloat(document.getElementById('ind_nd')?.value || nd);
+    
+    att[eid].push({
+      date:date,
+      status:status,
+      time_in:tin, time_out:tout, hours,
+      ot_hours: Math.round(otHours*100)/100,
+      nd_hours: Math.round(ndHours*100)/100,
+      holiday
+    });
+    save(KEYS.attendance,att);
+    
+    // SYNC TO SUPABASE
+    if(_sb){
+      (async ()=>{
+        try {
+          const branchUUID = await getBranchUUID(getBranch());
+          console.log(`[MARK IND] Syncing ${eid}...`);
+          
+          const timeInStr = `${date} ${tin}:00`;
+          const timeOutStr = `${date} ${tout}:00`;
+          const sbStatus = tin && tout ? 'clocked_in' : 'clocked_out';
+          
+          await _sb.from('time_clock').upsert({
+            employee_id: eid,
+            branch_id: branchUUID,
+            date: date,
+            time_in: timeInStr,
+            time_out: timeOutStr,
+            status: sbStatus,
+            updated_at: new Date().toISOString()
+          }, {onConflict: 'employee_id,branch_id,date'});
+          
+          console.log(`[MARK IND] ✅ Synced!`);
+          toast(`✅ ${emp.name} attendance saved & synced!`);
+          closeModal();
+          await loadAtt();
+          await refreshLiveAttendance();
+        } catch(e) {
+          console.error('[MARK IND] Error:', e);
+          toast(`⚠️ Supabase sync failed: ${e.message}`);
+          closeModal();
+        }
+      })();
+    } else {
+      closeModal();
+      toast(`✅ ${emp.name} attendance saved!`);
+      loadAtt();
+    }
+  }, '💾 Save Attendance');
+}
+
 }function markAttModal(){
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const active=Object.entries(emps).filter(([,e])=>e.status!=='Resigned');
@@ -3137,11 +3254,19 @@ function showAttendanceTracker(period='week'){
         </div>
         <div>
           <label style="font-size:10px;font-weight:700;color:#555">TIME IN</label>
-          <input id="ti_${id}" type="time" value="08:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+          <input id="ti_${id}" type="time" value="09:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
         </div>
         <div>
           <label style="font-size:10px;font-weight:700;color:#555">TIME OUT</label>
           <input id="to_${id}" type="time" value="17:00" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#555">OT HOURS</label>
+          <input id="ot_${id}" type="number" step="0.5" min="0" value="0" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#555">ND HOURS</label>
+          <input id="nd_${id}" type="number" step="0.5" min="0" value="0" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
         </div>
       </div>
     </div>`).join('');
@@ -3158,12 +3283,16 @@ function showAttendanceTracker(period='week'){
       const holiday=document.getElementById(`hol_${id}`)?.value||'';
       const markStatus=document.getElementById(`ms_${id}`).value;
       
+      // Get OT/ND from inputs if manually set, otherwise use calculated
+      const otHours = parseFloat(document.getElementById(`ot_${id}`)?.value || ot);
+      const ndHours = parseFloat(document.getElementById(`nd_${id}`)?.value || nd);
+      
       att[id].push({
         date:_attDate,
         status:markStatus,  // 'Present', 'Absent', etc.
         time_in:tin, time_out:tout, hours,
-        ot_hours: Math.round(ot*100)/100,
-        nd_hours: Math.round(nd*100)/100,
+        ot_hours: Math.round(otHours*100)/100,
+        nd_hours: Math.round(ndHours*100)/100,
         holiday
       });
     });
