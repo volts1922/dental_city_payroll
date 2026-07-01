@@ -2463,24 +2463,8 @@ async function loadAtt(){
           // Use branch from emp object, or try to get from branch_id, otherwise use current branch
           const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
-          const timeInStr = r.time_in ? (() => {
-            try {
-              // Format: "2026-07-01 10:00:00" - extract just the time part
-              if(r.time_in.includes(' ')) {
-                return r.time_in.split(' ')[1].slice(0, 5); // Get "10:00"
-              }
-              return '—';
-            } catch { return '—'; }
-          })() : '—';
-          const timeOutStr = r.time_out ? (() => {
-            try {
-              // Format: "2026-07-01 19:00:00" - extract just the time part
-              if(r.time_out.includes(' ')) {
-                return r.time_out.split(' ')[1].slice(0, 5); // Get "19:00"
-              }
-              return '—';
-            } catch { return '—'; }
-          })() : '—';
+          const timeInStr = r.time_in ? r.time_in.substring(11, 16) : '—';  // Extract "HH:MM" from "YYYY-MM-DD HH:MM:SS"
+          const timeOutStr = r.time_out ? r.time_out.substring(11, 16) : '—';  // Extract "HH:MM" from "YYYY-MM-DD HH:MM:SS"
           
           rows.push(`<tr>
             <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
@@ -3772,7 +3756,8 @@ async function computePayroll(){
       <td><button class="btn btn-primary btn-sm" onclick="openPayslipGenerator('${eid}','${month}')">📋 Generate</button></td>
     </tr>`;
   }).join('')||`<tr><td colspan="16" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
-  document.getElementById('payBody').innerHTML=rows;
+  const payBody = document.getElementById('payBody');
+  if(payBody) payBody.innerHTML=rows;
 }
 
 async function showPayslip(empId, month, startDate, endDate){
@@ -8435,18 +8420,17 @@ window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
 });
 
-
-// Hide Attendance Tracker nav button from Staff
-if(getRole() === 'Staff') {
-  setTimeout(() => {
+// Hide Attendance Tracker nav button from Staff (delayed until functions load)
+setTimeout(() => {
+  if(typeof getRole === 'function' && getRole() === 'Staff') {
     const attButtons = document.querySelectorAll('button');
     attButtons.forEach(btn => {
       if(btn.innerHTML.includes('Attendance') || btn.innerHTML.includes('Analytics')) {
         btn.style.display = 'none';
       }
     });
-  }, 500);
-}
+  }
+}, 1000);
 
 
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -8776,17 +8760,17 @@ function dismissNotification(id){
 
 // Initialize badge on page load
 
-// Hide Attendance Tracker nav button from Staff
-if(getRole() === 'Staff') {
-  setTimeout(() => {
+// Hide Attendance Tracker nav button from Staff (delayed)
+setTimeout(() => {
+  if(typeof getRole === 'function' && getRole() === 'Staff') {
     const attButtons = document.querySelectorAll('button');
     attButtons.forEach(btn => {
       if(btn.innerHTML.includes('Attendance') || btn.innerHTML.includes('Analytics')) {
         btn.style.display = 'none';
       }
     });
-  }, 500);
-}
+  }
+}, 1000);
 
 
 document.addEventListener('DOMContentLoaded', ()=>{
