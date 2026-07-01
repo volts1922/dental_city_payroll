@@ -3152,6 +3152,10 @@ async function markAttRecordIndividual(eid, date){
           <input id="ind_tin" type="time" value="09:00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
         </div>
         <div class="form-group">
+          <label class="form-label">TIME OUT (Optional)</label>
+          <input id="ind_tout" type="time" value="" placeholder="--:--" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:#999">
+        </div>
+        <div class="form-group">
           <label class="form-label">OT HOURS</label>
           <input id="ind_ot" type="number" step="0.5" min="0" value="0" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
         </div>
@@ -3167,16 +3171,20 @@ async function markAttRecordIndividual(eid, date){
     att[eid]=att[eid].filter(r=>r.date!==date);
     
     const tin=document.getElementById('ind_tin')?.value;
+    const tout=document.getElementById('ind_tout')?.value; // Optional
+    const tIn=parseTime(tin), tOut=parseTime(tout);
+    const hours=tIn&&tOut?Math.round(Math.max((tOut-tIn)/3600000,0)*100)/100:0;
+    const {ot, nd}=computeOT(tin, tout);
     const holiday=document.getElementById('ind_holiday')?.value||'';
     const status=document.getElementById('ind_status').value;
     
-    const otHours = parseFloat(document.getElementById('ind_ot')?.value || 0);
-    const ndHours = parseFloat(document.getElementById('ind_nd')?.value || 0);
+    const otHours = parseFloat(document.getElementById('ind_ot')?.value || ot);
+    const ndHours = parseFloat(document.getElementById('ind_nd')?.value || nd);
     
     att[eid].push({
       date:date,
       status:status,
-      time_in:tin, time_out:'', hours:0,
+      time_in:tin, time_out:tout, hours,
       ot_hours: Math.round(otHours*100)/100,
       nd_hours: Math.round(ndHours*100)/100,
       holiday
@@ -3191,15 +3199,21 @@ async function markAttRecordIndividual(eid, date){
           console.log(`[MARK IND] Syncing ${eid}...`);
           
           const timeInStr = `${date} ${tin}:00`;
+          const timeOutStr = tout ? `${date} ${tout}:00` : null;
+          const sbStatus = tout ? 'clocked_out' : 'clocked_in';
           
-          await _sb.from('time_clock').upsert({
+          const payload = {
             employee_id: eid,
             branch_id: branchUUID,
             date: date,
             time_in: timeInStr,
-            status: 'clocked_in',
+            status: sbStatus,
             updated_at: new Date().toISOString()
-          }, {onConflict: 'employee_id,branch_id,date'});
+          };
+          
+          if(timeOutStr) payload.time_out = timeOutStr;
+          
+          await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
           
           console.log(`[MARK IND] ✅ Synced!`);
           toast(`✅ ${emp.name} attendance saved & synced!`);
