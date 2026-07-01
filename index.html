@@ -2801,17 +2801,6 @@ function parseTime(t){
   return null;
 }
 
-// Calculate hours from Supabase timestamps "2026-07-01 09:00:00"
-function calculateHoursFromTimestamps(timeInStr, timeOutStr) {
-  if(!timeInStr || !timeOutStr) return 0;
-  try {
-    const tIn = parseTime(timeInStr.split(' ')[1]);
-    const tOut = parseTime(timeOutStr.split(' ')[1]);
-    if(!tIn || !tOut) return 0;
-    return Math.round(Math.max((tOut - tIn) / 3600000, 0) * 100) / 100;
-  } catch(e) { return 0; }
-}
-
 // ── 12-Hour Time Conversion ────────────────────────────────────────────────
 function convert12HourToMinutes(time) {
   // Example input: "8:30 AM"
@@ -3806,7 +3795,7 @@ async function computePayroll(){
             status: status,
             time_in: r.time_in,
             time_out: r.time_out,
-            hours: calculateHoursFromTimestamps(r.time_in, r.time_out),
+            hours: calculateWorkHours(r.time_in?.split(' ')[1], r.time_out?.split(' ')[1]),
             ot_hours: r.ot_hours || 0,
             nd_hours: r.nd_hours || 0,
             holiday: r.holiday || ''
