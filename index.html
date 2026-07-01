@@ -3107,6 +3107,31 @@ function markAttRecordIndividual(eid, date){
         🎉 ${holType} — ${holType.includes('Regular')?'200%':'130%'} pay applies!
        </div>` : '';
   
+  // Fetch existing time_out from Supabase if it exists
+  let existingTimeOut = '00:00'; // Default: no time out
+  if(_sb){
+    (async ()=>{
+      try {
+        const branchUUID = await getBranchUUID(getBranch());
+        const {data: rec} = await _sb.from('time_clock')
+          .select('time_out')
+          .eq('employee_id', eid)
+          .eq('branch_id', branchUUID)
+          .eq('date', date)
+          .single();
+        
+        if(rec && rec.time_out) {
+          existingTimeOut = rec.time_out.substring(11, 16); // Extract "HH:MM"
+          const toutInput = document.getElementById('ind_tout');
+          if(toutInput) toutInput.value = existingTimeOut;
+          console.log(`[MARK IND] Pre-filled time_out: ${existingTimeOut}`);
+        }
+      } catch(e) {
+        console.log('[MARK IND] No existing record yet');
+      }
+    })();
+  }
+  
   const html = `
     <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;">
       <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:15px">${_esc(emp.name)} <span style="color:#555;font-weight:400">(${emp.role||'—'})</span></div>
@@ -3132,7 +3157,7 @@ function markAttRecordIndividual(eid, date){
         </div>
         <div class="form-group">
           <label class="form-label">TIME OUT</label>
-          <input id="ind_tout" type="time" value="17:00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+          <input id="ind_tout" type="time" value="00:00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
         </div>
         <div class="form-group">
           <label class="form-label">OT HOURS</label>
