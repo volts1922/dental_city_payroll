@@ -3200,14 +3200,13 @@ async function markAttRecordIndividual(eid, date){
           
           const timeInStr = `${date} ${tin}:00`;
           const timeOutStr = tout ? `${date} ${tout}:00` : null;
-          const sbStatus = tout ? 'clocked_out' : 'clocked_in';
           
           const payload = {
             employee_id: eid,
             branch_id: branchUUID,
             date: date,
             time_in: timeInStr,
-            status: sbStatus,
+            status: status,  // ← Use actual status (Present/Absent/etc)!
             updated_at: new Date().toISOString()
           };
           
@@ -3316,20 +3315,19 @@ function markAttModal(){
           for(const [empId] of active){
             const tin = document.getElementById(`ti_${empId}`)?.value;
             const tout = document.getElementById(`to_${empId}`)?.value;
+            const markStatus = document.getElementById(`ms_${empId}`).value; // Get actual status!
             
             // Format times for Supabase timestamp columns
             const timeInStr = `${_attDate} ${tin}:00`;
             const timeOutStr = tout ? `${_attDate} ${tout}:00` : null;
             
-            // Map mark attendance status to Supabase status
-            const sbStatus = tout ? 'clocked_out' : 'clocked_in';
-            
+            // Use the ACTUAL status (Present/Absent/etc), not clocked_in
             const payload = {
               employee_id: empId,
               branch_id: branchUUID,
               date: _attDate,
               time_in: timeInStr,
-              status: sbStatus,
+              status: markStatus,  // ← Use actual status!
               updated_at: new Date().toISOString()
             };
             
@@ -3724,13 +3722,21 @@ async function computePayroll(){
       if(records){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
+          
+          // Convert status: clocked_in/clocked_out → Present, keep others as-is
+          let status = r.status;
+          if(status === 'clocked_in' || status === 'clocked_out') {
+            status = 'Present';  // Widget clock in/out = Present
+          }
+          
           att[r.employee_id].push({
             date: r.date,
-            status: r.status || 'Present',
+            status: status,
             time_in: r.time_in,
             time_out: r.time_out,
-            ot_hours: 0,
-            nd_hours: 0
+            ot_hours: r.ot_hours || 0,
+            nd_hours: r.nd_hours || 0,
+            holiday: r.holiday || ''
           });
         });
       }
@@ -3744,14 +3750,21 @@ async function computePayroll(){
   
   const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
     const rate       = parseFloat(e.daily_rate||0);
-    const recs       = Object.values(att[eid]||[]).filter(r=>r.date?.startsWith(month));
+    
+    // Fetch ALL attendance records for this employee in the payroll period from Supabase
+    let recs = [];
+    if(_sb && payroll && payroll.start_date && payroll.end_date){
+      // Will be filled by async fetch below
+      recs = Object.values(att[eid]||[]).filter(r=>r.date>=payroll.start_date && r.date<=payroll.end_date);
+    } else {
+      recs = Object.values(att[eid]||[]).filter(r=>r.date?.startsWith(month));
+    }
     
     // Debug logging
     if(recs.length === 0){
-      console.log(`⚠️ ${eid} (${e.name}): 0 records found`);
-      console.log(`   Available keys:`, Object.keys(att).slice(0,5));
+      console.log(`⚠️ ${eid} (${e.name}): 0 records found for period`);
     } else {
-      console.log(`✓ ${eid} (${e.name}): ${recs.length} records`);
+      console.log(`✓ ${eid} (${e.name}): ${recs.length} records in period`);
       recs.forEach((r, i) => console.log(`   [${i}] ${r.date} - ${r.status}`));
     }
     
