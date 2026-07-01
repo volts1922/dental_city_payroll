@@ -3717,7 +3717,7 @@ async function computePayroll(){
         .select('*')
         .eq('branch_id', branchUUID)
         .gte('date', month + '-01')
-        .lt('date', nextMonthStr);
+        .lte('date', month + '-31');
       
       if(records){
         records.forEach(r => {
@@ -3760,13 +3760,18 @@ async function computePayroll(){
       recs.forEach((r, i) => console.log(`   [${i}] ${r.date} - ${r.status}`));
     }
     
-    const daysPresent= recs.filter(r=>r.status==='clocked_in'||r.status==='Present'||r.status==='Late').length;
+    const daysPresent= recs.filter(r=>r.status==='clocked_in'||r.status==='clocked_out'||r.status==='Present'||r.status==='Late').length;
     const absences   = recs.filter(r=>r.status==='Absent').length;
     const halfDays   = recs.filter(r=>r.status==='Half-day').length;
     const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
     const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
     const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
+    
+    console.log(`[PAYROLL DEBUG] ${eid} (${e.name}):`);
+    console.log(`  Total records: ${recs.length}`);
+    console.log(`  Present: ${daysPresent}, Absent: ${absences}, Half: ${halfDays}`);
+    console.log(`  Records:`, recs.map(r=>`${r.date}=${r.status}`).join(', '));
     const loanDed    = getActiveLoanDeduction(eid);
     const allowances = e.allowances || {};
     const hasAtt     = daysPresent+absences+halfDays > 0;
