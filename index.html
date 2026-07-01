@@ -3319,20 +3319,24 @@ function markAttModal(){
             
             // Format times for Supabase timestamp columns
             const timeInStr = `${_attDate} ${tin}:00`;
-            const timeOutStr = `${_attDate} ${tout}:00`;
+            const timeOutStr = tout ? `${_attDate} ${tout}:00` : null;
             
             // Map mark attendance status to Supabase status
-            const sbStatus = tin && tout ? 'clocked_in' : 'clocked_out';
+            const sbStatus = tout ? 'clocked_out' : 'clocked_in';
             
-            await _sb.from('time_clock').upsert({
+            const payload = {
               employee_id: empId,
               branch_id: branchUUID,
               date: _attDate,
               time_in: timeInStr,
-              time_out: timeOutStr,
               status: sbStatus,
               updated_at: new Date().toISOString()
-            }, {onConflict: 'employee_id,branch_id,date'});
+            };
+            
+            // Only include time_out if it's provided
+            if(timeOutStr) payload.time_out = timeOutStr;
+            
+            await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
           }
           
           console.log(`[MARK ATT] ✅ Synced to Supabase!`);
@@ -3342,6 +3346,7 @@ function markAttModal(){
           await refreshLiveAttendance();
         } catch(e) {
           console.error('[MARK ATT] Sync error:', e);
+          console.error('[MARK ATT] Error details:', e.message, e.details);
           toast(`⚠️ Supabase sync failed: ${e.message}`);
           closeModal();
         }
