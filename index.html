@@ -3201,12 +3201,15 @@ async function markAttRecordIndividual(eid, date){
           const timeInStr = `${date} ${tin}:00`;
           const timeOutStr = tout ? `${date} ${tout}:00` : null;
           
+          // Map status to Supabase constraint
+          const sbStatus = status === 'Absent' ? 'clocked_out' : 'clocked_in';
+          
           const payload = {
             employee_id: eid,
             branch_id: branchUUID,
             date: date,
             time_in: timeInStr,
-            status: status,  // ← Use actual status (Present/Absent/etc)!
+            status: sbStatus,
             updated_at: new Date().toISOString()
           };
           
@@ -3319,19 +3322,20 @@ function markAttModal(){
           for(const [empId] of active){
             const tin = document.getElementById(`ti_${empId}`)?.value;
             const tout = document.getElementById(`to_${empId}`)?.value;
-            const markStatus = document.getElementById(`ms_${empId}`).value; // Get actual status!
+            const markStatus = document.getElementById(`ms_${empId}`).value;
             
-            // Format times for Supabase timestamp columns
+            // Map status to Supabase constraint (only clocked_in/clocked_out/on_break allowed)
+            const sbStatus = markStatus === 'Absent' ? 'clocked_out' : 'clocked_in';
+            
             const timeInStr = `${_attDate} ${tin}:00`;
             const timeOutStr = tout ? `${_attDate} ${tout}:00` : null;
             
-            // Use the ACTUAL status (Present/Absent/etc), not clocked_in
             const payload = {
               employee_id: empId,
               branch_id: branchUUID,
               date: _attDate,
               time_in: timeInStr,
-              status: markStatus,
+              status: sbStatus,
               updated_at: new Date().toISOString()
             };
             
@@ -3728,11 +3732,10 @@ async function computePayroll(){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
           
-          // Convert status: clocked_in/clocked_out → Present, keep others as-is
+          // Convert status: clocked_in/clocked_out → Present/Absent
           let status = r.status;
-          if(status === 'clocked_in' || status === 'clocked_out') {
-            status = 'Present';  // Widget clock in/out = Present
-          }
+          if(status === 'clocked_in') status = 'Present';
+          if(status === 'clocked_out') status = 'Absent';
           
           att[r.employee_id].push({
             date: r.date,
