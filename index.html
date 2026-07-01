@@ -3226,7 +3226,7 @@ function markAttRecordIndividual(eid, date){
   }, '💾 Save Attendance');
 }
 
-}function markAttModal(){
+function markAttModal(){
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const active=Object.entries(emps).filter(([,e])=>e.status!=='Resigned');
   const holType = getHolidayType(_attDate);
