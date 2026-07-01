@@ -2474,7 +2474,6 @@ async function loadAtt(){
             <td>${badge(r.status||'—')}</td>
             <td>
               <button class="btn btn-success btn-sm admin-only" onclick="markAttRecordIndividual('${eid}','${date}')">✚ Mark</button>
-              <button class="btn btn-warning btn-sm admin-only" onclick="clockOutPastDate('${eid}','${date}')">🔴 Clock Out</button>
               <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
             </td>
           </tr>`);
@@ -3330,86 +3329,45 @@ function markAttModal(){
           <input id="nd_${id}" type="number" step="0.5" min="0" value="0" style="width:100%;padding:4px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
         </div>
       </div>
+      <button class="btn btn-sm btn-primary" style="margin-top:8px;width:100%" onclick="saveMarkAttendanceIndividual('${id}','${_attDate}')">💾 Save ${_esc(e.name)}</button>
     </div>`).join('');
 
-  openModal(`Mark Attendance — ${_attDate}`,`${holBadge}<div style="max-height:380px;overflow-y:auto">${rows}</div>`,()=>{
-    active.forEach(([id])=>{
-      if(!att[id]) att[id]=[];
-      att[id]=att[id].filter(r=>r.date!==_attDate);
-      const tin=document.getElementById(`ti_${id}`)?.value;
-      const tout=document.getElementById(`to_${id}`)?.value;
-      const tIn=parseTime(tin), tOut=parseTime(tout);
-      const hours=tIn&&tOut?Math.round(Math.max((tOut-tIn)/3600000,0)*100)/100:0;
-      const {ot, nd}=computeOT(tin, tout);
-      const holiday=document.getElementById(`hol_${id}`)?.value||'';
-      const markStatus=document.getElementById(`ms_${id}`).value;
-      
-      // Get OT/ND from inputs if manually set, otherwise use calculated
-      const otHours = parseFloat(document.getElementById(`ot_${id}`)?.value || ot);
-      const ndHours = parseFloat(document.getElementById(`nd_${id}`)?.value || nd);
-      
-      att[id].push({
-        date:_attDate,
-        status:markStatus,  // 'Present', 'Absent', etc.
-        time_in:tin, time_out:tout, hours,
-        ot_hours: Math.round(otHours*100)/100,
-        nd_hours: Math.round(ndHours*100)/100,
-        holiday
-      });
-    });
-    save(KEYS.attendance,att);
+  openModal(`✚ Mark Attendance — ${_attDate}`,`${holBadge}<div style="max-height:380px;overflow-y:auto">${rows}</div>`, null, '✕ Close');
+}
+
+// Save individual employee Mark Attendance
+async function saveMarkAttendanceIndividual(empId, date){
+  if(!_sb) { toast('⚠️ Supabase not connected'); return; }
+  
+  try {
+    const branchUUID = await getBranchUUID(getBranch());
+    const tin = document.getElementById(`ti_${empId}`)?.value;
+    const tout = document.getElementById(`to_${empId}`)?.value;
+    const markStatus = document.getElementById(`ms_${empId}`).value;
+    const sbStatus = markStatus === 'Absent' ? 'clocked_out' : 'clocked_in';
     
-    // SYNC TO SUPABASE
-    if(_sb){
-      (async ()=>{
-        try {
-          const branchUUID = await getBranchUUID(getBranch());
-          console.log(`[MARK ATT] Date from picker: ${pickedDate}`);
-          console.log(`[MARK ATT] Syncing ${active.length} records for ${pickedDate} to Supabase...`);
-          
-          for(const [empId] of active){
-            const tin = document.getElementById(`ti_${empId}`)?.value;
-            const tout = document.getElementById(`to_${empId}`)?.value;
-            const markStatus = document.getElementById(`ms_${empId}`).value;
-            
-            // Map status to Supabase constraint (only clocked_in/clocked_out/on_break allowed)
-            const sbStatus = markStatus === 'Absent' ? 'clocked_out' : 'clocked_in';
-            
-            const timeInStr = `${_attDate} ${tin}:00`;
-            const timeOutStr = tout ? `${_attDate} ${tout}:00` : null;
-            
-            const payload = {
-              employee_id: empId,
-              branch_id: branchUUID,
-              date: _attDate,
-              time_in: timeInStr,
-              status: sbStatus,
-              updated_at: new Date().toISOString()
-            };
-            
-            console.log(`[MARK ATT] Payload for ${empId}:`, payload);
-            
-            if(timeOutStr) payload.time_out = timeOutStr;
-            
-            await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
-          }
-          
-          console.log(`[MARK ATT] ✅ Synced to Supabase!`);
-          toast('✅ Attendance saved & synced to Supabase!');
-          closeModal();
-          await loadAtt();
-          await refreshLiveAttendance();
-        } catch(e) {
-          console.error('[MARK ATT] Sync error:', e);
-          console.error('[MARK ATT] Error details:', e.message, e.details);
-          toast(`⚠️ Supabase sync failed: ${e.message}`);
-          closeModal();
-        }
-      })();
-    } else {
-      closeModal(); toast('✅ Attendance saved!'); loadAtt();
-    }
-  },'💾 Save Attendance');
+    const timeInStr = `${date} ${tin}:00`;
+    const timeOutStr = tout ? `${date} ${tout}:00` : null;
+    
+    const payload = {
+      employee_id: empId,
+      branch_id: branchUUID,
+      date: date,
+      time_in: timeInStr,
+      status: sbStatus,
+      updated_at: new Date().toISOString()
+    };
+    
+    if(timeOutStr) payload.time_out = timeOutStr;
+    
+    await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
+    
+    toast(`✅ Saved!`);
+    await loadAtt();
+    await refreshLiveAttendance();
+  } catch(e) {
+    toast(`⚠️ Error: ${e.message}`);
+  }
 }
 
 function exportAtt(){
@@ -3830,10 +3788,7 @@ async function computePayroll(){
     const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
     const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
     
-    console.log(`[PAYROLL DEBUG] ${eid} (${e.name}):`);
-    console.log(`  Total records: ${recs.length}`);
-    console.log(`  Present: ${daysPresent}, Absent: ${absences}, Half: ${halfDays}`);
-    console.log(`  Records:`, recs.map(r=>`${r.date}=${r.status}`).join(', '));
+    console.log(`[PAYROLL] ${eid}: records=${recs.length}, present=${daysPresent}, hours=[${recs.map(r=>`${r.date}=${r.hours||'?'}`).join(',')}]`);
     const loanDed    = getActiveLoanDeduction(eid);
     const allowances = e.allowances || {};
     const hasAtt     = daysPresent+absences+halfDays > 0;
