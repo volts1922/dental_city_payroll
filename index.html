@@ -3096,7 +3096,7 @@ function showAttendanceTracker(period='week'){
 }
 
 // ── Mark Attendance for Individual Employee ─────────────────────────────────
-function markAttRecordIndividual(eid, date){
+async function markAttRecordIndividual(eid, date){
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const emp = emps[eid];
   if(!emp) {toast('Employee not found'); return;}
@@ -3107,29 +3107,25 @@ function markAttRecordIndividual(eid, date){
         🎉 ${holType} — ${holType.includes('Regular')?'200%':'130%'} pay applies!
        </div>` : '';
   
-  // Fetch existing time_out from Supabase if it exists
-  let existingTimeOut = '00:00'; // Default: no time out
+  // FETCH existing time_out FIRST before building modal
+  let timeOutValue = '00:00'; // Default
   if(_sb){
-    (async ()=>{
-      try {
-        const branchUUID = await getBranchUUID(getBranch());
-        const {data: rec} = await _sb.from('time_clock')
-          .select('time_out')
-          .eq('employee_id', eid)
-          .eq('branch_id', branchUUID)
-          .eq('date', date)
-          .single();
-        
-        if(rec && rec.time_out) {
-          existingTimeOut = rec.time_out.substring(11, 16); // Extract "HH:MM"
-          const toutInput = document.getElementById('ind_tout');
-          if(toutInput) toutInput.value = existingTimeOut;
-          console.log(`[MARK IND] Pre-filled time_out: ${existingTimeOut}`);
-        }
-      } catch(e) {
-        console.log('[MARK IND] No existing record yet');
+    try {
+      const branchUUID = await getBranchUUID(getBranch());
+      const {data: rec} = await _sb.from('time_clock')
+        .select('time_out')
+        .eq('employee_id', eid)
+        .eq('branch_id', branchUUID)
+        .eq('date', date)
+        .single();
+      
+      if(rec && rec.time_out) {
+        timeOutValue = rec.time_out.substring(11, 16); // Extract "HH:MM"
+        console.log(`[MARK IND] Found time_out: ${timeOutValue}`);
       }
-    })();
+    } catch(e) {
+      console.log('[MARK IND] No existing record');
+    }
   }
   
   const html = `
@@ -3157,7 +3153,7 @@ function markAttRecordIndividual(eid, date){
         </div>
         <div class="form-group">
           <label class="form-label">TIME OUT</label>
-          <input id="ind_tout" type="time" value="00:00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+          <input id="ind_tout" type="time" value="${timeOutValue}" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
         </div>
         <div class="form-group">
           <label class="form-label">OT HOURS</label>
