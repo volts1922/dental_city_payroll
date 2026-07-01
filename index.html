@@ -2643,7 +2643,7 @@ async function clockOutPastDate(eid, date){
           branch_id: branchUUID,
           date: date,
           time_out: timeOutStr,
-          status: 'clocked_in',  // They worked! Only time_out is set now
+          status: 'clocked_out',  // Mark as clocked out
           updated_at: new Date().toISOString()
         }, {onConflict: 'employee_id,branch_id,date'});
         
@@ -3791,10 +3791,15 @@ async function computePayroll(){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
           
-          // Convert status: clocked_in/clocked_out → Present/Absent
+          // Convert status: if has both time_in+time_out = worked (Present)
           let status = r.status;
-          if(status === 'clocked_in') status = 'Present';
-          if(status === 'clocked_out') status = 'Absent';
+          if((status === 'clocked_in' || status === 'clocked_out') && r.time_in && r.time_out) {
+            status = 'Present';  // Has both times = worked
+          } else if(status === 'clocked_in') {
+            status = 'Present';
+          } else if(status === 'clocked_out') {
+            status = 'Absent';  // clocked_out alone = didn't work
+          }
           
           att[r.employee_id].push({
             date: r.date,
