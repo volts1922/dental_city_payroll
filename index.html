@@ -3953,11 +3953,25 @@ async function showPayslip(empId, month, startDate, endDate){
   // Calculate FULL MONTH gross (always 22 business days) for deduction basis
   const fullMonthDays = 22; // Standard PH workdays
   const fullMonthGross = rate * fullMonthDays;
-  
-  // Period-specific gross (for display)
+
+  // Compute Overtime / Night Differential from actual per-day time in/out
+  // (this was missing before — payslip only counted basic days worked).
+  let otHours = 0, ndHours = 0;
+  attRecords.forEach(r=>{
+    const tIn  = r.time_in  && r.time_in.includes(' ')  ? r.time_in.split(' ')[1]  : r.time_in;
+    const tOut = r.time_out && r.time_out.includes(' ') ? r.time_out.split(' ')[1] : r.time_out;
+    if(!tIn || !tOut) return;
+    const {ot, nd} = computeOT(tIn, tOut);
+    otHours += ot; ndHours += nd;
+  });
+  const hourlyRate = rate / 8;
+  const otPay = Math.round(hourlyRate * OT_MULTIPLIER * otHours * 100) / 100;
+  const ndPay = Math.round(hourlyRate * ND_RATE * ndHours * 100) / 100;
+
+  // Period-specific gross (for display) — now includes OT/ND pay
   const basicPay = rate * daysWorked;
-  const gross = basicPay;
-  
+  const gross = basicPay + otPay + ndPay;
+
   // Determine deductions based on FULL MONTH gross
   let pay;
   if(deductionType === 'full_month'){
@@ -3968,7 +3982,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
     
     pay = {
-      daysWorked, basic: basicPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -3983,7 +3997,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyPI = 100;
     
     pay = {
-      daysWorked, basic: basicPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -3996,7 +4010,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
     
     pay = {
-      daysWorked, basic: basicPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross,
       sss: 0, ph: 0, pi: 0,
       tax: monthlyBIR,
       loanDeduction: 0,
@@ -4009,7 +4023,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyPI = 100;
     
     pay = {
-      daysWorked, basic: basicPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4042,6 +4056,8 @@ async function showPayslip(empId, month, startDate, endDate){
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">EARNINGS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
         <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Basic Pay (${pay.daysWorked.toFixed(1)}d × ${fmt(rate)})</td><td style="padding:10px;text-align:right">${fmt(pay.basic)}</td></tr>
+        ${pay.otPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Overtime Pay (${otHours.toFixed(2)} hrs × 1.25)</td><td style="padding:10px;text-align:right">${fmt(pay.otPay)}</td></tr>` : ''}
+        ${pay.ndPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Night Differential (${ndHours.toFixed(2)} hrs)</td><td style="padding:10px;text-align:right">${fmt(pay.ndPay)}</td></tr>` : ''}
         <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">GROSS PAY</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
         ${pay.sss > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">SSS</td><td style="padding:10px;text-align:right">${fmt(pay.sss)}</td></tr>` : ''}
