@@ -1616,8 +1616,7 @@ function today(){
   // Get current time and convert to Philippines timezone (GMT+8)
   const now = new Date();
   // Convert local time to UTC, then add 8 hours for GMT+8
-  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-  const phMs = utcMs + (8 * 60 * 60 * 1000);
+  const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
   const phDate = new Date(phMs);
   // Extract date as YYYY-MM-DD using UTC methods
   const year = phDate.getUTCFullYear();
@@ -1631,8 +1630,7 @@ function todayPH(){
   // Get current time and convert to Philippines timezone (GMT+8)
   const now = new Date();
   // Convert local time to UTC, then add 8 hours for GMT+8
-  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-  const phMs = utcMs + (8 * 60 * 60 * 1000);
+  const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
   const phDate = new Date(phMs);
   // Extract date as YYYY-MM-DD using UTC methods
   const year = phDate.getUTCFullYear();
@@ -2471,15 +2469,30 @@ async function loadAtt(){
           const emp = emps[r.employee_id] || {name: r.employee_id};
           const eid = r.employee_id;
           // Use branch from emp object, or try to get from branch_id, otherwise use current branch
-          const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
+          const empBranch = emp.branch || getBranch(); // records here are already filtered to the current branch
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
           const timeInStr = r.time_in ? r.time_in.substring(11, 16) : '—';  // Extract "HH:MM" from "YYYY-MM-DD HH:MM:SS"
           const timeOutStr = r.time_out ? r.time_out.substring(11, 16) : '—';  // Extract "HH:MM" from "YYYY-MM-DD HH:MM:SS"
-          
+
+          // Compute Hours / OT / ND from time in-out (was hardcoded to '—' before)
+          let hoursStr = '—', otStr = '—', ndStr = '—';
+          if(timeInStr !== '—' && timeOutStr !== '—'){
+            const tIn = parseTime(timeInStr);
+            let tOut = parseTime(timeOutStr);
+            if(tIn && tOut){
+              if(tOut < tIn) tOut = new Date(tOut.getTime() + 24*3600000); // overnight shift
+              const totalHrs = Math.max((tOut - tIn) / 3600000, 0);
+              hoursStr = totalHrs.toFixed(2);
+              const {ot, nd} = computeOT(timeInStr, timeOutStr);
+              otStr = ot.toFixed(2);
+              ndStr = nd.toFixed(2);
+            }
+          }
+
           rows.push(`<tr>
             <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
             <td>${to12h(timeInStr)}</td><td>${to12h(timeOutStr)}</td>
-            <td>—</td><td>—</td><td>—</td>
+            <td>${hoursStr}</td><td>${otStr}</td><td>${ndStr}</td>
             <td>${holBadge}</td>
             <td>${badge(r.status||'—')}</td>
             <td>
@@ -2629,8 +2642,7 @@ async function clockOutPastDate(eid, date){
   
   // Default: current time
   const now = new Date();
-  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-  const phMs = utcMs + (8 * 60 * 60 * 1000);
+  const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
   const phDate = new Date(phMs);
   const defTime = String(phDate.getUTCHours()).padStart(2,'0') + ':' + String(phDate.getUTCMinutes()).padStart(2,'0');
   
@@ -3348,17 +3360,39 @@ function markAttModal(){
 
 // Save individual employee Mark Attendance
 async function saveMarkAttendanceIndividual(empId, date){
-  if(!_sb) { toast('⚠️ Supabase not connected'); return; }
-  
+  const tin = document.getElementById(`ti_${empId}`)?.value;
+  const tout = document.getElementById(`to_${empId}`)?.value;
+  const markStatus = document.getElementById(`ms_${empId}`).value;
+
+  // ALWAYS save locally to KEYS.attendance first (with computed Hours/OT), so
+  // history/reports/payroll/exports (which read KEYS.attendance) have real
+  // numbers even if Supabase is unreachable.
+  try {
+    const att = load(KEYS.attendance);
+    if(!att[empId]) att[empId] = [];
+    att[empId] = att[empId].filter(r=>r.date!==date);
+    let hours = 0, ot_hours = 0;
+    if(tin && tout){
+      const {ot} = computeOT(tin, tout);
+      const tIn = parseTime(tin); let tOut = parseTime(tout);
+      if(tIn && tOut){
+        if(tOut < tIn) tOut = new Date(tOut.getTime() + 24*3600000);
+        hours = Math.round(Math.max((tOut - tIn) / 3600000, 0) * 100) / 100;
+      }
+      ot_hours = ot;
+    }
+    att[empId].push({ date, status: markStatus, time_in: tin || '—', time_out: tout || '—', hours, ot_hours });
+    save(KEYS.attendance, att);
+  } catch(e) { console.error('Local attendance save error:', e); }
+
+  if(!_sb) { toast(`✅ Saved locally!`); loadAtt(); return; }
+
   try {
     const branchUUID = await getBranchUUID(getBranch());
-    const tin = document.getElementById(`ti_${empId}`)?.value;
-    const tout = document.getElementById(`to_${empId}`)?.value;
-    const markStatus = document.getElementById(`ms_${empId}`).value;
     const timeInStr = `${date} ${tin}:00`;
     const timeOutStr = tout ? `${date} ${tout}:00` : null;
     const sbStatus = (markStatus === 'Absent' || timeOutStr) ? 'clocked_out' : 'clocked_in';
-    
+
     const payload = {
       employee_id: empId,
       branch_id: branchUUID,
@@ -3367,16 +3401,17 @@ async function saveMarkAttendanceIndividual(empId, date){
       status: sbStatus,
       updated_at: new Date().toISOString()
     };
-    
+
     if(timeOutStr) payload.time_out = timeOutStr;
-    
+
     await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
-    
+
     toast(`✅ Saved!`);
     await loadAtt();
     await refreshLiveAttendance();
   } catch(e) {
-    toast(`⚠️ Error: ${e.message}`);
+    toast(`⚠️ Saved locally, but Supabase sync failed: ${e.message}`);
+    loadAtt();
   }
 }
 
@@ -9070,8 +9105,7 @@ async function clockIn(empId, branchId) {
     const now = new Date();
     
     // Convert to Philippines time (UTC+8)
-    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-    const phMs = utcMs + (8 * 60 * 60 * 1000);
+    const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
     const phDate = new Date(phMs);
     
     const year = phDate.getUTCFullYear();
@@ -9108,8 +9142,7 @@ async function startBreak(empId, branchId, breakType = 'Lunch') {
     const now = new Date();
     
     // Convert to Philippines time (UTC+8)
-    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-    const phMs = utcMs + (8 * 60 * 60 * 1000);
+    const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
     const phDate = new Date(phMs);
     
     const year = phDate.getUTCFullYear();
@@ -9142,8 +9175,7 @@ async function endBreak(empId, branchId) {
     const now = new Date();
     
     // Convert to Philippines time (UTC+8)
-    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-    const phMs = utcMs + (8 * 60 * 60 * 1000);
+    const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
     const phDate = new Date(phMs);
     
     const year = phDate.getUTCFullYear();
@@ -9176,8 +9208,7 @@ async function clockOut(empId, branchId) {
     const now = new Date();
     
     // Convert to Philippines time (UTC+8)
-    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
-    const phMs = utcMs + (8 * 60 * 60 * 1000);
+    const phMs = now.getTime() + (8 * 60 * 60 * 1000); // now.getTime() is already an absolute UTC instant; no local-offset adjustment needed
     const phDate = new Date(phMs);
     
     const year = phDate.getUTCFullYear();
@@ -9210,7 +9241,28 @@ async function clockOut(empId, branchId) {
       time_out: timeOutStr, status: 'clocked_out', updated_at: now.toISOString()
     }).eq('id', clock.id);
     await _syncPayroll(empId, branchId, todayPh, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
+
+    // Mirror into KEYS.attendance (local) so Hours/OT actually show up in the
+    // Attendance table, weekly/monthly reports, payroll, and exports — this was
+    // being computed above but never saved anywhere those screens read from.
+    try {
+      const att = load(KEYS.attendance);
+      if(!att[empId]) att[empId] = [];
+      const timeInHM = (clock.time_in||'').includes(' ') ? clock.time_in.split(' ')[1].slice(0,5) : (clock.time_in||'—');
+      const timeOutHM = timeOutStr.split(' ')[1].slice(0,5);
+      let rec = att[empId].find(r=>r.date===todayPh);
+      if(!rec){ rec = {date: todayPh, status: 'Present'}; att[empId].push(rec); }
+      rec.time_in = timeInHM;
+      rec.time_out = timeOutHM;
+      rec.hours = parseFloat(netHours);
+      rec.ot_hours = parseFloat(otHours);
+      rec.status = rec.status || 'Present';
+      save(KEYS.attendance, att);
+    } catch(e) { console.error('Local attendance sync (clockOut) error:', e); }
+
     toast(`✅ Clocked out at ${to12h(timeOutStr)}\nNet: ${netHours}h | OT: ${otHours}h`);
+    if(document.getElementById('attBody')) loadAtt();
+    if(document.getElementById('liveAttendance')) refreshLiveAttendance();
     return {gross: grossHours, break: totalBreakHours, net: netHours, ot: otHours};
   } catch(e) {
     console.error(e);
