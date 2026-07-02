@@ -1191,7 +1191,7 @@ async function doLogout(){
 }
 function isOwner(){       return currentRole==='owner'||currentRole==='dev'; }
 function isBranchAdmin(){ return currentRole==='branch_admin'; }
-function isAdmin(){       return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='dev'; }
+function isAdmin(){       return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='branch_admin'||currentRole==='dev'; }
 function canSeeAll(){     return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='dev'; }
 function isDeveloper(){   return currentRole==='dev'; }
 const WORKING_DAYS  = 22;
@@ -1654,30 +1654,8 @@ function formatEmpId(eid, branch=''){
 }
 async function getBranchUUID(branchName){
   if(!_sb) return null;
-  try {
-    const {data, error} = await _sb.from('branches').select('id').eq('name', branchName).single();
-    if(error) throw error;
-    return data?.id || null;
-  } catch(e) {
-    console.error('getBranchUUID error:', e);
-    return null;
-  }
-}
-let _branchNameCache = null;
-async function getBranchNameById(branchId){
-  if(!branchId) return null;
-  if(!_branchNameCache){
-    try {
-      const {data, error} = await _sb.from('branches').select('id,name');
-      if(error) throw error;
-      _branchNameCache = {};
-      (data||[]).forEach(b=>{ _branchNameCache[b.id] = b.name; });
-    } catch(e) {
-      console.error('getBranchNameById error:', e);
-      return null;
-    }
-  }
-  return _branchNameCache[branchId] || null;
+  const {data} = await _sb.from('branches').select('id').eq('name', branchName).single();
+  return data?.id || null;
 }
 function fval(k){ const el=document.getElementById('f_'+k); return el?el.value.trim():''; }
 function badge(status){
@@ -2483,7 +2461,7 @@ async function loadAtt(){
           const emp = emps[r.employee_id] || {name: r.employee_id};
           const eid = r.employee_id;
           // Use branch from emp object, or try to get from branch_id, otherwise use current branch
-          const empBranch = emp.branch || getBranch(); // records here are already filtered to the current branch
+          const empBranch = emp.branch || (emp.branch_id ? 'Premier' : getBranch()); // TODO: lookup branch name from UUID
           const holBadge = holType ? `<span class="badge badge-gray">${holType}</span>` : '—';
           const timeInStr = r.time_in ? r.time_in.substring(11, 16) : '—';  // Extract "HH:MM" from "YYYY-MM-DD HH:MM:SS"
           const timeOutStr = r.time_out ? r.time_out.substring(11, 16) : '—';  // Extract "HH:MM" from "YYYY-MM-DD HH:MM:SS"
@@ -2604,7 +2582,7 @@ async function refreshLiveAttendance(){
           <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
           <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid))">🔴 Clock Out</button>
+        <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid)).then(()=>refreshLiveAttendance())">🔴 Clock Out</button>
       </div>
     `).join('');
     
@@ -2653,27 +2631,12 @@ async function clockOutPastDate(eid, date){
   openModal(`🔴 Clock Out — ${_esc(emp.name)}`, html, async ()=>{
     const timeOut = document.getElementById('co_time')?.value;
     if(!timeOut) { toast('⚠️ Set time'); return; }
-
-    // Mirror into KEYS.attendance (local) so it shows up in the Attendance
-    // Tracker report/export and payroll, which read local history.
-    try {
-      const att = load(KEYS.attendance);
-      if(!att[eid]) att[eid] = [];
-      let rec = att[eid].find(r=>r.date===date);
-      if(!rec){ rec = {date, status:'Present'}; att[eid].push(rec); }
-      rec.time_out = timeOut;
-      if(rec.time_in && rec.time_in!=='—'){
-        const result = calculateWorkHours(rec.time_in, timeOut);
-        rec.hours = parseFloat(result.decimalHours);
-      }
-      save(KEYS.attendance, att);
-    } catch(e) { console.error('Local attendance save (clockOutPastDate) error:', e); }
-
+    
     if(_sb){
       try {
         const branchUUID = await getBranchUUID(getBranch());
         const timeOutStr = `${date} ${timeOut}:00`;
-
+        
         await _sb.from('time_clock').upsert({
           employee_id: eid,
           branch_id: branchUUID,
@@ -2682,20 +2645,14 @@ async function clockOutPastDate(eid, date){
           status: 'clocked_out',  // Mark as clocked out
           updated_at: new Date().toISOString()
         }, {onConflict: 'employee_id,branch_id,date'});
-
+        
         toast(`✅ ${emp.name} clocked out!`);
         closeModal();
         await loadAtt();
         await refreshLiveAttendance();
       } catch(e) {
-        toast(`⚠️ Saved locally, but Supabase sync failed: ${e.message}`);
-        closeModal();
-        await loadAtt();
+        toast(`⚠️ Error: ${e.message}`);
       }
-    } else {
-      toast(`✅ ${emp.name} clocked out!`);
-      closeModal();
-      loadAtt();
     }
   }, '🔴 Clock Out');
 }
@@ -2703,41 +2660,26 @@ async function clockOutPastDate(eid, date){
 async function deleteAttRecord(eid, date){
   const name = (load(KEYS.employees)[eid]||{}).name || eid;
   if(!(await _confirm(`Delete attendance for "${name}" on ${date}?`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
-
-  // Always remove from local KEYS.attendance history too, so it doesn't
-  // linger in reports/payroll after being deleted from the live view.
-  try {
-    const att = load(KEYS.attendance);
-    if(att[eid]){
-      att[eid] = att[eid].filter(r=>r.date!==date);
-      if(att[eid].length===0) delete att[eid];
-      save(KEYS.attendance, att);
-    }
-  } catch(e) { console.error('Local attendance delete error:', e); }
-
+  
   if(_sb){
     try {
       // Get branch UUID
       const {data: branchData} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
-      if(!branchData) { toast('⚠️ Branch not found'); loadAtt(); return; }
-
+      if(!branchData) { toast('⚠️ Branch not found'); return; }
+      
       // Delete from Supabase
       await _sb.from('time_clock')
         .delete()
         .eq('employee_id', eid)
         .eq('branch_id', branchData.id)
         .eq('date', date);
-
+      
       toast(`🗑 Attendance deleted for ${name} on ${date}`);
       loadAtt();
     } catch(e) {
       console.error('Delete error:', e);
-      toast('❌ Failed to delete from Supabase (removed locally)');
-      loadAtt();
+      toast('❌ Failed to delete');
     }
-  } else {
-    toast(`🗑 Attendance deleted for ${name} on ${date}`);
-    loadAtt();
   }
 }
 
@@ -2894,15 +2836,127 @@ function calculateWorkHours(clockIn, clockOut){
   };
 }
 
-// NOTE: The no-argument clockIn()/clockOut() that used to live here (reading a
-// '#clkEmpSel' dropdown that no longer exists anywhere in the UI) were dead code:
-// they were never called by any button, and were permanently shadowed anyway by
-// the clockIn(empId, branchId) / clockOut(empId, branchId) versions defined later
-// in this file (JS hoisting means the last function declaration wins). Removed to
-// avoid confusion. The live "Mark Attendance" flows (markAttRecordIndividual,
-// saveMarkAttendanceIndividual) and the Live Attendance panel's Clock Out button
-// are the actual attendance entry points, and they save to both Supabase
-// (time_clock) and KEYS.attendance (local history used by reports/payroll).
+async function clockIn(){
+  const sel=document.getElementById('clkEmpSel').value;
+  if(!sel){toast('⚠️ Select an employee first');return;}
+  const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
+  const nowStr=now.toTimeString().slice(0,8), td=today();
+  const empName = sel.split(' (')[0];
+  if(!(await _confirm(`Clock IN "${empName}" at ${nowStr}?<br>Date: ${td}`, {ok:'Clock In', cancel:'Cancel', icon:'⏵'}))) return;
+  if(!att[eid]) att[eid]=[];
+  const existing=att[eid].find(r=>r.date===td);
+  if(existing&&existing.time_in&&existing.time_in!=='—'){toast(`⚠️ Already clocked in at ${existing.time_in}`);return;}
+  if(existing){ existing.time_in=nowStr; existing.status='Present'; }
+  else att[eid].push({date:td,status:'Present',time_in:nowStr,time_out:'—',hours:0,ot_hours:0,nd_hours:0,holiday:''});
+  save(KEYS.attendance,att);
+  
+  // SYNC TO SUPABASE with proper format
+  if(_sb){
+    try {
+      const now_iso = new Date().toISOString();
+      const branchUUID = await getBranchUUID(getBranch());
+      const {data, error} = await _sb.from('time_clock').upsert({
+        employee_id: eid,
+        branch_id: branchUUID,
+        date: td,
+        status: 'clocked_in',
+        time_in: now_iso,
+        time_out: null,
+        updated_at: now_iso
+      }, {onConflict: 'employee_id,branch_id,date'});
+      if(error) {
+        console.warn('⚠️ Supabase sync error:', error.status, error.message);
+        toast(`⚠️ Sync warning: ${error.message}`);
+      } else {
+        console.log('✓ Synced to Supabase:', data);
+      }
+    } catch(e) { 
+      console.error('Supabase exception:', e);
+      toast(`⚠️ Sync failed: ${e.message}`);
+    }
+  }
+  
+  document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
+  document.getElementById('clkStatus').style.color='var(--green)';
+  loadAtt();
+  // Auto-refresh dashboard if viewing it
+  setTimeout(()=>{
+    // Dashboard removed
+  }, 500);
+}
+
+async function clockOut(){
+  const sel=document.getElementById('clkEmpSel').value;
+  if(!sel){toast('⚠️ Select an employee first');return;}
+  const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
+  const nowStr=now.toTimeString().slice(0,8), td=today();
+  const existing=(att[eid]||[]).find(r=>r.date===td);
+  if(!existing||!existing.time_in||existing.time_in==='—'){toast('⚠️ Not clocked in yet. Please clock in first.');return;}
+  if(existing.time_out&&existing.time_out!=='—'&&existing.time_out.split(':').length===3){toast(`⚠️ Already clocked out at ${existing.time_out}`);return;}
+  const empName = sel.split(' (')[0];
+  if(!(await _confirm(`Clock OUT "${empName}" at ${nowStr}?<br>Clocked in at: ${existing.time_in}`, {ok:'Clock Out', cancel:'Cancel', icon:'⏹'}))) return;
+  existing.time_out=nowStr;
+  
+  // Calculate hours worked using 12-hour format
+  const result = calculateWorkHours(existing.time_in, nowStr);
+  existing.hours = parseFloat(result.decimalHours);
+  
+  // Calculate OT/ND
+  const {ot, nd} = computeOT(existing.time_in, nowStr);
+  existing.ot_hours = Math.round(ot * 100) / 100;
+  existing.nd_hours = Math.round(nd * 100) / 100;
+  // Auto-flag Late if clocked in after 08:10
+  if(existing.time_in){
+    const tinParsed=parseTime(existing.time_in);
+    const cutoff=new Date(0,0,0,8,10,0);
+    if(tinParsed>cutoff) existing.status='Late';
+  }
+  save(KEYS.attendance,att);
+  
+  // SYNC TO SUPABASE with proper format
+  if(_sb){
+    try {
+      const now_iso = new Date().toISOString();
+      const branchUUID = await getBranchUUID(getBranch());
+      // Convert time strings to ISO timestamps for this date
+      const timeInISO = new Date(`${td}T${existing.time_in}`).toISOString();
+      const timeOutISO = new Date(`${td}T${nowStr}`).toISOString();
+      
+      // Determine final status
+      let finalStatus = existing.status || 'Present';
+      if(finalStatus === 'Late' || finalStatus === 'clocked_in') {
+        finalStatus = 'clocked_out'; // Mark as completed
+      }
+      
+      const {data, error} = await _sb.from('time_clock').upsert({
+        employee_id: eid,
+        branch_id: branchUUID,
+        date: td,
+        status: finalStatus,
+        time_in: timeInISO,
+        time_out: timeOutISO,
+        updated_at: now_iso
+      }, {onConflict: 'employee_id,branch_id,date'});
+      if(error) {
+        console.warn('⚠️ Clock out sync error:', error.status, error.message);
+        toast(`⚠️ Sync warning: ${error.message}`);
+      } else {
+        console.log('✓ Clock out synced to Supabase:', data);
+      }
+    } catch(e) { 
+      console.error('Supabase exception:', e);
+      toast(`⚠️ Sync failed: ${e.message}`);
+    }
+  }
+  
+  document.getElementById('clkStatus').textContent=`🔴 Clocked OUT at ${nowStr} (${existing.hours}h)`;
+  document.getElementById('clkStatus').style.color='var(--red)';
+  loadAtt();
+  // Auto-refresh dashboard if viewing it
+  setTimeout(()=>{
+    // Dashboard removed
+  }, 500);
+}
 
 function showWeeklyAttendance(){
   showAttendanceTracker('week');
@@ -3283,50 +3337,18 @@ function markAttModal(){
 
 // Save individual employee Mark Attendance
 async function saveMarkAttendanceIndividual(empId, date){
-  const tin = document.getElementById(`ti_${empId}`)?.value;
-  const tout = document.getElementById(`to_${empId}`)?.value;
-  const markStatus = document.getElementById(`ms_${empId}`).value;
-  const holiday = document.getElementById(`hol_${empId}`)?.value || '';
-  const otHours = parseFloat(document.getElementById(`ot_${empId}`)?.value || 0);
-  const ndHours = parseFloat(document.getElementById(`nd_${empId}`)?.value || 0);
-
-  // ALWAYS save locally to KEYS.attendance first, so history/reports/payroll
-  // (which read KEYS.attendance) have this record even if Supabase is unreachable.
-  try {
-    const att = load(KEYS.attendance);
-    if(!att[empId]) att[empId] = [];
-    att[empId] = att[empId].filter(r=>r.date!==date);
-    const tIn = parseTime(tin), tOut = parseTime(tout);
-    const hours = tIn && tOut ? Math.round(Math.max((tOut - tIn) / 3600000, 0) * 100) / 100 : 0;
-    att[empId].push({
-      date: date,
-      status: markStatus,
-      time_in: tin || '—',
-      time_out: tout || '—',
-      hours,
-      ot_hours: Math.round(otHours * 100) / 100,
-      nd_hours: Math.round(ndHours * 100) / 100,
-      holiday
-    });
-    save(KEYS.attendance, att);
-  } catch(e) {
-    console.error('Local attendance save error:', e);
-  }
-
-  if(!_sb) {
-    toast(`✅ ${(load(KEYS.employees)[empId]||{}).name || empId} attendance saved!`);
-    closeModal();
-    loadAtt();
-    return;
-  }
-
+  if(!_sb) { toast('⚠️ Supabase not connected'); return; }
+  
   try {
     const branchUUID = await getBranchUUID(getBranch());
+    const tin = document.getElementById(`ti_${empId}`)?.value;
+    const tout = document.getElementById(`to_${empId}`)?.value;
+    const markStatus = document.getElementById(`ms_${empId}`).value;
     const sbStatus = markStatus === 'Absent' ? 'clocked_out' : 'clocked_in';
-
+    
     const timeInStr = `${date} ${tin}:00`;
     const timeOutStr = tout ? `${date} ${tout}:00` : null;
-
+    
     const payload = {
       employee_id: empId,
       branch_id: branchUUID,
@@ -3335,17 +3357,16 @@ async function saveMarkAttendanceIndividual(empId, date){
       status: sbStatus,
       updated_at: new Date().toISOString()
     };
-
+    
     if(timeOutStr) payload.time_out = timeOutStr;
-
+    
     await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
-
+    
     toast(`✅ Saved!`);
     await loadAtt();
     await refreshLiveAttendance();
   } catch(e) {
-    toast(`⚠️ Saved locally, but Supabase sync failed: ${e.message}`);
-    loadAtt();
+    toast(`⚠️ Error: ${e.message}`);
   }
 }
 
@@ -8089,7 +8110,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v30';
+    const _SW_VER = 'dcpayroll-v31';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -8675,6 +8696,38 @@ function renderPayrollApprovals(approvals){
     </table></div>`}`;
 }
 
+function approvePayroll(runId){
+  _confirm(`Approve payroll run ${runId}?`,{ok:'Approve',cancel:'Cancel',icon:'💰'}).then(async ok=>{
+    if(!ok) return;
+    const approvals = load(KEYS.payroll_approvals) || {};
+    if(approvals[runId]){
+      approvals[runId].status = 'Approved';
+      approvals[runId].approved_at = new Date().toISOString();
+      approvals[runId].approved_by = _currentUser || getBranch();
+      save(KEYS.payroll_approvals, approvals);
+      await syncToCloud(KEYS.payroll_approvals, approvals);
+      addNotification(approvals[runId].branch, "approved", runId, {}); toast(`✅ Payroll ${runId} approved!`);
+      showPayrollApprovals();
+    }
+  });
+}
+
+function denyPayroll(runId){
+  _confirm(`Deny payroll run ${runId}?`,{ok:'Deny',cancel:'Cancel',danger:true}).then(async ok=>{
+    if(!ok) return;
+    const approvals = load(KEYS.payroll_approvals) || {};
+    if(approvals[runId]){
+      approvals[runId].status = 'Denied';
+      approvals[runId].denied_at = new Date().toISOString();
+      approvals[runId].denied_by = _currentUser || getBranch();
+      save(KEYS.payroll_approvals, approvals);
+      await syncToCloud(KEYS.payroll_approvals, approvals);
+      addNotification(approvals[runId].branch, "denied", runId, {}); toast(`⛔ Payroll ${runId} denied`);
+      showPayrollApprovals();
+    }
+  });
+}
+
 // ── NOTIFICATIONS SYSTEM (localStorage-based) ────────────────────────────────
 const NOTIFICATION_STORAGE_KEY = 'dc_payroll_notifications';
 
@@ -8960,7 +9013,6 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
     if(tableName === 'employees_201') onConflict = 'employee_id';
     if(tableName === 'pr_payroll_approvals') onConflict = 'run_id';
     if(tableName === 'payroll_accounts') onConflict = 'username';
-    if(tableName === 'payroll_data') onConflict = 'branch_key,data_type';
     
     let lastError = null;
     for(let attempt = 0; attempt <= retries; attempt++){
@@ -9148,27 +9200,7 @@ async function clockOut(empId, branchId) {
       time_out: timeOutStr, status: 'clocked_out', updated_at: now.toISOString()
     }).eq('id', clock.id);
     await _syncPayroll(empId, branchId, todayPh, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
-
-    // Mirror into KEYS.attendance (local) so reports/payroll/gov forms that read
-    // local attendance history also see this clock-out, matching Supabase.
-    try {
-      const att = load(KEYS.attendance);
-      if(!att[empId]) att[empId] = [];
-      const timeInHM = (clock.time_in||'').includes(' ') ? clock.time_in.split(' ')[1].slice(0,5) : (clock.time_in||'—');
-      const timeOutHM = timeOutStr.split(' ')[1].slice(0,5);
-      let rec = att[empId].find(r=>r.date===todayPh);
-      if(!rec){ rec = {date: todayPh, status: 'Present'}; att[empId].push(rec); }
-      rec.time_in = timeInHM;
-      rec.time_out = timeOutHM;
-      rec.hours = parseFloat(netHours);
-      rec.ot_hours = parseFloat(otHours);
-      rec.status = rec.status || 'Present';
-      save(KEYS.attendance, att);
-    } catch(e) { console.error('Local attendance sync (clockOut) error:', e); }
-
     toast(`✅ Clocked out at ${timeOutStr}\nNet: ${netHours}h | OT: ${otHours}h`);
-    if(document.getElementById('attBody')) loadAtt();
-    if(document.getElementById('liveAttendance')) refreshLiveAttendance();
     return {gross: grossHours, break: totalBreakHours, net: netHours, ot: otHours};
   } catch(e) {
     console.error(e);
@@ -9177,8 +9209,16 @@ async function clockOut(empId, branchId) {
 }
 
 function _calcTime(timeIn, timeOut) {
-  const [inHr, inMin] = timeIn.split(':').map(Number);
-  const [outHr, outMin] = timeOut.split(':').map(Number);
+  // FIX: timeIn/timeOut can be "HH:MM[:SS]" OR full "YYYY-MM-DD HH:MM:SS".
+  // Always pull just the HH:MM(:SS) portion before doing math.
+  const extract = (t) => {
+    if(!t) return [0,0];
+    const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
+    const [h, m] = timePart.split(':').map(Number);
+    return [h || 0, m || 0];
+  };
+  const [inHr, inMin] = extract(timeIn);
+  const [outHr, outMin] = extract(timeOut);
   const inTotalMins = inHr * 60 + inMin;
   const outTotalMins = outHr * 60 + outMin;
   if(outTotalMins < inTotalMins) return (outTotalMins + 1440) - inTotalMins;
