@@ -1298,7 +1298,7 @@ function updateClock(){
   const now=new Date();
   document.getElementById('clock').textContent=
     now.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})+' '+
-    now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
 }
 setInterval(updateClock,1000); updateClock();
 
@@ -1644,6 +1644,16 @@ function todayPH(){
 function nowPH(){
   const phDate = new Date(new Date().getTime() + (8 * 60 * 60 * 1000));
   return phDate.toISOString();
+}
+// Converts "HH:MM", "HH:MM:SS", or "YYYY-MM-DD HH:MM:SS" (24h) into "h:MM AM/PM" for DISPLAY only.
+function to12h(t){
+  if(!t || t==='—') return '—';
+  const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
+  const [h,m] = timePart.split(':').map(Number);
+  if(isNaN(h)||isNaN(m)) return t;
+  const period = h>=12 ? 'PM' : 'AM';
+  const h12 = h%12===0 ? 12 : h%12;
+  return `${h12}:${String(m).padStart(2,'0')} ${period}`;
 }
 function nextId(data,prefix=''){ const nums=Object.keys(data).map(k=>parseInt(k.replace(prefix,''))).filter(n=>!isNaN(n)); return prefix+String(nums.length?Math.max(...nums)+1:1).padStart(3,'0'); }
 function fmt(n){ return '₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
@@ -2468,7 +2478,7 @@ async function loadAtt(){
           
           rows.push(`<tr>
             <td>${formatEmpId(eid, empBranch)}</td><td><b>${emp.name}</b></td><td>${r.date}</td>
-            <td>${timeInStr}</td><td>${timeOutStr}</td>
+            <td>${to12h(timeInStr)}</td><td>${to12h(timeOutStr)}</td>
             <td>—</td><td>—</td><td>—</td>
             <td>${holBadge}</td>
             <td>${badge(r.status||'—')}</td>
@@ -2577,7 +2587,7 @@ async function refreshLiveAttendance(){
           <div><span style="color:#888">Clocked In:</span> <b>${(() => {
             try {
               const d = new Date(e.timeIn);
-              return isNaN(d.getTime()) ? '—' : new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16);
+              return isNaN(d.getTime()) ? '—' : to12h(new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().slice(11, 16));
             } catch { return '—'; }
           })()}</b></div>
           <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
@@ -3345,10 +3355,9 @@ async function saveMarkAttendanceIndividual(empId, date){
     const tin = document.getElementById(`ti_${empId}`)?.value;
     const tout = document.getElementById(`to_${empId}`)?.value;
     const markStatus = document.getElementById(`ms_${empId}`).value;
-    const sbStatus = (markStatus === 'Absent' || timeOutStr) ? 'clocked_out' : 'clocked_in';
-    
     const timeInStr = `${date} ${tin}:00`;
     const timeOutStr = tout ? `${date} ${tout}:00` : null;
+    const sbStatus = (markStatus === 'Absent' || timeOutStr) ? 'clocked_out' : 'clocked_in';
     
     const payload = {
       employee_id: empId,
@@ -7395,7 +7404,7 @@ function showSecurityDashboard(){
       <table style="width:100%;border-collapse:collapse">
         <tr><td style="padding:8px">Current User:</td><td style="padding:8px;font-weight:600">${user}</td></tr>
         <tr><td style="padding:8px">Role:</td><td style="padding:8px;font-weight:600">${userObj?.role}</td></tr>
-        <tr><td style="padding:8px">Last Activity:</td><td style="padding:8px;font-weight:600">${new Date(SEC.lastActivity).toLocaleTimeString()}</td></tr>
+        <tr><td style="padding:8px">Last Activity:</td><td style="padding:8px;font-weight:600">${new Date(SEC.lastActivity).toLocaleTimeString([], {hour12:true})}</td></tr>
         <tr><td style="padding:8px">Auto-Logout In:</td><td style="padding:8px;font-weight:600">30 minutes of inactivity</td></tr>
       </table>
       
@@ -7420,7 +7429,7 @@ function showSecurityDashboard(){
         ${recentLog.length === 0 ? '<tr><td colspan="3" style="padding:12px;text-align:center;color:#999">No activity yet</td></tr>' : 
           recentLog.map(a => `
             <tr style="border-bottom:1px solid #eee">
-              <td style="padding:8px;white-space:nowrap">${new Date(a.timestamp).toLocaleTimeString()}</td>
+              <td style="padding:8px;white-space:nowrap">${new Date(a.timestamp).toLocaleTimeString([], {hour12:true})}</td>
               <td style="padding:8px"><code style="background:#f5f5f5;padding:2px 4px">${a.action}</code></td>
               <td style="padding:8px;font-size:11px">${typeof a.details === 'string' ? a.details : JSON.stringify(a.details).slice(0,40)}</td>
             </tr>
@@ -9086,7 +9095,7 @@ async function clockIn(empId, branchId) {
       status: 'clocked_in', created_at: now.toISOString()
     }, {onConflict: 'employee_id,branch_id,date'}).select();
     if(error) throw error;
-    toast(`✅ Clocked in at ${timeInStr}`);
+    toast(`✅ Clocked in at ${to12h(timeInStr)}`);
     return data[0];
   } catch(e) {
     console.error(e);
@@ -9201,7 +9210,7 @@ async function clockOut(empId, branchId) {
       time_out: timeOutStr, status: 'clocked_out', updated_at: now.toISOString()
     }).eq('id', clock.id);
     await _syncPayroll(empId, branchId, todayPh, {hours_net: netHours, ot_hours: otHours, break_hours: totalBreakHours});
-    toast(`✅ Clocked out at ${timeOutStr}\nNet: ${netHours}h | OT: ${otHours}h`);
+    toast(`✅ Clocked out at ${to12h(timeOutStr)}\nNet: ${netHours}h | OT: ${otHours}h`);
     return {gross: grossHours, break: totalBreakHours, net: netHours, ot: otHours};
   } catch(e) {
     console.error(e);
