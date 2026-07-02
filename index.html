@@ -3793,14 +3793,22 @@ async function computePayroll(){
             status = 'Absent';  // clocked_out alone = didn't work
           }
           
+          // time_clock has no ot_hours/nd_hours columns — compute them here from
+          // time_in/time_out instead of reading a field that's always undefined
+          // (which was silently making OT pay always ₱0 in payroll).
+          const tInHM = r.time_in ? r.time_in.split(' ')[1] : null;
+          const tOutHM = r.time_out ? r.time_out.split(' ')[1] : null;
+          const workResult = calculateWorkHours(tInHM, tOutHM);
+          const {ot: computedOT, nd: computedND} = computeOT(tInHM, tOutHM);
+
           att[r.employee_id].push({
             date: r.date,
             status: status,
             time_in: r.time_in,
             time_out: r.time_out,
-            hours: calculateWorkHours(r.time_in?.split(' ')[1], r.time_out?.split(' ')[1]),
-            ot_hours: r.ot_hours || 0,
-            nd_hours: r.nd_hours || 0,
+            hours: parseFloat(workResult.decimalHours),
+            ot_hours: computedOT,
+            nd_hours: computedND,
             holiday: r.holiday || ''
           });
         });
