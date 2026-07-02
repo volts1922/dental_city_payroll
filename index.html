@@ -2548,8 +2548,9 @@ async function refreshLiveAttendance(){
       }
       
       const now = new Date();
-      const hoursWorked = Math.max(0, ((now - timeIn) / (1000 * 60 * 60)).toFixed(2));  // Ensure no negative
       const shiftHours = emp.shift_hours || 8;
+      const rawHoursWorked = Math.max(0, (now - timeIn) / (1000 * 60 * 60));
+      const hoursWorked = Math.min(rawHoursWorked, shiftHours).toFixed(2);  // Capped at 8h standard shift
       const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
       const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
       
@@ -3248,8 +3249,8 @@ async function markAttRecordIndividual(eid, date){
           const timeInStr = `${date} ${tin}:00`;
           const timeOutStr = tout ? `${date} ${tout}:00` : null;
           
-          // Map status to Supabase constraint
-          const sbStatus = status === 'Absent' ? 'clocked_out' : 'clocked_in';
+          // Map status to Supabase constraint — clocked_out if Absent OR a Time Out was entered
+          const sbStatus = (status === 'Absent' || timeOutStr) ? 'clocked_out' : 'clocked_in';
           
           const payload = {
             employee_id: eid,
@@ -3344,7 +3345,7 @@ async function saveMarkAttendanceIndividual(empId, date){
     const tin = document.getElementById(`ti_${empId}`)?.value;
     const tout = document.getElementById(`to_${empId}`)?.value;
     const markStatus = document.getElementById(`ms_${empId}`).value;
-    const sbStatus = markStatus === 'Absent' ? 'clocked_out' : 'clocked_in';
+    const sbStatus = (markStatus === 'Absent' || timeOutStr) ? 'clocked_out' : 'clocked_in';
     
     const timeInStr = `${date} ${tin}:00`;
     const timeOutStr = tout ? `${date} ${tout}:00` : null;
