@@ -1227,7 +1227,8 @@ function computeOT(timeIn, timeOut, regularHours=8){
   if(!tIn||!tOut) return {ot:0, nd:0};
   if(tOut < tIn) tOut = new Date(tOut.getTime() + 24*3600000); // overnight shift
   const totalHours = Math.max((tOut - tIn) / 3600000, 0);
-  const ot = Math.max(totalHours - regularHours, 0);
+  const netHours = totalHours > 5 ? totalHours - 1 : totalHours; // minus 1hr unpaid lunch
+  const ot = Math.max(netHours - regularHours, 0);
 
   // Night differential: count overlap with 10pm-6am window(s)
   // Check TWO possible ND windows: previous night's 10pm->6am, and same night's 10pm->6am
@@ -3903,7 +3904,7 @@ async function showPayslip(empId, month, startDate, endDate){
   console.log(`Payslip ${empId}: ${startDate} to ${endDate} = ${attRecords.length} records`);
   
   // Count actual days worked in range
-  const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present').length;
+  const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length;
   const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
   let daysWorked = daysPresent + (daysHalfDay * 0.5);
   
@@ -4189,7 +4190,7 @@ async function generatePayslipBatch(period){
     }
     
     // Calculate
-    const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present').length;
+    const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length;
     const daysLate = attRecords.filter(r => r.status === 'Late').length;
     const daysAbsent = attRecords.filter(r => r.status === 'Absent').length;
     const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
