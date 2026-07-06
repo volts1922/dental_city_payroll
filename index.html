@@ -2416,6 +2416,10 @@ async function deleteEmp(id){
       console.log('🗑 Deleting from Supabase:', id);
       const {error} = await _sb.from('employees_201').delete().eq('employee_id', id);
       if(error) throw error;
+      // Also remove their time_clock rows — otherwise they linger as "ghost"
+      // entries in the live attendance widget/table after the employee is gone.
+      const {error: tcErr} = await _sb.from('time_clock').delete().eq('employee_id', id);
+      if(tcErr) console.warn('⚠️ time_clock cleanup failed:', tcErr.message);
       console.log('✅ Deleted from Supabase:', id);
     } catch(e){
       console.error('❌ Supabase delete failed:', e.message);
@@ -2439,6 +2443,7 @@ async function deleteEmp(id){
 
   toast(`🗑 "${name}" and all related records deleted!`);
   showEmployees();
+  if(typeof refreshLiveAttendance === 'function') refreshLiveAttendance();
 }
 
 
@@ -2682,17 +2687,42 @@ async function refreshLiveAttendance(){
 
 async function clearAllAtt(){
   if(!(await _confirm(`Delete ALL attendance for ${_attDate}?<br><br>This removes all entries for every employee.`, {ok:'Delete All', cancel:'Cancel', danger:true, icon:'⚠️'}))) return;
-  const att = load(KEYS.attendance);
+
   let count = 0;
+
+  // Delete from Supabase first — this is what the live widget & table actually read from.
+  if(_sb){
+    try{
+      const branchUUID = await getBranchUUID(getBranch());
+      if(branchUUID){
+        const { data, error } = await _sb.from('time_clock')
+          .delete()
+          .eq('branch_id', branchUUID)
+          .eq('date', _attDate)
+          .select('id');
+        if(error) throw error;
+        count = data?.length || 0;
+      }
+    }catch(e){
+      console.error('Clear attendance (cloud) failed:', e.message);
+      toast('❌ Failed to clear cloud attendance: ' + e.message);
+      return;
+    }
+  }
+
+  // Also clear the local cache copy so offline view matches
+  const att = load(KEYS.attendance);
   Object.keys(att).forEach(eid=>{
     const before = att[eid].length;
     att[eid] = att[eid].filter(r=>r.date!==_attDate);
-    count += before - att[eid].length;
+    if(!_sb) count += before - att[eid].length;
     if(att[eid].length===0) delete att[eid];
   });
   save(KEYS.attendance, att);
+
   toast(`🗑 Cleared ${count} attendance record(s) for ${_attDate}`);
   loadAtt();
+  refreshLiveAttendance();
 }
 
 // Clock Out for past dates
