@@ -2048,7 +2048,10 @@ function showEmployees(q=''){
   // Filter: show only non-deleted, non-inactive, valid employees AND matching current branch
   const filtered=Object.entries(emps).filter(([id,e])=>
     e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive'
-    && (isOwner() ? true : e.branch === currentBranch) // Owner sees all, others see their branch
+    // Owner sees all. Others see their branch — but if a record is missing its
+    // .branch field (legacy/import data), don't hide it: the data was already
+    // loaded scoped to this branch's cloud bucket, so it belongs here.
+    && (isOwner() ? true : (!e.branch || e.branch === currentBranch))
   );
   
   const rows=filtered.filter(([id,e])=>!q||(e.name+id+e.role+(e.branch||'')).toLowerCase().includes(q.toLowerCase()))
@@ -3835,7 +3838,7 @@ async function computePayroll(){
     att = load(KEYS.attendance) || {};
   }
   
-  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||e.branch===getBranch())).map(([eid,e])=>{
+  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active'&&(isOwner()||!e.branch||e.branch===getBranch())).map(([eid,e])=>{
     const rate       = parseFloat(e.daily_rate||0);
     const recs       = Object.values(att[eid]||[]);
     
@@ -8204,7 +8207,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v37';
+    const _SW_VER = 'dcpayroll-v38';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
