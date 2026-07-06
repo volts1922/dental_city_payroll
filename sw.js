@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v41
-// Added employee payout details + Disbursement CSV export on Payroll page
+// DC PAYROLL SERVICE WORKER v42
+// Redeploy retry: v41 GitHub Pages deploy step failed (transient)
 
-const CACHE_VERSION = 'dental-city-payroll-v41-time';
+const CACHE_VERSION = 'dental-city-payroll-v42-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v41')) {
+          if (!cacheName.includes('v42')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
