@@ -1738,12 +1738,14 @@ function computeSSS(monthly){
 function computePH(monthly){ return Math.min(Math.max((monthly*0.05)/2,250),2500); } // Employee share = half of total premium; floor/ceiling halved to match (total premium floor ₱500/ceiling ₱5000 → employee ₱250/₱2500)
 function computePagibig(monthly){ return monthly<=1500?monthly*0.01:Math.min(monthly*0.02,200); } // 2024 update: ceiling raised to ₱10,000 (max ₱200)
 function computeTax(t){
+  // BIR monthly withholding tax table — TRAIN Law Phase 2, permanent schedule
+  // effective January 2023 onward (confirmed unchanged through 2026).
   if(t<=20833) return 0;
-  if(t<=33332) return (t-20833)*0.20;
-  if(t<=66666) return 2500+(t-33333)*0.25;
-  if(t<=166666) return 10833+(t-66667)*0.30;
-  if(t<=666666) return 40833.33+(t-166667)*0.32;
-  return 200833.33+(t-666667)*0.35;
+  if(t<=33333) return (t-20833)*0.15;
+  if(t<=66667) return 1875+(t-33333)*0.20;
+  if(t<=166667) return 8541.80+(t-66667)*0.25;
+  if(t<=666667) return 33541.80+(t-166667)*0.30;
+  return 183541.80+(t-666667)*0.35;
 }
 
 function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}){
