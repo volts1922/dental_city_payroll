@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v35
-// SuperAdmin now branch-locked when adding/editing employees (review fix)
+// DC PAYROLL SERVICE WORKER v36
+// Fixed Supabase check constraint blocking superadmin account creation
 
-const CACHE_VERSION = 'dental-city-payroll-v35-time';
+const CACHE_VERSION = 'dental-city-payroll-v36-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v35')) {
+          if (!cacheName.includes('v36')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
