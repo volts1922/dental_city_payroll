@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v42
-// Redeploy retry: v41 GitHub Pages deploy step failed (transient)
+// DC PAYROLL SERVICE WORKER v43
+// Fixed ghost employees: removed unsafe employees_201 auto-merge in loadAtt()
 
-const CACHE_VERSION = 'dental-city-payroll-v42-time';
+const CACHE_VERSION = 'dental-city-payroll-v43-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v42')) {
+          if (!cacheName.includes('v43')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }

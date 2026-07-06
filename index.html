@@ -2470,22 +2470,14 @@ function showAttendance(){
 }
 
 async function loadAtt(){
+  // pr_employees (synced fresh via loadFromCloud on the Employees page) is the
+  // single source of truth for who's an employee. We used to backfill missing
+  // IDs here from employees_201 (a supplementary 201-file table), but that
+  // table isn't always cleaned up in step with employee deletions — a deleted
+  // employee's leftover 201 row would get re-injected as a nameless "ghost"
+  // employee on every Attendance load. Just use pr_employees directly.
   let emps=load(KEYS.employees);
-  
-  // Sync employees from Supabase
-  if(_sb){
-    try {
-      const {data: sbEmps} = await _sb.from('employees_201').select('*');
-      if(sbEmps && sbEmps.length > 0){
-        sbEmps.forEach(e => {
-          if(!emps[e.employee_id]) {
-            emps[e.employee_id] = e;
-          }
-        });
-      }
-    } catch(e) { console.log('Employee sync error:', e); }
-  }
-  
+
   const date=document.getElementById('attDate')?.value||_attDate;
   _attDate=date;
   const holType = getHolidayType(date);
@@ -8264,7 +8256,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v42';
+    const _SW_VER = 'dcpayroll-v43';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
