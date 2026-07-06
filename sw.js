@@ -1,7 +1,9 @@
-// DC PAYROLL SERVICE WORKER v43
-// Fixed ghost employees: removed unsafe employees_201 auto-merge in loadAtt()
+// DC PAYROLL SERVICE WORKER v44
+// Fixed: fetch() was silently honoring the browser's HTTP cache despite the
+// "network first" comment, so payroll/security fixes weren't reaching users
+// even after a hard refresh. Now forces a real network round-trip every time.
 
-const CACHE_VERSION = 'dental-city-payroll-v43-time';
+const CACHE_VERSION = 'dental-city-payroll-v44-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +34,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v43')) {
+          if (!cacheName.includes('v44')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -56,7 +58,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-store' })
       .then((response) => {
         // Don't cache if not ok
         if (!response || response.status !== 200) {
@@ -95,4 +97,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v32');
+console.log('[SW] Service Worker loaded v44');
