@@ -4366,6 +4366,25 @@ async function generatePayslipBatch(period){
 // Deduct loan balances after confirming payroll run
 async function confirmPayrollRun(){
   if(!_payrollData.length){ toast('⚠️ Compute payroll first'); return; }
+
+  // Guard against double-confirming the same month (would deduct loan
+  // amortizations twice). Check for an existing confirmed run first.
+  const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+  if(_sb){
+    try{
+      const { data: existing } = await _sb.from('pr_payroll_approvals')
+        .select('run_id')
+        .eq('branch_id', getBranch())
+        .eq('month', month)
+        .eq('status', 'Confirmed')
+        .limit(1);
+      if(existing && existing.length){
+        const proceed = await _confirm(`⚠️ Payroll for ${month} was already confirmed earlier.<br><br>Confirming again will deduct loan amortizations a SECOND time for this month. Are you sure you want to proceed?`, {ok:'Yes, run again', cancel:'Cancel', danger:true, icon:'⚠️'});
+        if(!proceed) return;
+      }
+    }catch(e){ console.warn('Duplicate-run check failed:', e.message); }
+  }
+
   if(!(await _confirm('Confirm this payroll run?<br><br>This will deduct loan amortizations from employee loan balances and cannot be undone.', {ok:'Confirm', cancel:'Cancel', icon:'✅'}))) return;
 
   const loans = load(KEYS.loans);
