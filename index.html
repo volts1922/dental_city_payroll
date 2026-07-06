@@ -1268,8 +1268,13 @@ function getBranchOptions(){
 function setBranch(n){ const nn=_normalizeBranch(n); BRANCH_NAME=nn; localStorage.setItem('pr_branch',nn); }
 function initBranch(){
   const n=getBranch();
-  if(!n){ setTimeout(showBranchModal,600); }
-  else updateBranchUI(n);
+  if(!n){
+    // Only Owner/Dev may freely set/rename a branch. Everyone else is locked
+    // to whatever branch is on their account — if that's missing, it's a setup
+    // problem the owner needs to fix, not something the logged-in user can change.
+    if(isOwner()) setTimeout(showBranchModal,600);
+    else toast('⚠️ No branch assigned to this account. Ask the owner to set it in Account Manager.', 5000);
+  } else updateBranchUI(n);
 }
 function updateBranchUI(n){
   if(n){
@@ -8199,7 +8204,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v36';
+    const _SW_VER = 'dcpayroll-v37';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

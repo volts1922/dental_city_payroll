@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v36
-// Fixed Supabase check constraint blocking superadmin account creation
+// DC PAYROLL SERVICE WORKER v37
+// Closed edge case allowing non-owner roles to freely set/rename their branch
 
-const CACHE_VERSION = 'dental-city-payroll-v36-time';
+const CACHE_VERSION = 'dental-city-payroll-v37-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v36')) {
+          if (!cacheName.includes('v37')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
