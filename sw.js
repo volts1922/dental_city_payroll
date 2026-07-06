@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v34
-// Added SuperAdmin role (full branch admin powers) + fixed Account Manager role grouping
+// DC PAYROLL SERVICE WORKER v35
+// SuperAdmin now branch-locked when adding/editing employees (review fix)
 
-const CACHE_VERSION = 'dental-city-payroll-v34-time';
+const CACHE_VERSION = 'dental-city-payroll-v35-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v34')) {
+          if (!cacheName.includes('v35')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }

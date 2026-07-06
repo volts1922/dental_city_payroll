@@ -2088,9 +2088,9 @@ function empForm(d={}){
   const allow = d.allowances || {};
   const photoPreview = d.photo ? `<img src="${d.photo}" style="width:50px;height:50px;border-radius:8px;margin-top:8px;border:2px solid var(--border)">` : '';
 
-  // BranchAdmin can only add to their own branch — lock the field
+  // BranchAdmin/SuperAdmin can only add to their own branch — lock the field
   const myBranch = getBranch();
-  const branchField = isBranchAdmin()
+  const branchField = (isBranchAdmin()||isSuperAdmin())
     ? `<div class="form-group">
         <label class="form-label">Branch</label>
         <input class="form-control" id="f_branch" value="${myBranch}" readonly
@@ -2249,8 +2249,8 @@ function generateEmployeeID() {
 function addEmp(){
   openModal('Add Employee',empForm(),async()=>{
     if(!fval('name')||!fval('daily_rate')){toast('⚠️ Name and daily rate required');return;}
-    // BranchAdmin: enforce their own branch even if someone tampers with the field
-    const branch = isBranchAdmin() ? getBranch() : fval('branch');
+    // BranchAdmin/SuperAdmin: enforce their own branch even if someone tampers with the field
+    const branch = (isBranchAdmin()||isSuperAdmin()) ? getBranch() : fval('branch');
     if(!branch){toast('⚠️ Branch is required');return;}
     
     // Generate ID: BRANCHCODE-###
@@ -2286,8 +2286,8 @@ function editEmp(id){
   const emps=load(KEYS.employees);
   openModal('Edit Employee',empForm(emps[id]),async()=>{
     if(!fval('name')||!fval('daily_rate')){toast('⚠️ Name and daily rate required');return;}
-    // BranchAdmin: keep their branch locked
-    const branch = isBranchAdmin() ? getBranch() : fval('branch');
+    // BranchAdmin/SuperAdmin: keep their branch locked
+    const branch = (isBranchAdmin()||isSuperAdmin()) ? getBranch() : fval('branch');
     const photo = document.getElementById('f_photo')?.value || emps[id]?.photo || '';
     emps[id]={...emps[id],name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
@@ -8199,7 +8199,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v34';
+    const _SW_VER = 'dcpayroll-v35';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
