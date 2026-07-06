@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v32
-// Fixed: Response clone issue
+// DC PAYROLL SERVICE WORKER v33
+// Branch admin nav trimmed to Attendance/Leave/Loans
 
-const CACHE_VERSION = 'dental-city-payroll-v32-time';
+const CACHE_VERSION = 'dental-city-payroll-v33-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v32')) {
+          if (!cacheName.includes('v33')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }

@@ -1411,18 +1411,9 @@ const NAV_DEVELOPER=[
 ];
 
 const NAV_ADMIN=[
-  
-  {icon:'👥',label:'Employees',   fn:'showEmployees'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
   {icon:'💳',label:'Loans',       fn:'showLoans'},
-  {icon:'💰',label:'Payroll',     fn:'showPayroll'},
-  {icon:'🎁',label:'13th Month',  fn:'show13thMonth'},
-  {icon:'🏛',label:'Gov Reports', fn:'showGovReports'},
-  {icon:'📄',label:'BIR 2316',    fn:'showBIR2316'},
-  {icon:'💾',label:'Backup',      fn:'showBackupManager'},
-  {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
-  {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
 ];
 const NAV_STAFF=[
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
@@ -8180,7 +8171,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v32';
+    const _SW_VER = 'dcpayroll-v33';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
