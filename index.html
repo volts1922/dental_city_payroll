@@ -1148,7 +1148,7 @@ function _finishLogin(){
   const rb = document.getElementById('roleBadge');
   rb.textContent = currentRole==='dev'?'dev':currentRole; // Show actual role
   const C_GOLD='#B7860B';
-  rb.style.background = currentRole==='dev'?'#7C3AED':currentRole==='owner'?C_GOLD:isAdmin()?'var(--blue)':'var(--green)';
+  rb.style.background = currentRole==='dev'?'#7C3AED':currentRole==='owner'?C_GOLD:currentRole==='superadmin'?'#0F766E':isAdmin()?'var(--blue)':'var(--green)';
   rb.style.color = '#fff';
   document.getElementById('userLabel').textContent = currentUser;
   document.getElementById('userBadge').style.display = 'flex';
@@ -1191,8 +1191,9 @@ async function doLogout(){
 }
 function isOwner(){       return currentRole==='owner'||currentRole==='dev'; }
 function isBranchAdmin(){ return currentRole==='branch_admin'; }
-function isAdmin(){       return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='branch_admin'||currentRole==='dev'; }
-function canSeeAll(){     return currentRole==='owner'||currentRole==='branch_admin'||currentRole==='dev'; }
+function isSuperAdmin(){  return currentRole==='superadmin'; }
+function isAdmin(){       return currentRole==='owner'||currentRole==='superadmin'||currentRole==='branch_admin'||currentRole==='dev'; }
+function canSeeAll(){     return currentRole==='owner'||currentRole==='superadmin'||currentRole==='branch_admin'||currentRole==='dev'; }
 function isDeveloper(){   return currentRole==='dev'; }
 const WORKING_DAYS  = 22;
 const OT_MULTIPLIER = 1.25;  // Regular overtime
@@ -1415,6 +1416,21 @@ const NAV_ADMIN=[
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
   {icon:'💳',label:'Loans',       fn:'showLoans'},
 ];
+
+// Full branch-level admin — fixes misclocks, runs payroll, etc. Scoped to one branch.
+const NAV_SUPERADMIN=[
+  {icon:'👥',label:'Employees',   fn:'showEmployees'},
+  {icon:'📅',label:'Attendance',  fn:'showAttendance'},
+  {icon:'🌴',label:'Leave',       fn:'showLeave'},
+  {icon:'💳',label:'Loans',       fn:'showLoans'},
+  {icon:'💰',label:'Payroll',     fn:'showPayroll'},
+  {icon:'🎁',label:'13th Month',  fn:'show13thMonth'},
+  {icon:'🏛',label:'Gov Reports', fn:'showGovReports'},
+  {icon:'📄',label:'BIR 2316',    fn:'showBIR2316'},
+  {icon:'💾',label:'Backup',      fn:'showBackupManager'},
+  {icon:'🕐',label:'Shift Manager', fn:'showShiftManager'},
+  {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
+];
 const NAV_STAFF=[
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🔄',label:'Refresh Data', fn:'refreshUserData'},
@@ -1516,7 +1532,7 @@ async function ownerSwitchBranch(branch){
 }
 
 function buildNav(){
-  const items=currentRole==='dev'?NAV_DEVELOPER:isOwner()?NAV_OWNER:isBranchAdmin()||currentRole==='branch_admin'?NAV_ADMIN:NAV_STAFF;
+  const items=currentRole==='dev'?NAV_DEVELOPER:isOwner()?NAV_OWNER:isSuperAdmin()?NAV_SUPERADMIN:isBranchAdmin()?NAV_ADMIN:NAV_STAFF;
 
   if(isOwner()){
     // Owner nav with group dividers
@@ -1591,6 +1607,7 @@ function refreshCurrentView(){
     const allNavs=[].concat(
       typeof NAV_DEVELOPER!=='undefined'?NAV_DEVELOPER:[],
       typeof NAV_OWNER!=='undefined'?NAV_OWNER:[],
+      typeof NAV_SUPERADMIN!=='undefined'?NAV_SUPERADMIN:[],
       typeof NAV_ADMIN!=='undefined'?NAV_ADMIN:[],
       typeof NAV_STAFF!=='undefined'?NAV_STAFF:[]
     );
@@ -5782,7 +5799,7 @@ async function manualSync(){
       if(fn && window[fn]) window[fn]();
     } else {
       await loadFromCloud();
-      const fn = (NAV_ADMIN.concat(NAV_STAFF)).find(n=>n.label===currentPage)?.fn;
+      const fn = (NAV_SUPERADMIN.concat(NAV_ADMIN).concat(NAV_STAFF)).find(n=>n.label===currentPage)?.fn;
       if(fn && window[fn]) window[fn]();
     }
     toast('✅ Synced & refreshed!');
@@ -7496,9 +7513,12 @@ function showSecurityDashboard(){
 // ══════════════════════════════════════════════════════════════════════════════
 // ACCOUNT MANAGER
 // ══════════════════════════════════════════════════════════════════════════════
+const ROLE_LABELS = {owner:'Owner', superadmin:'Super Admin', branch_admin:'Branch Admin', employee:'Staff'};
+const ROLE_BRANCH_REQUIRED = ['superadmin','branch_admin','employee'];
+
 function showAccountManager(){
-  const roleColors = {owner:'#B7860B', admin:'var(--blue)', staff:'var(--green)'};
-  
+  const roleColors = {owner:'#B7860B', superadmin:'#0F766E', branch_admin:'var(--blue)', employee:'var(--green)'};
+
   // Load accounts from Supabase first
   if(_sb){
     _sb.from('payroll_accounts').select('*').then(({data, error})=>{
@@ -7520,10 +7540,13 @@ function showAccountManager(){
 }
 
 function renderAccounts(roleColors){
-  const byRole = {owner:[], admin:[], staff:[]};
-  Object.entries(USERS).forEach(([u,d])=>{ 
+  const byRole = {owner:[], superadmin:[], branch_admin:[], employee:[]};
+  Object.entries(USERS).forEach(([u,d])=>{
     const role = (d.role||'employee').toLowerCase();
-    if(!d._hidden) (byRole[role]||[]).push([u,d]); 
+    if(!d._hidden){
+      if(!byRole[role]) byRole[role]=[];
+      byRole[role].push([u,d]);
+    }
   });
 
   const buildTable = (role, list)=>{
@@ -7532,17 +7555,17 @@ function renderAccounts(roleColors){
       <td><span style="font-family:monospace;background:var(--sky);padding:3px 8px;border-radius:6px;font-size:12px">${u}</span></td>
       <td><b>${d.name}</b></td>
       <td>${d.branch?`<span class="badge badge-blue">${d.branch}</span>`:'<span style="color:#555;font-size:12px">All branches</span>'}</td>
-      <td><span style="color:${roleColors[d.role]||'var(--muted)'};font-weight:700">${d.role}</span></td>
+      <td><span style="color:${roleColors[(d.role||'employee').toLowerCase()]||'var(--muted)'};font-weight:700">${ROLE_LABELS[(d.role||'employee').toLowerCase()]||d.role}</span></td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="editAccount('${u}')">✏ Edit</button>
         ${u!=='owner'&&!d._hidden?`<button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">🗑</button>`:''}
       </td>
     </tr>`).join('');
-    const icons={owner:'👑',admin:'🛡',staff:'👤'};
+    const icons={owner:'👑',superadmin:'🛡',branch_admin:'🏬',employee:'👤'};
     return `<div style="margin-bottom:20px">
       <div style="font-weight:700;font-size:13px;color:${roleColors[role]};margin-bottom:8px;padding:8px 14px;
                   background:var(--sky);border-radius:8px;border-left:4px solid ${roleColors[role]}">
-        ${icons[role]||'👤'} ${role} — ${list.length} account(s)
+        ${icons[role]||'👤'} ${ROLE_LABELS[role]||role} — ${list.length} account(s)
       </div>
       <div class="table-wrap"><div class="table-scroll">
         <table><thead><tr><th>Username</th><th>Name</th><th>Branch</th><th>Role</th><th>Actions</th></tr></thead>
@@ -7563,14 +7586,19 @@ function renderAccounts(roleColors){
       ⚠️ Password changes take effect on next login. Share credentials securely with staff.
     </div>
     ${buildTable('owner',byRole.owner||[])}
-    ${buildTable('branch_admin',byRole.admin||[])}
-    ${buildTable('Staff',byRole.Staff||[])}`;
+    ${buildTable('superadmin',byRole.superadmin||[])}
+    ${buildTable('branch_admin',byRole.branch_admin||[])}
+    ${buildTable('employee',byRole.employee||[])}`;
 }
 
 function accountForm(d={}){
-  // BranchAdmin can only manage their own branch; Owner can manage all
-  const availableBranches = isBranchAdmin() ? [getBranch()] : ALL_BRANCHES;
+  // BranchAdmin/SuperAdmin can only manage their own branch; Owner can manage all
+  const availableBranches = (isBranchAdmin()||isSuperAdmin()) ? [getBranch()] : ALL_BRANCHES;
   const branchOpts = ['',...availableBranches].map(b=>`<option value="${b}"${(d.branch||'')=== b?' selected':''}>${b||'— All Branches'}</option>`).join('');
+  const roleOptions = isOwner()
+    ? ['owner','superadmin','branch_admin','employee']
+    : ['superadmin','branch_admin','employee'];
+  const currentRoleVal = (d.role||'employee').toLowerCase();
   return `
     ${formRow('Username *','acc_user', d._username||'')}
     ${formRow('Display Name *','acc_name', d.name||'')}
@@ -7581,10 +7609,10 @@ function accountForm(d={}){
     <div class="form-group">
       <label class="form-label">Role *</label>
       <select class="form-control" id="f_acc_role" onchange="toggleBranchField()">
-        ${(isOwner()?['owner','branch_admin','employee']:['branch_admin','employee']).map(r=>`<option${(d.role||'employee')===r?' selected':''}>${r}</option>`).join('')}
+        ${roleOptions.map(r=>`<option value="${r}"${currentRoleVal===r?' selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
       </select>
     </div>
-    <div class="form-group" id="branchFieldGroup" style="display:${['branch_admin','employee'].includes(d.role||'employee')?'block':'none'}">
+    <div class="form-group" id="branchFieldGroup" style="display:${ROLE_BRANCH_REQUIRED.includes(currentRoleVal)?'block':'none'}">
       <label class="form-label">Branch *</label>
       <select class="form-control" id="f_acc_branch">${branchOpts}</select>
     </div>`;
@@ -7593,7 +7621,7 @@ function accountForm(d={}){
 function toggleBranchField(){
   const role = document.getElementById('f_acc_role')?.value;
   const grp  = document.getElementById('branchFieldGroup');
-  if(grp) grp.style.display = ['branch_admin','Staff'].includes(role)?'block':'none';
+  if(grp) grp.style.display = ROLE_BRANCH_REQUIRED.includes(role)?'block':'none';
 }
 
 function addAccount(){
@@ -7605,22 +7633,22 @@ function addAccount(){
     const branch = fval('acc_branch');
     if(!u||!name||!pass){ toast('⚠️ Username, name and password are required'); return; }
     if(USERS[u]){ toast(`⚠️ Username "${u}" already exists!`); return; }
-    if(['employee','branch_admin'].includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
-    
+    if(ROLE_BRANCH_REQUIRED.includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
+
     try {
       const pwHash = await _sha256(pass);
       const newAccount = {password: pwHash, role, name, ...(branch?{branch}:{})};
       console.log('📝 Saving account:', u, newAccount);
-      
+
       // Save to Supabase FIRST - if this fails, don't add to USERS
       await _saveAccountToCloud(u, newAccount);
-      
+
       // Only add to USERS after successful Supabase save
       USERS[u] = newAccount;
       save(KEYS.accounts, USERS);
-      
-      toast(`✅ Account "${u}" created!`); 
-      closeModal(); 
+
+      toast(`✅ Account "${u}" created!`);
+      closeModal();
       showAccountManager();
     } catch(e) {
       console.error('❌ Account creation failed:', e);
@@ -7632,27 +7660,27 @@ function addAccount(){
 }
 
 function editAccount(username){
-  // ✅ NEW: Check if BranchAdmin is trying to edit someone outside their branch
+  // BranchAdmin/SuperAdmin can only manage accounts within their own branch
   const d = {...USERS[username], _username:username};
-  if(isBranchAdmin() && d.branch && d.branch !== getBranch()){
+  if((isBranchAdmin()||isSuperAdmin()) && d.branch && d.branch !== getBranch()){
     toast('⛔ You can only manage accounts in your branch');
     return;
   }
-  
+
   openModal(`✏ Edit — ${username}`, accountForm(d), async ()=>{
     const name  = fval('acc_name').trim();
     const pass  = document.getElementById('f_acc_pass')?.value;
     const role  = fval('acc_role');
     const branch= fval('acc_branch');
     if(!name){ toast('⚠️ Name is required'); return; }
-    if(['branch_admin','employee'].includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
-    
-    // ✅ NEW: Prevent branch escalation (BranchAdmin can't create Owner accounts)
-    if(isBranchAdmin() && role !== 'Staff'){
-      toast('⛔ You can only create Staff accounts');
+    if(ROLE_BRANCH_REQUIRED.includes(role)&&!branch){ toast('⚠️ Branch is required'); return; }
+
+    // Branch-level roles can't escalate an account to Owner
+    if((isBranchAdmin()||isSuperAdmin()) && role === 'owner'){
+      toast('⛔ You cannot assign the Owner role');
       return;
     }
-    
+
     USERS[username] = {...USERS[username], name, role,
       ...(pass?{password: await _sha256(pass)}:{}),
       ...(branch?{branch}:{})};
@@ -8171,7 +8199,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v33';
+    const _SW_VER = 'dcpayroll-v34';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -8594,7 +8622,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // ── 201 EMPLOYEE FILE MODAL ────────────────────────────────────────────────
 function open201(empId){
   const role = currentRole;
-  if(!['owner','branch_admin','branch_admin','dev','dev'].includes(role)){ toast('❌ Access denied'); return; }
+  if(!['owner','superadmin','branch_admin','dev'].includes(role)){ toast('❌ Access denied'); return; }
   const isReadOnly = role === 'dev' || role === 'dev';
   
   let html = '';

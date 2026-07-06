@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v33
-// Branch admin nav trimmed to Attendance/Leave/Loans
+// DC PAYROLL SERVICE WORKER v34
+// Added SuperAdmin role (full branch admin powers) + fixed Account Manager role grouping
 
-const CACHE_VERSION = 'dental-city-payroll-v33-time';
+const CACHE_VERSION = 'dental-city-payroll-v34-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v33')) {
+          if (!cacheName.includes('v34')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
