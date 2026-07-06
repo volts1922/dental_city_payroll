@@ -2174,6 +2174,14 @@ function empForm(d={}){
         </div>
       </div>
       <div id="allow_total" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;text-align:right"></div>
+    </div>
+
+    <div style="margin-top:14px;padding:12px 14px;background:var(--sky);border-radius:10px;border:1.5px solid var(--border)">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">💸 Payout Details (for disbursement export)</div>
+      ${formRow('Payout Method','payout_method',d.payout_method||'GCash',null,['GCash','Bank Transfer','Cash'])}
+      ${formRow('Bank Name (if Bank Transfer)','bank_name',d.bank_name||'')}
+      ${formRow('Account / Mobile Number','account_number',d.account_number||'')}
+      ${formRow('Account Name (on the bank/GCash account)','account_name',d.account_name||d.name||'')}
     </div>`;
 }
 
@@ -2287,8 +2295,10 @@ function addEmp(){
     emps[id]={name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
-      allowances:getAllowances(), photo};
-    save(KEYS.employees,emps); 
+      allowances:getAllowances(), photo,
+      payout_method:fval('payout_method')||'GCash', bank_name:fval('bank_name')||'',
+      account_number:fval('account_number')||'', account_name:fval('account_name')||fval('name')};
+    save(KEYS.employees,emps);
     
     // Auto-create 201 record with photo in Supabase
     try{
@@ -2314,7 +2324,9 @@ function editEmp(id){
     emps[id]={...emps[id],name:fval('name'),role:fval('role'),daily_rate:fval('daily_rate'),
       branch, contact:fval('contact'),email:fval('email'),
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
-      allowances:getAllowances(), photo};
+      allowances:getAllowances(), photo,
+      payout_method:fval('payout_method')||'GCash', bank_name:fval('bank_name')||'',
+      account_number:fval('account_number')||'', account_name:fval('account_name')||fval('name')};
     save(KEYS.employees,emps);
     
     // Sync to Supabase employees_201 table
@@ -3775,6 +3787,7 @@ async function showPayroll(){
         <button class="btn btn-primary" onclick="(async()=>await computePayroll())()">Compute</button>
         <button class="btn btn-teal" onclick="exportPayroll()">📊 Export CSV</button>
         <button class="btn btn-success" onclick="exportPayrollPDF()">📄 Export PDF</button>
+        <button class="btn admin-only" style="background:#0F766E;color:#fff" onclick="exportDisbursementCSV()">💸 Export Disbursement CSV</button>
       </div>
     </div>
     
@@ -4369,6 +4382,36 @@ function exportPayroll(){
     d.ot_hours||0, d.nd_hours||0, d.reg_hol||0, d.spe_hol||0
   ]));
   downloadCSV(`payroll_${today()}.csv`,rows);
+}
+
+// Bulk disbursement export — a generic template covering the columns most
+// banks and GCash for Business bulk-upload tools ask for. Column names/order
+// vary by bank, so this is meant to be opened in Excel and adjusted (or
+// columns deleted/reordered) to match whatever exact template the bank/GCash
+// provides. This does NOT move money — it only prepares the file for the
+// owner to upload themselves.
+function exportDisbursementCSV(){
+  if(!_payrollData.length){toast('⚠️ Compute payroll first');return;}
+  const emps = load(KEYS.employees);
+  const month = document.getElementById('payMonth')?.value || today().slice(0,7);
+  const missing = [];
+  const rows=[['Employee ID','Employee Name','Branch','Payout Method','Bank Name',
+    'Account / Mobile Number','Account Name','Net Pay','Reference']];
+  _payrollData.forEach(d=>{
+    const e = emps[d.eid] || {};
+    const acctNo = e.account_number || '';
+    if(!acctNo) missing.push(d.name);
+    rows.push([
+      d.eid, d.name, d.branch||'—',
+      e.payout_method||'GCash', e.bank_name||'',
+      acctNo, e.account_name||d.name,
+      d.net, `Payroll ${month}`
+    ]);
+  });
+  downloadCSV(`disbursement_${month}.csv`, rows);
+  if(missing.length){
+    toast(`⚠️ ${missing.length} employee(s) missing account/mobile number: ${missing.join(', ')}`, 6000);
+  }
 }
 
 function exportPayrollPDF(){
@@ -8221,7 +8264,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v40';
+    const _SW_VER = 'dcpayroll-v41';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
