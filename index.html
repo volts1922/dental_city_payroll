@@ -1735,7 +1735,7 @@ function computeSSS(monthly){
   const msc = Math.min(Math.ceil(Math.max(monthly,5000)/500)*500, 35000);
   return Math.round((msc * 0.05) * 100) / 100;
 }
-function computePH(monthly){ return Math.min(Math.max((monthly*0.05)/2,500),5000); }
+function computePH(monthly){ return Math.min(Math.max((monthly*0.05)/2,250),2500); } // Employee share = half of total premium; floor/ceiling halved to match (total premium floor ₱500/ceiling ₱5000 → employee ₱250/₱2500)
 function computePagibig(monthly){ return monthly<=1500?monthly*0.01:Math.min(monthly*0.02,200); } // 2024 update: ceiling raised to ₱10,000 (max ₱200)
 function computeTax(t){
   if(t<=20833) return 0;
@@ -3865,12 +3865,13 @@ async function computePayroll(){
       const nextYr = parseInt(mo) === 12 ? parseInt(yr) + 1 : parseInt(yr);
       const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2,'0')}-01`;
       
-      const {data: records} = await _sb.from('time_clock')
+      const {data: records, error: attErr} = await _sb.from('time_clock')
         .select('*')
         .eq('branch_id', branchUUID)
         .gte('date', month + '-01')
-        .lte('date', month + '-31');
-      
+        .lt('date', nextMonthStr);
+      if(attErr) throw attErr;
+
       if(records){
         records.forEach(r => {
           if(!att[r.employee_id]) att[r.employee_id] = [];
