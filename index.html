@@ -2024,7 +2024,21 @@ function filterDashboard(filter){
 // ══════════════════════════════════════════════════════════════════════════════
 // EMPLOYEES
 // ══════════════════════════════════════════════════════════════════════════════
-function showEmployees(q=''){
+// Entry point: always pull the authoritative employee list from Supabase first.
+// Local cache/localStorage can be stale or incomplete (e.g. changes made on another
+// device that never finished syncing) — this page should reflect the cloud, not
+// whatever happens to be sitting in this browser.
+async function showEmployees(q=''){
+  if(_sb){
+    showLoading('Loading employees...');
+    try{ await loadFromCloud(); }
+    catch(e){ console.warn('⚠️ Employees cloud refresh failed, showing local cache:', e.message); }
+    hideLoading();
+  }
+  _renderEmployees(q);
+}
+
+function _renderEmployees(q=''){
   let emps=load(KEYS.employees);
   const currentBranch = getBranch(); // Get selected branch
   
@@ -2079,7 +2093,7 @@ function showEmployees(q=''){
     <div class="section-header">
       <div class="section-title">Employees</div>
       <div class="btn-row">
-        <input placeholder="🔍 Search name/branch..." oninput="showEmployees(this.value)" value="${q}" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;width:200px">
+        <input placeholder="🔍 Search name/branch..." oninput="_renderEmployees(this.value)" value="${q}" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;width:200px">
         <button class="btn btn-teal" onclick="exportEmps()">Export CSV</button>
         <button class="btn btn-primary admin-only" onclick="addEmp()">＋ Add</button>
       </div>
@@ -8207,7 +8221,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v38';
+    const _SW_VER = 'dcpayroll-v39';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

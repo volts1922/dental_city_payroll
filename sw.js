@@ -1,7 +1,7 @@
-// DC PAYROLL SERVICE WORKER v38
-// Fixed: employees missing .branch field were invisible to non-owner roles
+// DC PAYROLL SERVICE WORKER v39
+// Employees page now always refreshes from Supabase before rendering (not local cache)
 
-const CACHE_VERSION = 'dental-city-payroll-v38-time';
+const CACHE_VERSION = 'dental-city-payroll-v39-time';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v38')) {
+          if (!cacheName.includes('v39')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
