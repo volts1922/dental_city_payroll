@@ -3561,9 +3561,16 @@ function showLeave(){
 
 function fileLeave(){
   const emps=load(KEYS.employees);
+  // Staff can only file leave for themselves (matched by account name); admins/owner keep full dropdown
+  let _lvOpts='<option value="">-- Select --</option>'+empOptions(), _lvLock='';
+  if(!isAdmin()){
+    const _un=((USERS[_currentUser]&&USERS[_currentUser].name)||'').toLowerCase().trim();
+    const _mine=Object.entries(emps).find(([id,e])=>((e.name||'').toLowerCase().trim()===_un));
+    if(_mine){ _lvOpts=`<option value="${_mine[0]}" selected>${_mine[1].name} (${formatEmpId(_mine[0],_mine[1].branch)})</option>`; _lvLock=' disabled'; }
+  }
   openModal('File Leave Request',`
     <div class="form-group"><label class="form-label">Employee *</label>
-      <select class="form-control" id="f_eid"><option value="">-- Select --</option>${empOptions()}</select></div>
+      <select class="form-control" id="f_eid"${_lvLock}>${_lvOpts}</select></div>
     ${formRow('Leave Type','ltype','Vacation Leave',null,['Vacation Leave','Sick Leave','Emergency Leave','Maternity Leave','Paternity Leave','Other'])}
     ${formRow('Start Date *','sdate',today(),'date')}
     ${formRow('End Date *','edate',today(),'date')}
@@ -3579,7 +3586,7 @@ function fileLeave(){
       save(KEYS.leaves,leaves); closeModal(); toast('✅ Leave filed!'); showLeave();
     }
   );
-  document.getElementById('f_eid').innerHTML='<option value="">-- Select --</option>'+empOptions();
+  document.getElementById('f_eid').innerHTML=_lvOpts;
 }
 
 function setLeave(eid,idx,status){
@@ -6939,6 +6946,7 @@ function showOwnerLeave(filterBranch='All', filterStatus='All'){
 // ══════════════════════════════════════════════════════════════════════════════
 
 function showOwnerApprovals(){
+  if(!isOwner()){toast('⛔ Owner only');return;}
   // Gather all pending leaves and new loans across all branches
   const pendingLeaves = [];
   const activeLoans   = [];
@@ -8881,7 +8889,15 @@ async function showPayrollApprovals(){
   renderPayrollApprovals(approvals);
 }
 
+function expandPayrollRun(runId){
+  const run=(window._lastApprovals||{})[runId];
+  if(!run){toast('⚠️ Payroll run not found');return;}
+  const rows=Object.entries(run.employees||{}).map(([id,e])=>`<tr><td>${_esc(e.name||id)}</td><td style="text-align:right;font-weight:600">${fmt(parseFloat(e.net||0))}</td></tr>`).join('')||'<tr><td colspan="2" style="text-align:center;padding:16px;color:#555">No employees in this run</td></tr>';
+  openModal(`Payroll Run — ${_esc(run.branch||'N/A')} (${run.date||''})`,`<div class="table-wrap"><table><thead><tr><th>Employee</th><th style="text-align:right">Net Pay</th></tr></thead><tbody>${rows}</tbody></table></div>`,null);
+}
+
 function renderPayrollApprovals(approvals){
+  window._lastApprovals = approvals;
   const pendingRuns = [];
   
   Object.entries(approvals).forEach(([runId, run])=>{
