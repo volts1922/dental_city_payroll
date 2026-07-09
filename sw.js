@@ -1,9 +1,9 @@
-// DC PAYROLL SERVICE WORKER v45
+// DC PAYROLL SERVICE WORKER v46
 // Fixed: fetch() was silently honoring the browser's HTTP cache despite the
 // "network first" comment, so payroll/security fixes weren't reaching users
 // even after a hard refresh. Now forces a real network round-trip every time.
 
-const CACHE_VERSION = 'dental-city-payroll-v45-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v46-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache

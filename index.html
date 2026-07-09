@@ -800,45 +800,10 @@ const USERS = {
   // ── Owner (sees ALL branches) ────────────────────────────────────────────
   owner:      { password:'43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9',    role:'owner',       name:'owner'              },
 
-  // ── Branch 1 ─────────────────────────────────────────────────────────────
-  branch1_admin: { password:'7c2bbcdf653e453250630e3f39fea50ae5e7a92bc0d27b2e892d6e93e6e62838', role:'branch_admin', name:'Branch 1 Admin', branch:'Branch 1' },
-  branch1_staff: { password:'f13d859fb200bf1c1c49433004ff3fe9c40078c1cd409d3839db725521ec37c7', role:'employee',       name:'Branch 1 Staff', branch:'Branch 1' },
-
-  // ── Branch 2 ─────────────────────────────────────────────────────────────
-  branch2_admin: { password:'3e12cff30cdafc0c499d7ab3af2857be613e2513d6b38cdb7a31c4fdca4463f4', role:'branch_admin', name:'Branch 2 Admin', branch:'Branch 2' },
-  branch2_staff: { password:'dd963f9ee062481c4a232ad7190a72e2d511cdf61f935729ec5012a41a56c719', role:'employee',       name:'Branch 2 Staff', branch:'Branch 2' },
-
-  // ── Branch 3 ─────────────────────────────────────────────────────────────
-  branch3_admin: { password:'ebabd5412c7b4214464538d0371f16c5249a6a2f66d5736b284a48374c9f6f06', role:'branch_admin', name:'Branch 3 Admin', branch:'Branch 3' },
-  branch3_staff: { password:'33d29f4b1a27aee9c702d68af2af87faabda72d3bc9c2b0aecb97c341a4339c3', role:'employee',       name:'Branch 3 Staff', branch:'Branch 3' },
-
-  // ── Branch 4 ─────────────────────────────────────────────────────────────
-  branch4_admin: { password:'a293c10f3f89481a0b4ede1bf55d1a62e667e4a07a6a6386b1effd3e684ef9c4', role:'branch_admin', name:'Branch 4 Admin', branch:'Branch 4' },
-  branch4_staff: { password:'e10c558ef0735efe18cb23b741dc2fed46d9000b743ac028a88f5bf649f0b431', role:'employee',       name:'Branch 4 Staff', branch:'Branch 4' },
-
-  // ── Branch 5 ─────────────────────────────────────────────────────────────
-  branch5_admin: { password:'e41128856ca4dc4311171e906918e923cc95f3e5758b9a412448ae8e29e4c84b', role:'branch_admin', name:'Branch 5 Admin', branch:'Branch 5' },
-  branch5_staff: { password:'3febcd606e55ae2eeb2f6b5471155a8afef538dfcc414503e77f7e656c7b22e5', role:'employee',       name:'Branch 5 Staff', branch:'Branch 5' },
-
-  // ── Branch 6 ─────────────────────────────────────────────────────────────
-  branch6_admin: { password:'dcb2140a616c495d174afbba55781eac0ea17369904889c6236c93209a46d0ed', role:'branch_admin', name:'Branch 6 Admin', branch:'Branch 6' },
-  branch6_staff: { password:'df353e6ae35cfd7e73f16279e24363be9068c99d0c516fda63baf59a10bf20fe', role:'employee',       name:'Branch 6 Staff', branch:'Branch 6' },
-
-  // ── Branch 7 ─────────────────────────────────────────────────────────────
-  branch7_admin: { password:'4ae977b14031826ec73f7d80523d373deb99cab137cd3abbf552d756d01c5481', role:'branch_admin', name:'Branch 7 Admin', branch:'Branch 7' },
-  branch7_staff: { password:'1857f2baed91fac1105da25730fd0fe3fa3888646c97fca98a814abdd6a36c9f', role:'employee',       name:'Branch 7 Staff', branch:'Branch 7' },
-
-  // ── Branch 8 ─────────────────────────────────────────────────────────────
-  branch8_admin: { password:'f839f62a6ccaf845f596ab454c204c7605739d94b319d11847bcc5a26c71779a', role:'branch_admin', name:'Branch 8 Admin', branch:'Branch 8' },
-  branch8_staff: { password:'6edd5075fea164de5c29ee3e37d80f714d37b53489005f01e0b1a2843264a429', role:'employee',       name:'Branch 8 Staff', branch:'Branch 8' },
-
-  // ── Branch 9 ─────────────────────────────────────────────────────────────
-  branch9_admin: { password:'5ba880391986e4299428d3a106fd5c660766f80f0f5d8bbadd95b194e3aafbd8', role:'branch_admin', name:'Branch 9 Admin', branch:'Branch 9' },
-  branch9_staff: { password:'895b161252b1c9e9090a7e68bbf53a15daa373b9a942b5be6f6a902923b08b5a', role:'employee',       name:'Branch 9 Staff', branch:'Branch 9' },
-
   // ── Developer (hidden — not shown in Account Manager) ────────────────────
   dev: { password:'995f80cefdb79b5ec1584db23fd82c5dcb8d039116adc0c428727a77f0052be6', role:'dev', name:'dev', _hidden:true },
 };
+// NOTE: All real accounts live in Supabase (payroll_accounts) and are loaded via _loadAccountsFromCloud().
 
 // ── Cloud-persisted accounts (Supabase) — merges over hardcoded USERS on load ─
 async function _loadAccountsFromCloud(){
@@ -1061,10 +1026,12 @@ async function doLogin(){
   let user = null;
 
   // Verify credentials server-side via RPC — password hashes never leave the database
+  let _rpcAnswered = false;
   if(_sb){
     try{
       const { data, error } = await _sb.rpc('verify_login', { p_username: u, p_password: p });
       if(error) throw error;
+      _rpcAnswered = true; // server responded — its verdict is final
       const row = data && data[0];
       if(row){
         user = { ...(USERS[u]||{}), name: row.name, role: row.role, branch: row.branch||'', totp_enabled: row.totp_enabled, password: enteredHash };
@@ -1076,7 +1043,8 @@ async function doLogin(){
   }
 
   // Offline/fallback path (e.g. no internet): check against locally cached accounts
-  if(!user){
+  // Only runs when the server could not be reached — never overrides a server rejection
+  if(!user && !_rpcAnswered){
     await _loadAccountsFromCloud().catch(()=>{});
     const localUser = USERS[u];
     if(localUser){
