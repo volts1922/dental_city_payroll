@@ -1,9 +1,8 @@
-// DC PAYROLL SERVICE WORKER v46
-// Fixed: fetch() was silently honoring the browser's HTTP cache despite the
-// "network first" comment, so payroll/security fixes weren't reaching users
-// even after a hard refresh. Now forces a real network round-trip every time.
+// DC PAYROLL SERVICE WORKER v45
+// v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
+// client-trusted role check. Bumped to flush any stale cached login code.
 
-const CACHE_VERSION = 'dental-city-payroll-v46-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v45-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -34,7 +33,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v44')) {
+          if (!cacheName.includes('v45')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -97,4 +96,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v44');
+console.log('[SW] Service Worker loaded v45');
