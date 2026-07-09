@@ -337,6 +337,24 @@ const _sb = (SUPABASE_URL && SUPABASE_KEY)
   ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
   : null;
 
+// Calls the admin-account edge function (create/reset_password/delete a real
+// Supabase Auth login) using the current session's JWT. Owner/Dev only —
+// enforced server-side too. Throws on failure.
+async function _adminAccountCall(action, payload){
+  if(!_sb) throw new Error('Not connected');
+  const { data: sessionData } = await _sb.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if(!token) throw new Error('No active session');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/admin-account', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY },
+    body: JSON.stringify({ action, ...payload })
+  });
+  const out = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(out.error || 'Request failed');
+  return out;
+}
+
 console.log('✅ Supabase client initialized:', _sb ? 'Ready' : 'FAILED');
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -828,7 +846,8 @@ async function _saveAccountToCloud(username, acc){
       full: acc
     });
     const {data, error} = await _sb.from('payroll_accounts').upsert({
-      username, password_hash: acc.password, role: roleValue, name: acc.name, branch: acc.branch||null
+      username, password_hash: acc.password, role: roleValue, name: acc.name, branch: acc.branch||null,
+      ...(acc.auth_uid ? {auth_uid: acc.auth_uid} : {})
     }, { onConflict: 'username' });
     
     if(error) {
@@ -7743,11 +7762,15 @@ function addAccount(){
     if(ROLE_BRANCH_REQUIRED.includes(role)&&!branch){ toast('⚠️ Branch is required for this role'); return; }
 
     try {
+      // Create the REAL login credential first (Supabase Auth), via the
+      // admin-account edge function — this is what doLogin actually checks.
+      const { auth_uid } = await _adminAccountCall('create', { username: u, password: pass });
+
       const pwHash = await _sha256(pass);
-      const newAccount = {password: pwHash, role, name, ...(branch?{branch}:{})};
+      const newAccount = {password: pwHash, role, name, auth_uid, ...(branch?{branch}:{})};
       console.log('📝 Saving account:', u, newAccount);
 
-      // Save to Supabase FIRST - if this fails, don't add to USERS
+      // Save the profile row (role/branch/name) to Supabase
       await _saveAccountToCloud(u, newAccount);
 
       // Only add to USERS after successful Supabase save
@@ -7788,18 +7811,29 @@ function editAccount(username){
       return;
     }
 
-    USERS[username] = {...USERS[username], name, role,
-      ...(pass?{password: await _sha256(pass)}:{}),
-      ...(branch?{branch}:{})};
-    if(!branch) delete USERS[username].branch;
-    _saveAccountToCloud(username, USERS[username]);
-    toast(`✅ "${username}" updated!`); closeModal(); showAccountManager();
+    try{
+      // If a new password was entered, reset the REAL login credential too
+      // (Supabase Auth) — otherwise the account keeps its old password and
+      // silently falls back to a broken offline-only session on next login.
+      if(pass){
+        await _adminAccountCall('reset_password', { username, password: pass });
+      }
+      USERS[username] = {...USERS[username], name, role,
+        ...(pass?{password: await _sha256(pass)}:{}),
+        ...(branch?{branch}:{})};
+      if(!branch) delete USERS[username].branch;
+      await _saveAccountToCloud(username, USERS[username]);
+      toast(`✅ "${username}" updated!`); closeModal(); showAccountManager();
+    }catch(e){
+      toast(`❌ Error updating account: ${e.message}`);
+    }
   },'💾 Save Changes');
 }
 
 async function deleteAccount(username){
   if(username==='owner'||USERS[username]?._hidden){ toast('⚠️ Cannot delete this account!'); return; }
   if(!(await _confirm(`Delete account "${username}"?<br><br>This cannot be undone.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
+  try{ await _adminAccountCall('delete', { username }); }catch(e){ console.warn('Auth user delete failed:', e.message); }
   delete USERS[username];
   _deleteAccountFromCloud(username);
   toast(`🗑 Account "${username}" deleted`); showAccountManager();
@@ -7877,11 +7911,25 @@ async function accountSettingsSave(){
     const conf = document.getElementById('f_conf_pass')?.value;
     if(!curr || !newPass || !conf) { toast('⚠️ All fields required'); return; }
     if(newPass !== conf) { toast('⚠️ Passwords don\'t match'); return; }
-    const currHash = await _sha256(curr);
-    if(currHash !== USERS[_currentUser].password) { toast('❌ Current password incorrect'); return; }
-    USERS[_currentUser].password = await _sha256(newPass);
-    _saveAccountToCloud(_currentUser, USERS[_currentUser]);
-    toast('✅ Password changed!');
+    if(newPass.length < 6) { toast('⚠️ New password must be at least 6 characters'); return; }
+    try{
+      // Verify the CURRENT password against the real Supabase Auth credential
+      // (not a locally cached hash, which can go stale) by re-authenticating.
+      if(_sb){
+        const { error: reauthErr } = await _sb.auth.signInWithPassword({
+          email: _currentUser + '@payroll.dcity.internal', password: curr
+        });
+        if(reauthErr){ toast('❌ Current password incorrect'); return; }
+        // Update the REAL login credential
+        const { error: updErr } = await _sb.auth.updateUser({ password: newPass });
+        if(updErr){ toast(`❌ Could not update password: ${updErr.message}`); return; }
+      }
+      USERS[_currentUser].password = await _sha256(newPass);
+      await _saveAccountToCloud(_currentUser, USERS[_currentUser]);
+      toast('✅ Password changed!');
+    }catch(e){
+      toast(`❌ Error changing password: ${e.message}`);
+    }
   } else {
     // Username change
     const inp = document.getElementById('changeUserInput');

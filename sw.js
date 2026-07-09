@@ -1,10 +1,13 @@
-// DC PAYROLL SERVICE WORKER v46
+// DC PAYROLL SERVICE WORKER v47
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
 // fallback list — only the dev emergency account remains.
+// v47: account create/edit/delete/self password-change now sync the real
+// Supabase Auth credential via the admin-account edge function, not just
+// the legacy payroll_accounts.password_hash column.
 
-const CACHE_VERSION = 'dental-city-payroll-v46-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v47-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -35,7 +38,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v46')) {
+          if (!cacheName.includes('v47')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -98,4 +101,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v46');
+console.log('[SW] Service Worker loaded v47');
