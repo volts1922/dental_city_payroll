@@ -7833,10 +7833,16 @@ function editAccount(username){
 async function deleteAccount(username){
   if(username==='owner'||USERS[username]?._hidden){ toast('⚠️ Cannot delete this account!'); return; }
   if(!(await _confirm(`Delete account "${username}"?<br><br>This cannot be undone.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
-  try{ await _adminAccountCall('delete', { username }); }catch(e){ console.warn('Auth user delete failed:', e.message); }
+  let authDeleteFailed = false;
+  try{ await _adminAccountCall('delete', { username }); }catch(e){ console.warn('Auth user delete failed:', e.message); authDeleteFailed = true; }
   delete USERS[username];
   _deleteAccountFromCloud(username);
-  toast(`🗑 Account "${username}" deleted`); showAccountManager();
+  if(authDeleteFailed){
+    toast(`⚠️ "${username}" removed from the list, but the login credential may still be active. Please tell your developer.`, 6000);
+  } else {
+    toast(`🗑 Account "${username}" deleted`);
+  }
+  showAccountManager();
 }
 
 // ── CHANGE OWN PASSWORD ──────────────────────────────────────────────────
