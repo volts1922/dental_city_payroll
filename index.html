@@ -1220,6 +1220,30 @@ const REG_HOL       = 2.00;  // Regular holiday
 const SPE_HOL       = 1.30;  // Special holiday
 const REG_HOL_OT    = 2.60;  // Regular holiday + overtime
 
+// ── TARDINESS (LATE) ──────────────────────────────────────────────────────────
+// Standard PH clinic practice: mall-based branches typically run a 10:00 AM
+// shift start with a 15-minute grace period. Clock in within the grace window
+// = no deduction. Beyond it, "no work, no pay" applies proportionally to the
+// actual minutes late (not a flat penalty) — this is the DOLE-compliant way
+// to dock tardiness, since punitive flat deductions can run into wage-
+// deduction rules.
+const SHIFT_START_TIME    = '10:00';
+const LATE_GRACE_MINUTES  = 15;
+
+// Returns minutes late for a given clock-in time (already grace-adjusted:
+// returns 0 if within the grace window). Accepts any timestamp format via
+// _timeOnly() — same Supabase 'T'-separator fix as OT/ND.
+function computeLateMinutes(timeInRaw){
+  const tInStr = _timeOnly(timeInRaw);
+  if(!tInStr) return 0;
+  const tIn = parseTime(tInStr);
+  const shiftStart = parseTime(SHIFT_START_TIME);
+  if(!tIn || !shiftStart) return 0;
+  const diffMinutes = Math.round((tIn - shiftStart) / 60000);
+  if(diffMinutes <= LATE_GRACE_MINUTES) return 0;
+  return diffMinutes;
+}
+
 // ── PH REGULAR HOLIDAYS 2026 ──────────────────────────────────────────────────
 const REGULAR_HOLIDAYS_2026 = [
   '2026-01-01','2026-04-02','2026-04-03','2026-04-09','2026-04-10',
@@ -1750,7 +1774,7 @@ function computeTax(t){
   return 183541.80+(t-666667)*0.35;
 }
 
-function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}){
+function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}, lateMinutes=0){
   const fullMonthly = dailyRate * WORKING_DAYS;
   const hourlyRate  = dailyRate / 8;
 
@@ -1776,13 +1800,18 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
   // ── Allowances ────────────────────────────────────────────────────────────
   const totalAllow = totalAllowances(allowances);
 
+  // ── Tardiness (late) deduction ──────────────────────────────────────────
+  // "No work, no pay" — proportional deduction for actual minutes late past
+  // the grace period, at the same per-minute rate as the hourly rate.
+  const lateDeduction = (hourlyRate / 60) * (lateMinutes||0);
+
   gross = gross + otPay + ndPay + regHolPay + speHolPay + totalAllow;
 
   const sss = computeSSS(fullMonthly);
   const ph  = computePH(fullMonthly);
   const pi  = computePagibig(fullMonthly);
   const tax = computeTax(Math.max(gross - sss - ph - pi - totalAllow, 0)); // allowances not taxable
-  const totalDed = sss + ph + pi + tax + loanDeduction;
+  const totalDed = sss + ph + pi + tax + loanDeduction + lateDeduction;
 
   return {
     dailyRate:       Math.round(dailyRate*100)/100,
@@ -1800,6 +1829,8 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
     pi:              Math.round(pi*100)/100,
     tax:             Math.round(tax*100)/100,
     loanDeduction:   Math.round(loanDeduction*100)/100,
+    lateMinutes:     Math.round(lateMinutes||0),
+    lateDeduction:   Math.round(lateDeduction*100)/100,
     totalDeductions: Math.round(totalDed*100)/100,
     net:             Math.round((gross - totalDed)*100)/100,
   };
@@ -3023,10 +3054,11 @@ async function clockOut(){
   const {ot, nd} = computeOT(existing.time_in, nowStr);
   existing.ot_hours = Math.round(ot * 100) / 100;
   existing.nd_hours = Math.round(nd * 100) / 100;
-  // Auto-flag Late if clocked in after 08:10
+  // Auto-flag Late if clocked in past shift start + grace period
   if(existing.time_in){
     const tinParsed=parseTime(existing.time_in);
-    const cutoff=new Date(0,0,0,8,10,0);
+    const shiftStart=parseTime(SHIFT_START_TIME);
+    const cutoff=new Date(shiftStart.getTime() + LATE_GRACE_MINUTES*60000);
     if(tinParsed>cutoff) existing.status='Late';
   }
   save(KEYS.attendance,att);
@@ -3846,7 +3878,7 @@ async function showPayroll(){
     <div class="table-wrap"><div class="table-scroll">
       <table><thead><tr>
         <th>ID</th><th>Name</th><th>Branch</th><th>Daily Rate</th><th>Days Worked</th><th>Gross</th>
-        <th>OT Pay</th><th>Night Diff</th><th>Holiday Pay</th><th>Allowances</th>
+        <th>OT Pay</th><th>Night Diff</th><th>Late Ded.</th><th>Holiday Pay</th><th>Allowances</th>
         <th>SSS</th><th>PhilHealth</th><th>Pag-IBIG</th><th>Tax</th><th>Loan</th><th>Total Ded.</th><th>Net Pay</th><th>Actions</th>
       </tr></thead><tbody id="payBody"></tbody></table>
     </div></div>`;
@@ -3935,15 +3967,16 @@ async function computePayroll(){
     const halfDays   = recs.filter(r=>r.status==='Half-day').length;
     const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
+    const lateMinutes= recs.reduce((s,r)=>s+computeLateMinutes(r.time_in),0);
     const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
     const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
-    
+
     console.log(`[PAYROLL] ${eid}: records=${recs.length}, present=${daysPresent}, hours=[${recs.map(r=>`${r.date}=${r.hours||'?'}`).join(',')}]`);
     const loanDed    = getActiveLoanDeduction(eid);
     const allowances = e.allowances || {};
     const hasAtt     = daysPresent+absences+halfDays > 0;
     const daysWorked = hasAtt ? daysPresent + (halfDays*0.5) : null;
-    const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances);
+    const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, lateMinutes);
     const dw         = daysWorked!==null ? daysWorked.toFixed(1) : WORKING_DAYS.toFixed(1);
     const totalAllow = totalAllowances(allowances);
     _payrollData.push({eid, name:e.name, branch:e.branch||'—', ...pay, days_worked:dw,
@@ -3954,6 +3987,7 @@ async function computePayroll(){
       <td>${fmt(pay.gross)}</td>
       <td>${otHours>0?`<span style="color:var(--blue);font-weight:700">${fmt(pay.otPay)}</span>`:'—'}</td>
       <td>${ndHours>0?`<span style="color:var(--purple);font-weight:700">${fmt(pay.ndPay)}</span>`:'—'}</td>
+      <td>${lateMinutes>0?`<span style="color:var(--red);font-weight:700">${fmt(pay.lateDeduction)}</span>`:'—'}</td>
       <td>${regHolDays>0||speHolDays>0?`<span style="color:var(--red);font-weight:700">${fmt(pay.regHolPay+pay.speHolPay)}</span>`:'—'}</td>
       <td>${totalAllow>0?`<span style="color:var(--teal);font-weight:700">${fmt(totalAllow)}</span>`:'—'}</td>
       <td>${fmt(pay.sss)}</td><td>${fmt(pay.ph)}</td>
@@ -3961,7 +3995,7 @@ async function computePayroll(){
       <td>${fmt(pay.totalDeductions)}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
       <td><button class="btn btn-primary btn-sm" onclick="openPayslipGenerator('${eid}','${month}')">📋 Generate</button></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="16" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
+  }).join('')||`<tr><td colspan="19" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
   const payBody = document.getElementById('payBody');
   if(payBody) payBody.innerHTML=rows;
 }
@@ -4053,10 +4087,11 @@ async function showPayslip(empId, month, startDate, endDate){
 
   // Compute Overtime / Night Differential from actual per-day time in/out
   // (this was missing before — payslip only counted basic days worked).
-  let otHours = 0, ndHours = 0;
+  let otHours = 0, ndHours = 0, lateMinutes = 0;
   attRecords.forEach(r=>{
     const tIn  = _timeOnly(r.time_in);
     const tOut = _timeOnly(r.time_out);
+    lateMinutes += computeLateMinutes(r.time_in);
     if(!tIn || !tOut) return;
     const {ot, nd} = computeOT(tIn, tOut);
     otHours += ot; ndHours += nd;
@@ -4064,6 +4099,7 @@ async function showPayslip(empId, month, startDate, endDate){
   const hourlyRate = rate / 8;
   const otPay = Math.round(hourlyRate * OT_MULTIPLIER * otHours * 100) / 100;
   const ndPay = Math.round(hourlyRate * ND_RATE * ndHours * 100) / 100;
+  const lateDeduction = Math.round((hourlyRate / 60) * lateMinutes * 100) / 100;
 
   // Period-specific gross (for display) — now includes OT/ND pay
   const basicPay = rate * daysWorked;
@@ -4079,7 +4115,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4094,7 +4130,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyPI = 100;
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4107,7 +4143,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
       sss: 0, ph: 0, pi: 0,
       tax: monthlyBIR,
       loanDeduction: 0,
@@ -4120,7 +4156,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyPI = 100;
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross,
+      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4130,7 +4166,7 @@ async function showPayslip(empId, month, startDate, endDate){
     };
   }
   
-  pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.tax + pay.loanDeduction;
+  pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.tax + pay.loanDeduction + (pay.lateDeduction||0);
   pay.net = pay.gross - pay.totalDeductions;
   
   const payslipHTML = `
@@ -4161,6 +4197,7 @@ async function showPayslip(empId, month, startDate, endDate){
         ${pay.ph > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">PhilHealth</td><td style="padding:10px;text-align:right">${fmt(pay.ph)}</td></tr>` : ''}
         ${pay.pi > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Pag-IBIG</td><td style="padding:10px;text-align:right">${fmt(pay.pi)}</td></tr>` : ''}
         ${pay.tax > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Income Tax</td><td style="padding:10px;text-align:right">${fmt(pay.tax)}</td></tr>` : ''}
+        ${pay.lateDeduction > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Late Deduction (${pay.lateMinutes} mins past ${SHIFT_START_TIME} + ${LATE_GRACE_MINUTES}min grace)</td><td style="padding:10px;text-align:right">${fmt(pay.lateDeduction)}</td></tr>` : ''}
         <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">TOTAL DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.totalDeductions)}</td></tr>
         <tr style="background:#e8f5e9"><td style="padding:15px;font-weight:700;font-size:14px">NET PAY</td><td style="padding:15px;text-align:right;font-weight:700;font-size:16px;color:#16a34a">${fmt(pay.net)}</td></tr>
       </table>
@@ -4443,15 +4480,15 @@ async function confirmPayrollRun(){
 function exportPayroll(){
   if(!_payrollData.length){toast('⚠️ Compute payroll first');return;}
   const rows=[['ID','Name','Branch','Daily Rate','Days Worked','Basic Gross',
-    'OT Pay','Night Diff','Holiday Pay','Gross Pay',
+    'OT Pay','Night Diff','Late Deduction','Holiday Pay','Gross Pay',
     'SSS','PhilHealth','Pag-IBIG','Tax','Loan','Total Deductions','Net Pay',
-    'OT Hours','ND Hours','Reg Hol Days','Spe Hol Days']];
+    'OT Hours','ND Hours','Late Minutes','Reg Hol Days','Spe Hol Days']];
   _payrollData.forEach(d=>rows.push([
     d.eid,d.name,d.branch||'—',d.dailyRate,d.days_worked,
     (d.gross - d.otPay - d.ndPay - d.regHolPay - d.speHolPay).toFixed(2),
-    d.otPay||0, d.ndPay||0, (d.regHolPay+d.speHolPay)||0, d.gross,
+    d.otPay||0, d.ndPay||0, d.lateDeduction||0, (d.regHolPay+d.speHolPay)||0, d.gross,
     d.sss,d.ph,d.pi,d.tax,d.loanDeduction,d.totalDeductions,d.net,
-    d.ot_hours||0, d.nd_hours||0, d.reg_hol||0, d.spe_hol||0
+    d.ot_hours||0, d.nd_hours||0, d.lateMinutes||0, d.reg_hol||0, d.spe_hol||0
   ]));
   downloadCSV(`payroll_${today()}.csv`,rows);
 }
@@ -8371,7 +8408,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v50';
+    const _SW_VER = 'dcpayroll-v52';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

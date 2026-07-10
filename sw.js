@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v50
+// DC PAYROLL SERVICE WORKER v52
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -16,8 +16,15 @@
 // individual Payslip, clock-out) — code assumed Supabase timestamps were
 // space-separated ("... 10:00:00") but they're actually ISO 'T'-separated
 // ("...T10:00:00"), so the old .split(' ') logic silently grabbed nothing.
+// v51: added tardiness (late) deduction — 10:00 AM shift start + 15min
+// grace period, proportional per-minute deduction beyond that, shown as its
+// own payslip line. Also corrected the old stale 8:10 AM "Late" status
+// cutoff to match the real 10 AM shift start.
+// v52: added a dedicated "Late Ded." column to the bulk Payroll screen
+// table (previously only visible on the individual Payslip) and included
+// Late Deduction / Late Minutes in the CSV export.
 
-const CACHE_VERSION = 'dental-city-payroll-v50-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v52-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -48,7 +55,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v50')) {
+          if (!cacheName.includes('v52')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -111,4 +118,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v50');
+console.log('[SW] Service Worker loaded v52');
