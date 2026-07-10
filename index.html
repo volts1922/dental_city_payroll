@@ -1237,6 +1237,17 @@ function getHolidayType(date){
   return h.type === 'RH' ? 'Regular Holiday' : 'Special Holiday';
 }
 
+// Extracts just the "HH:MM" or "HH:MM:SS" clock-time portion from a Supabase
+// timestamp, regardless of whether it's space-separated ("2026-07-10 10:00:00")
+// or ISO/'T'-separated ("2026-07-10T10:00:00", what PostgREST actually returns).
+// A naive .split(' ')[1] silently broke on the 'T' format, which made OT hours
+// compute to 0 everywhere even when real overtime existed in the data.
+function _timeOnly(ts){
+  if(!ts) return null;
+  const m = String(ts).match(/(\d{1,2}:\d{2}(:\d{2})?)/);
+  return m ? m[1] : null;
+}
+
 // ── COMPUTE OVERTIME HOURS ────────────────────────────────────────────────────
 function computeOT(timeIn, timeOut, regularHours=8){
   if(!timeIn||!timeOut||timeIn==='—'||timeOut==='—') return {ot:0, nd:0};
@@ -1677,7 +1688,7 @@ function nowPH(){
 // Converts "HH:MM", "HH:MM:SS", or "YYYY-MM-DD HH:MM:SS" (24h) into "h:MM AM/PM" for DISPLAY only.
 function to12h(t){
   if(!t || t==='—') return '—';
-  const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
+  const timePart = _timeOnly(t) || String(t);
   const [h,m] = timePart.split(':').map(Number);
   if(isNaN(h)||isNaN(m)) return t;
   const period = h>=12 ? 'PM' : 'AM';
@@ -3882,8 +3893,8 @@ async function computePayroll(){
           // time_clock has no ot_hours/nd_hours columns — compute them here from
           // time_in/time_out instead of reading a field that's always undefined
           // (which was silently making OT pay always ₱0 in payroll).
-          const tInHM = r.time_in ? r.time_in.split(' ')[1] : null;
-          const tOutHM = r.time_out ? r.time_out.split(' ')[1] : null;
+          const tInHM = _timeOnly(r.time_in);
+          const tOutHM = _timeOnly(r.time_out);
           const workResult = calculateWorkHours(tInHM, tOutHM);
           const {ot: computedOT, nd: computedND} = computeOT(tInHM, tOutHM);
 
@@ -4044,8 +4055,8 @@ async function showPayslip(empId, month, startDate, endDate){
   // (this was missing before — payslip only counted basic days worked).
   let otHours = 0, ndHours = 0;
   attRecords.forEach(r=>{
-    const tIn  = r.time_in  && r.time_in.includes(' ')  ? r.time_in.split(' ')[1]  : r.time_in;
-    const tOut = r.time_out && r.time_out.includes(' ') ? r.time_out.split(' ')[1] : r.time_out;
+    const tIn  = _timeOnly(r.time_in);
+    const tOut = _timeOnly(r.time_out);
     if(!tIn || !tOut) return;
     const {ot, nd} = computeOT(tIn, tOut);
     otHours += ot; ndHours += nd;
@@ -8360,7 +8371,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v49';
+    const _SW_VER = 'dcpayroll-v50';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -9453,8 +9464,8 @@ async function clockOut(empId, branchId) {
     try {
       const att = load(KEYS.attendance);
       if(!att[empId]) att[empId] = [];
-      const timeInHM = (clock.time_in||'').includes(' ') ? clock.time_in.split(' ')[1].slice(0,5) : (clock.time_in||'—');
-      const timeOutHM = timeOutStr.split(' ')[1].slice(0,5);
+      const timeInHM = (_timeOnly(clock.time_in) || '—').slice(0,5);
+      const timeOutHM = (_timeOnly(timeOutStr) || '—').slice(0,5);
       let rec = att[empId].find(r=>r.date===todayPh);
       if(!rec){ rec = {date: todayPh, status: 'Present'}; att[empId].push(rec); }
       rec.time_in = timeInHM;
@@ -9476,11 +9487,12 @@ async function clockOut(empId, branchId) {
 }
 
 function _calcTime(timeIn, timeOut) {
-  // FIX: timeIn/timeOut can be "HH:MM[:SS]" OR full "YYYY-MM-DD HH:MM:SS".
-  // Always pull just the HH:MM(:SS) portion before doing math.
+  // timeIn/timeOut can be "HH:MM[:SS]", "YYYY-MM-DD HH:MM:SS", or Supabase's
+  // ISO "YYYY-MM-DDTHH:MM:SS" — _timeOnly() pulls just the HH:MM(:SS) portion
+  // regardless of separator before doing math.
   const extract = (t) => {
-    if(!t) return [0,0];
-    const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
+    const timePart = _timeOnly(t);
+    if(!timePart) return [0,0];
     const [h, m] = timePart.split(':').map(Number);
     return [h || 0, m || 0];
   };
