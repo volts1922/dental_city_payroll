@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v48
+// DC PAYROLL SERVICE WORKER v49
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -9,8 +9,11 @@
 // v48: deleteAccount now warns if the real login credential fails to delete
 // (instead of silently swallowing the error), matching a hardened edge
 // function that no longer masks that failure.
+// v49: fixed stale service-worker registration tag in index.html (_SW_VER
+// was stuck at v43 since v44 while sw.js itself kept bumping) — was causing
+// some returning browsers to keep running an old cached service worker.
 
-const CACHE_VERSION = 'dental-city-payroll-v48-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v49-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -41,7 +44,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v48')) {
+          if (!cacheName.includes('v49')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -104,4 +107,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v48');
+console.log('[SW] Service Worker loaded v49');
