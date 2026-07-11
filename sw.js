@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v52
+// DC PAYROLL SERVICE WORKER v53
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -23,8 +23,13 @@
 // v52: added a dedicated "Late Ded." column to the bulk Payroll screen
 // table (previously only visible on the individual Payslip) and included
 // Late Deduction / Late Minutes in the CSV export.
+// v53: fixed Owner sidebar section headers (Overview / Branch Ops /
+// Management) — the group slice offsets were stale after "All Branches"
+// and "Dashboard" nav items were removed, so Employees/Attendance showed
+// under Overview and Holidays/Shift Manager showed under Branch Ops.
+// Now grouped correctly; no functional change, all tabs still worked.
 
-const CACHE_VERSION = 'dental-city-payroll-v52-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v53-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -55,7 +60,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v52')) {
+          if (!cacheName.includes('v53')) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -118,4 +123,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v52');
+console.log('[SW] Service Worker loaded v53');
