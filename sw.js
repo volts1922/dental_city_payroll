@@ -29,7 +29,16 @@
 // under Overview and Holidays/Shift Manager showed under Branch Ops.
 // Now grouped correctly; no functional change, all tabs still worked.
 
-const CACHE_VERSION = 'dental-city-payroll-v53-nocache';
+// v54: security + sync hardening — stopped syncing account password hashes
+// into payroll_data (pr_accounts blobs); added stale-write guard so two users
+// online can't silently overwrite each other's saves; fixed _sbInsertOrUpdate
+// conflict keys (payroll_data, pr_payroll_approvals); fixed payroll-confirm
+// approvals payload to match the real table schema; removed redundant double
+// blob writes; employee purge now handles object-stored blobs.
+// v55: Attendance calendar — replaced the date input with Week / Month / Year
+// calendar views; days with attendance records show a green dot; click a day
+// to load its records. View choice remembered per device.
+const CACHE_VERSION = 'dental-city-payroll-v55-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache

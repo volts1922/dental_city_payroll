@@ -509,6 +509,8 @@ let _currentUser = ""; // Track current logged-in user for security features
 
 // ── MEMORY CACHE (data lives here, synced to Supabase) ───────────────────────
 const _cache = {};
+// v54: last-known cloud updated_at per branch|dataType (stale-write guard)
+const _cloudStamp = {};
 
 // ── SYNC STATUS ───────────────────────────────────────────────────────────────
 function setSyncBar(status, msg){
@@ -524,17 +526,35 @@ async function syncToCloud(dataType, data){
     console.warn('⚠️ syncToCloud skipped: missing _sb or dataType is', dataType);
     return; 
   }
+  if(dataType === 'pr_accounts') return; // v54: NEVER sync account blobs (password hashes) to payroll_data
   const bkey = getBranch() || 'main';
   if(isOwner() && _ownerData[bkey]){
     _ownerData[bkey][dataType] = data;
   }
   setSyncBar('syncing','☁ Syncing...');
   try{
+    // v54: stale-write guard — if the cloud copy is newer than what this
+    // device last loaded, another user saved first. Don't overwrite them.
+    const stampKey = bkey + '|' + dataType;
+    try{
+      const {data: srows} = await _sb.from('payroll_data')
+        .select('updated_at').eq('branch_key', bkey).eq('data_type', dataType).limit(1);
+      const cloudTs = srows && srows[0] && srows[0].updated_at ? new Date(srows[0].updated_at).getTime() : 0;
+      const knownTs = _cloudStamp[stampKey] || 0;
+      if(cloudTs && knownTs && cloudTs > knownTs + 2000){
+        setSyncBar('err','⚠ Newer cloud data found');
+        toast('⚠ Someone else saved newer data for this branch. Reloading cloud copy — please review and redo your last change.', 9000);
+        await loadFromCloud();
+        return;
+      }
+    }catch(e){ console.warn('Stale-check skipped:', e.message); }
+    const _nowIso = new Date().toISOString();
     const {error} = await _sb.from('payroll_data').upsert(
-      {branch_key: bkey, data_type: dataType, data, updated_at: new Date().toISOString()},
+      {branch_key: bkey, data_type: dataType, data, updated_at: _nowIso},
       {onConflict: 'branch_key,data_type'}
     );
     if(error) throw error;
+    _cloudStamp[stampKey] = new Date(_nowIso).getTime();
     setSyncBar('ok','✅ Saved to cloud');
     setTimeout(()=>setSyncBar('ok','☁ Cloud connected'),2500);
   }catch(e){
@@ -553,8 +573,9 @@ async function loadFromCloud(){
   const bkey = getBranch() || 'main';
   try{
     const {data, error} = await _sb.from('payroll_data')
-      .select('data_type,data').eq('branch_key', bkey);
+      .select('data_type,data,updated_at').eq('branch_key', bkey);
     if(error) throw error;
+    (data||[]).forEach(r=>{ if(r.updated_at) _cloudStamp[bkey+'|'+r.data_type] = new Date(r.updated_at).getTime(); });
     // Reset known data types so deleted-in-cloud data doesn't linger locally
     const known = ['pr_employees','pr_attendance','pr_leaves','pr_loans'];
     const returned = {};
@@ -631,7 +652,7 @@ async function loadAllBranchesFromCloud(){
     let data = null, error = null;
     try {
       const result = await Promise.race([
-        _sb.from('payroll_data').select('branch_key,data_type,data'),
+        _sb.from('payroll_data').select('branch_key,data_type,data,updated_at'),
         timeoutPromise
       ]);
       data = result.data;
@@ -646,6 +667,7 @@ async function loadAllBranchesFromCloud(){
     _ownerData = {};
     (data||[]).forEach(row=>{
       if(!row.branch_key) return;
+      if(row.updated_at) _cloudStamp[row.branch_key+'|'+row.data_type] = new Date(row.updated_at).getTime();
       if(!_ownerData[row.branch_key]) _ownerData[row.branch_key] = {};
       let branchData = row.data || {};
       
@@ -2504,6 +2526,105 @@ function exportEmps(){
 let _attDate = today();
 let _clkEidMap = {};
 
+// ── v55: Attendance calendar (week / month / year views) ─────────────────────
+let _attView = localStorage.getItem('pr_att_view') || 'week';
+const _attPad = x => String(x).padStart(2,'0');
+const _attFmt = d => `${d.getFullYear()}-${_attPad(d.getMonth()+1)}-${_attPad(d.getDate())}`;
+
+function attSetView(v){
+  _attView = v;
+  try{ localStorage.setItem('pr_att_view', v); }catch(e){}
+  renderAttCalendar();
+}
+
+function attPick(ds){
+  _attDate = ds;
+  renderAttCalendar();
+  loadAtt();
+}
+
+function attShift(n){
+  const d = new Date(_attDate + 'T00:00:00');
+  if(_attView === 'week') d.setDate(d.getDate() + n*7);
+  else if(_attView === 'month') d.setMonth(d.getMonth() + n);
+  else d.setFullYear(d.getFullYear() + n);
+  _attDate = _attFmt(d);
+  renderAttCalendar();
+  if(_attView === 'week') loadAtt();
+}
+
+// Which dates in [startStr, endStr] have time_clock records (dot markers)
+async function _attDatesWithData(startStr, endStr){
+  try{
+    if(!_sb || !getBranch()) return new Set();
+    const {data: bd} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
+    if(!bd) return new Set();
+    const {data} = await _sb.from('time_clock').select('date')
+      .eq('branch_id', bd.id).gte('date', startStr).lte('date', endStr);
+    return new Set((data||[]).map(r => r.date));
+  }catch(e){ return new Set(); }
+}
+
+async function renderAttCalendar(){
+  const el = document.getElementById('attCalendar');
+  if(!el) return;
+  const sel = _attDate, tdy = today();
+  const base = new Date(sel + 'T00:00:00');
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  ['week','month','year'].forEach(v => {
+    const b = document.getElementById('attVw' + v);
+    if(b){ b.style.background = v === _attView ? 'var(--navy)' : '#fff'; b.style.color = v === _attView ? '#fff' : '#333'; }
+  });
+  const navBtn = (n,l) => `<button class="btn btn-sm" style="padding:4px 12px" onclick="attShift(${n})">${l}</button>`;
+  let html = '';
+
+  if(_attView === 'week'){
+    const d = new Date(base); d.setDate(d.getDate() - ((d.getDay()+6)%7)); // Monday
+    const days = []; for(let i=0;i<7;i++){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
+    const marks = await _attDatesWithData(_attFmt(days[0]), _attFmt(days[6]));
+    const title = `${MONTHS[days[0].getMonth()]} ${days[0].getDate()} – ${MONTHS[days[6].getMonth()]} ${days[6].getDate()}, ${days[6].getFullYear()}`;
+    html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">${navBtn(-1,'‹')}<b style="font-size:14px">${title}</b>${navBtn(1,'›')}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">` +
+      days.map((dd,i) => {
+        const ds = _attFmt(dd), isSel = ds === sel, isToday = ds === tdy;
+        return `<div onclick="attPick('${ds}')" style="cursor:pointer;text-align:center;padding:10px 4px;border-radius:10px;border:1.5px solid ${isSel?'var(--navy)':'var(--border)'};background:${isSel?'var(--navy)':(isToday?'var(--sky)':'#fff')};color:${isSel?'#fff':'#333'}">
+          <div style="font-size:11px;opacity:.65">${DOW[i]}</div>
+          <div style="font-size:17px;font-weight:700">${dd.getDate()}</div>
+          <div style="height:7px;line-height:7px">${marks.has(ds)?`<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${isSel?'#6EE7B7':'var(--green)'}"></span>`:''}</div>
+        </div>`;
+      }).join('') + `</div>`;
+
+  } else if(_attView === 'month'){
+    const y = base.getFullYear(), m = base.getMonth();
+    const startDow = (new Date(y,m,1).getDay()+6)%7;
+    const dim = new Date(y,m+1,0).getDate();
+    const marks = await _attDatesWithData(`${y}-${_attPad(m+1)}-01`, `${y}-${_attPad(m+1)}-${_attPad(dim)}`);
+    let cells = DOW.map(d => `<div style="text-align:center;font-size:11px;font-weight:700;color:#888;padding:4px">${d}</div>`).join('');
+    for(let i=0;i<startDow;i++) cells += '<div></div>';
+    for(let day=1;day<=dim;day++){
+      const ds = `${y}-${_attPad(m+1)}-${_attPad(day)}`, isSel = ds === sel, isToday = ds === tdy;
+      cells += `<div onclick="attPick('${ds}')" style="cursor:pointer;text-align:center;padding:7px 2px;border-radius:8px;background:${isSel?'var(--navy)':(isToday?'var(--sky)':'transparent')};color:${isSel?'#fff':'#333'}">
+        <div style="font-size:13px;font-weight:${(isToday||isSel)?'700':'400'}">${day}</div>
+        <div style="height:6px;line-height:6px">${marks.has(ds)?`<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${isSel?'#6EE7B7':'var(--green)'}"></span>`:''}</div>
+      </div>`;
+    }
+    html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">${navBtn(-1,'‹')}<b style="font-size:14px">${MONTHS[m]} ${y}</b>${navBtn(1,'›')}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${cells}</div>`;
+
+  } else { // year
+    const y = base.getFullYear();
+    html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">${navBtn(-1,'‹')}<b style="font-size:14px">${y}</b>${navBtn(1,'›')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px">` +
+      MONTHS.map((mn,i) => {
+        const isCur = i === base.getMonth();
+        const isTodayM = tdy.slice(0,7) === `${y}-${_attPad(i+1)}`;
+        return `<div onclick="_attDate='${y}-${_attPad(i+1)}-01';attSetView('month')" style="cursor:pointer;text-align:center;padding:14px 6px;border-radius:10px;border:1.5px solid ${isCur?'var(--navy)':'var(--border)'};background:${isCur?'var(--navy)':(isTodayM?'var(--sky)':'#fff')};color:${isCur?'#fff':'#333'};font-weight:600;font-size:13px">${mn}</div>`;
+      }).join('') + `</div>`;
+  }
+  el.innerHTML = `<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px">${html}</div>`;
+}
+
 function showAttendance(){
   ownerEnsureBranchData();
   const emps=load(KEYS.employees);
@@ -2515,13 +2636,18 @@ function showAttendance(){
     <div class="section-header">
       <div class="section-title">Attendance</div>
       <div class="btn-row">
-        <input type="date" id="attDate" value="${_attDate}" onchange="_attDate=this.value;loadAtt()" style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-        <button class="btn btn-primary" onclick="loadAtt()">Load</button>
+        <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden">
+          <button id="attVwweek" class="btn btn-sm" style="border-radius:0;border:none" onclick="attSetView('week')">Week</button>
+          <button id="attVwmonth" class="btn btn-sm" style="border-radius:0;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border)" onclick="attSetView('month')">Month</button>
+          <button id="attVwyear" class="btn btn-sm" style="border-radius:0;border:none" onclick="attSetView('year')">Year</button>
+        </div>
         <button class="btn btn-success admin-only" onclick="markAttModal()">✚ Mark Attendance</button>
         <button class="btn admin-only" style="background:#DC2626;color:#fff" onclick="clearAllAtt()">🗑 Clear This Date</button>
         <button class="btn btn-teal admin-only" onclick="exportAtt()">Export CSV</button>
       </div>
     </div>
+
+    <div id="attCalendar" style="margin-top:12px"></div>
 
     <!-- Real-time Attendance Status Widget -->
     <div class="section-header" style="margin-top:20px">
@@ -2532,7 +2658,7 @@ function showAttendance(){
       <table><thead><tr><th>ID</th><th>Name</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>OT Hours</th><th>ND Hours</th><th>Holiday</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="attBody"></tbody></table>
     </div></div>`;
-  loadAtt(); applyRole();
+  renderAttCalendar(); loadAtt(); applyRole();
 }
 
 async function loadAtt(){
@@ -3434,7 +3560,7 @@ async function markAttRecordIndividual(eid, date){
 }
 
 function markAttModal(){
-  const pickedDate = document.getElementById('attDate')?.value || today();  // Read FRESH from picker!
+  const pickedDate = _attDate || today();  // v55: calendar drives _attDate directly
   _attDate = pickedDate;  // Update global
   
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
@@ -3621,19 +3747,7 @@ function setLeave(eid,idx,status){
   leaves[eid][idx].status=status;
   save(KEYS.leaves,leaves);
 
-  // Sync leave record to Supabase
-  try{
-    (async () => {
-      await _sbInsertOrUpdate('payroll_data', {
-        branch_key: getBranch(),
-        data_type: 'pr_leaves',
-        data: JSON.stringify(leaves),
-        updated_at: nowPH()
-      });
-    })();
-  }catch(e){
-    console.warn('[Leave] Leaves data sync failed:', e.message);
-  }
+  // v54: leaves blob already synced by save() → syncToCloud
 
   // Auto-mark attendance as "On Leave" for each day of approved leave
   if(status==='Approved'){
@@ -3657,21 +3771,7 @@ function setLeave(eid,idx,status){
     }
     save(KEYS.attendance, att);
     
-    // Sync updated attendance to Supabase
-    if(_sb && count > 0) {
-      (async () => {
-        try {
-          const {error} = await _sb.from('payroll_data').upsert(
-            {branch_key: getBranch(), data_type: 'pr_attendance', data: JSON.stringify(att), updated_at: new Date().toISOString()},
-            {onConflict: 'branch_key,data_type'}
-          );
-          if(error) throw error;
-          console.log('[Leave] Attendance synced to cloud for', eid);
-        } catch(e) {
-          console.warn('[Leave] Attendance sync failed:', e.message);
-        }
-      })();
-    }
+    // v54: attendance blob already synced by save() → syncToCloud
     
     toast(`✅ Approved! ${count} day(s) marked as On Leave in attendance.`);
   } else {
@@ -3710,16 +3810,7 @@ async function deleteLeave(eid,idx){
         return;
       }
       
-      try{
-        if(_sb){
-          await _sb.from('payroll_data').upsert(
-            {branch_key: getBranch(), data_type: 'pr_leaves', data: JSON.stringify(leaves), updated_at: new Date().toISOString()},
-            {onConflict: 'branch_key,data_type'}
-          );
-        }
-      }catch(err){
-        console.warn('Cloud sync warning:', err);
-      }
+      // v54: leaves blob already synced by save() → syncToCloud
       
       toast('✅ Leave record deleted');
       showLeave();
@@ -4448,25 +4539,19 @@ async function confirmPayrollRun(){
   // Sync payroll and loans to Supabase
   try{
     const month = today().substring(0, 7); // YYYY-MM
-    const run_id = `${getBranch()}_${month}_${Date.now()}`;
+    const _pcBranchUUID = await getBranchUUID(getBranch());
     
     // Save to pr_payroll_approvals
     await _sbInsertOrUpdate('pr_payroll_approvals', {
-      run_id,
-      branch_id: getBranch(),
-      month,
-      status: 'Confirmed',
-      employees: _payrollData,
-      updated_at: nowPH()
+      branch_id: _pcBranchUUID,
+      payroll_period: month,
+      status: 'approved',
+      approved_by: _currentUser || null,
+      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
     
-    // Sync loans to payroll_data blob
-    await _sbInsertOrUpdate('payroll_data', {
-      branch_key: getBranch(),
-      data_type: 'pr_loans',
-      data: JSON.stringify(loans),
-      updated_at: nowPH()
-    });
+    // v54: loans blob already synced by save() → syncToCloud
     
     console.log('[Payroll] Confirmed and synced to Supabase');
   }catch(e){
@@ -6501,11 +6586,11 @@ async function ownerDeleteEmp(branch, eid, name){
             .single();
           
           if(!fetchErr && data){
-            let blob = JSON.parse(data.data || '{}');
+            let blob = typeof data.data === 'string' ? JSON.parse(data.data || '{}') : (data.data || {});
             if(blob[eid]) delete blob[eid];
             
             await _sb.from('payroll_data').upsert(
-              {branch_key: branch, data_type: table, data: JSON.stringify(blob)},
+              {branch_key: branch, data_type: table, data: blob, updated_at: new Date().toISOString()},
               {onConflict: 'branch_key,data_type'}
             );
             console.log(`[Employee] Purged from ${table}:`, eid);
@@ -6533,11 +6618,27 @@ async function ownerSaveBranch(branch, dataType, data){
   if(!_sb) return;
   setSyncBar('syncing','☁ Syncing...');
   try{
+    // v54: stale-write guard for owner saves (branch admin may have saved since owner loaded)
+    const stampKey = branch + '|' + dataType;
+    try{
+      const {data: srows} = await _sb.from('payroll_data')
+        .select('updated_at').eq('branch_key', branch).eq('data_type', dataType).limit(1);
+      const cloudTs = srows && srows[0] && srows[0].updated_at ? new Date(srows[0].updated_at).getTime() : 0;
+      const knownTs = _cloudStamp[stampKey] || 0;
+      if(cloudTs && knownTs && cloudTs > knownTs + 2000){
+        setSyncBar('err','⚠ Newer cloud data found');
+        toast('⚠ '+branch+' has newer data saved by someone else. Reloading — please redo your change.', 9000);
+        await loadAllBranchesFromCloud();
+        return;
+      }
+    }catch(e){ console.warn('Stale-check skipped:', e.message); }
+    const _nowIso = new Date().toISOString();
     const {error} = await _sb.from('payroll_data').upsert(
-      {branch_key:branch, data_type:dataType, data, updated_at:new Date().toISOString()},
+      {branch_key:branch, data_type:dataType, data, updated_at:_nowIso},
       {onConflict:'branch_key,data_type'}
     );
     if(error) throw error;
+    _cloudStamp[stampKey] = new Date(_nowIso).getTime();
     setSyncBar('ok','✅ Saved to cloud');
     setTimeout(()=>setSyncBar('ok','☁ Cloud connected'),2500);
   }catch(e){
@@ -8408,7 +8509,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v53';
+    const _SW_VER = 'dcpayroll-v55';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -9309,8 +9410,9 @@ async function _sbInsertOrUpdate(tableName, data, retries=2, backoff=500){
     // Determine conflict strategy based on table
     let onConflict = 'id';
     if(tableName === 'employees_201') onConflict = 'employee_id';
-    if(tableName === 'pr_payroll_approvals') onConflict = 'run_id';
+    if(tableName === 'pr_payroll_approvals') onConflict = 'branch_id,payroll_period';
     if(tableName === 'payroll_accounts') onConflict = 'username';
+    if(tableName === 'payroll_data') onConflict = 'branch_key,data_type';
     
     let lastError = null;
     for(let attempt = 0; attempt <= retries; attempt++){
