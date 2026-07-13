@@ -1255,11 +1255,29 @@ const LATE_GRACE_MINUTES  = 15;
 // Returns minutes late for a given clock-in time (already grace-adjusted:
 // returns 0 if within the grace window). Accepts any timestamp format via
 // _timeOnly() — same Supabase 'T'-separator fix as OT/ND.
-function computeLateMinutes(timeInRaw){
+// v59: shifts are real now — stored per-branch in the cloud (pr_shifts) and
+// they drive the late calc via each employee's assigned shift.
+function _getShifts(){
+  try{
+    const s = load('pr_shifts');
+    if(s && Object.keys(s).length) return s;
+    return JSON.parse(localStorage.getItem('_customShifts') || JSON.stringify(SHIFTS));
+  }catch(e){ return SHIFTS; }
+}
+
+function computeLateMinutes(timeInRaw, empId){
   const tInStr = _timeOnly(timeInRaw);
   if(!tInStr) return 0;
   const tIn = parseTime(tInStr);
-  const shiftStart = parseTime(SHIFT_START_TIME);
+  let startStr = SHIFT_START_TIME; // default 10:00 (mall opening)
+  if(empId){
+    try{
+      const emp = load(KEYS.employees)[empId];
+      const s = _getShifts()[emp?.shift];
+      if(s && s.start) startStr = s.start;
+    }catch(e){}
+  }
+  const shiftStart = parseTime(startStr);
   if(!tIn || !shiftStart) return 0;
   const diffMinutes = Math.round((tIn - shiftStart) / 60000);
   if(diffMinutes <= LATE_GRACE_MINUTES) return 0;
@@ -2588,7 +2606,7 @@ async function _attRangeData(startStr, endStr){
         if(onLeave(eid, ds)) list.push({n: nm, c: '#3B82F6'});
         else {
           const r = byKey[eid + '|' + ds];
-          if(r) list.push({n: nm, c: computeLateMinutes(r.time_in) > 0 ? '#F59E0B' : '#10B981'});
+          if(r) list.push({n: nm, c: computeLateMinutes(r.time_in, eid) > 0 ? '#F59E0B' : '#10B981'});
           else if(ds < tdy) list.push({n: nm, c: '#EF4444'});
         }
       });
@@ -4108,7 +4126,7 @@ async function computePayroll(){
     const halfDays   = recs.filter(r=>r.status==='Half-day').length;
     const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
-    const lateMinutes= recs.reduce((s,r)=>s+computeLateMinutes(r.time_in),0);
+    const lateMinutes= recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
     const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
     const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
 
@@ -4235,7 +4253,7 @@ async function showPayslip(empId, month, startDate, endDate){
   attRecords.forEach(r=>{
     const tIn  = _timeOnly(r.time_in);
     const tOut = _timeOnly(r.time_out);
-    lateMinutes += computeLateMinutes(r.time_in);
+    lateMinutes += computeLateMinutes(r.time_in, empId);
     if(!tIn || !tOut) return;
     const {ot, nd} = computeOT(tIn, tOut);
     otHours += ot; ndHours += nd;
@@ -7479,7 +7497,7 @@ function resetToDefaultHolidays(){
 // ══════════════════════════════════════════════════════════════════════════════
 function showShiftManager(){
   const emps = load(KEYS.employees);
-  const shifts = JSON.parse(localStorage.getItem('_customShifts') || JSON.stringify(SHIFTS));
+  const shifts = _getShifts();
   
   const html = `
     <div class="section-header">
@@ -7530,15 +7548,15 @@ function showShiftManager(){
 }
 
 function saveCustomShifts(){
-  const shifts = JSON.parse(localStorage.getItem('_customShifts') || JSON.stringify(SHIFTS));
+  const shifts = _getShifts();
   Object.keys(shifts).forEach(k => {
     const start = document.getElementById(`start_${k}`)?.value || shifts[k].start;
     const end = document.getElementById(`end_${k}`)?.value || shifts[k].end;
     const hours = parseInt(document.getElementById(`hours_${k}`)?.value || shifts[k].hours);
     shifts[k] = { ...shifts[k], start, end, hours, name: `${k} (${start}-${end})` };
   });
-  localStorage.setItem('_customShifts', JSON.stringify(shifts));
-  toast('✅ Shift times saved');
+  save('pr_shifts', shifts); // v59: syncs to cloud (per branch) — all devices see it
+  toast('✅ Shift times saved & synced');
   _auditLog('SHIFT_TIMES_UPDATED', _currentUser, 'Updated shift times');
 }
 
@@ -7548,21 +7566,21 @@ function setShift(empId, shiftType){
 }
 
 function saveShifts(){
+  // v59: FIX — old version saved employees as an ARRAY, corrupting the
+  // per-branch employees blob (the app expects an object keyed by id).
   const emps = load(KEYS.employees);
-  const empsArr = Array.isArray(emps) ? emps : Object.values(emps);
-  empsArr.forEach(e => {
-    const selId = `shift_${e.id || Object.keys(load(KEYS.employees)).find(k => load(KEYS.employees)[k]===e)}`;
-    const sel = document.getElementById(selId);
-    if(sel) e.shift = sel.value;
+  Object.keys(emps).forEach(id => {
+    const sel = document.getElementById('shift_' + id);
+    if(sel) emps[id].shift = sel.value;
   });
-  save(KEYS.employees, empsArr);
+  save(KEYS.employees, emps);
   toast('✅ Employee shifts saved');
   _auditLog('SHIFTS_UPDATED', _currentUser, 'Updated employee shifts');
 }
 
 // Get shift hours for employee (used in payroll calculation)
 function getShiftHours(empId){
-  const shifts = JSON.parse(localStorage.getItem('_customShifts') || JSON.stringify(SHIFTS));
+  const shifts = _getShifts();
   const emp = load(KEYS.employees)[empId];
   const shiftType = emp?.shift || 'Full';
   return shifts[shiftType]?.hours || 8;
@@ -8562,7 +8580,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v58';
+    const _SW_VER = 'dcpayroll-v59';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

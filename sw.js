@@ -48,7 +48,12 @@
 // (Employees, Attendance, Leave, Loans, Payroll); those live on superadmin and
 // dev accounts. Nav groups now render from group tags instead of fragile slice
 // offsets. Owner now lands on All Employees after login.
-const CACHE_VERSION = 'dental-city-payroll-v58-nocache';
+// v59: Shift Manager made real — shift times now sync to the cloud per branch
+// (new pr_shifts data type) instead of one device's localStorage; each
+// employee's assigned shift now drives the late deduction (payroll, payslip,
+// calendar) instead of a hardcoded 10:00 for everyone; fixed 'Save Employee
+// Shifts' corrupting the employees blob by saving it as an array.
+const CACHE_VERSION = 'dental-city-payroll-v59-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
