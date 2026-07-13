@@ -2553,16 +2553,58 @@ function attShift(n){
   if(_attView === 'week') loadAtt();
 }
 
-// Which dates in [startStr, endStr] have time_clock records (dot markers)
-async function _attDatesWithData(startStr, endStr){
+// v56: per-date employee status map for the calendar.
+// Returns { 'YYYY-MM-DD': [{n:firstName, c:color}, ...] }
+// Colors: Present #10B981 · Late #F59E0B · On Leave #3B82F6 · Absent #EF4444
+async function _attRangeData(startStr, endStr){
+  const out = {};
   try{
-    if(!_sb || !getBranch()) return new Set();
-    const {data: bd} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
-    if(!bd) return new Set();
-    const {data} = await _sb.from('time_clock').select('date')
-      .eq('branch_id', bd.id).gte('date', startStr).lte('date', endStr);
-    return new Set((data||[]).map(r => r.date));
-  }catch(e){ return new Set(); }
+    const emps = load(KEYS.employees);
+    const active = Object.entries(emps).filter(([,e]) => e.status !== 'Resigned');
+    if(!active.length) return out;
+    const leaves = load(KEYS.leaves);
+    let rows = [];
+    if(_sb && getBranch()){
+      const {data: bd} = await _sb.from('branches').select('id').eq('name', getBranch()).single();
+      if(bd){
+        const {data} = await _sb.from('time_clock').select('employee_id,date,time_in')
+          .eq('branch_id', bd.id).gte('date', startStr).lte('date', endStr);
+        rows = data || [];
+      }
+    }
+    const byKey = {};
+    rows.forEach(r => { byKey[r.employee_id + '|' + r.date] = r; });
+    const onLeave = (eid, ds) => (leaves[eid]||[]).some(l =>
+      l.status === 'Approved' && l.start_date && l.end_date && l.start_date <= ds && ds <= l.end_date);
+    const tdy = today();
+    let d = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    while(d <= end){
+      const ds = _attFmt(d);
+      const list = [];
+      active.forEach(([eid, e]) => {
+        const nm = String(e.name || eid).split(' ')[0];
+        if(onLeave(eid, ds)) list.push({n: nm, c: '#3B82F6'});
+        else {
+          const r = byKey[eid + '|' + ds];
+          if(r) list.push({n: nm, c: computeLateMinutes(r.time_in) > 0 ? '#F59E0B' : '#10B981'});
+          else if(ds < tdy) list.push({n: nm, c: '#EF4444'});
+        }
+      });
+      if(list.length) out[ds] = list;
+      d.setDate(d.getDate() + 1);
+    }
+  }catch(e){ console.warn('attRangeData:', e.message); }
+  return out;
+}
+
+function _attChips(ppl, isSel, max){
+  const shown = max ? ppl.slice(0, max) : ppl;
+  let h = shown.map(p =>
+    `<span style="display:block;font-size:10px;font-weight:600;border-radius:6px;padding:1px 3px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${isSel ? 'rgba(255,255,255,.18)' : p.c + '1f'};color:${isSel ? '#fff' : p.c}">${p.n}</span>`
+  ).join('');
+  if(max && ppl.length > max) h += `<span style="display:block;font-size:9px;color:${isSel?'#fff':'#888'};margin-top:1px">+${ppl.length - max} more</span>`;
+  return h;
 }
 
 async function renderAttCalendar(){
@@ -2582,7 +2624,7 @@ async function renderAttCalendar(){
   if(_attView === 'week'){
     const d = new Date(base); d.setDate(d.getDate() - ((d.getDay()+6)%7)); // Monday
     const days = []; for(let i=0;i<7;i++){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
-    const marks = await _attDatesWithData(_attFmt(days[0]), _attFmt(days[6]));
+    const attMap = await _attRangeData(_attFmt(days[0]), _attFmt(days[6]));
     const title = `${MONTHS[days[0].getMonth()]} ${days[0].getDate()} – ${MONTHS[days[6].getMonth()]} ${days[6].getDate()}, ${days[6].getFullYear()}`;
     html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">${navBtn(-1,'‹')}<b style="font-size:14px">${title}</b>${navBtn(1,'›')}</div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">` +
@@ -2591,7 +2633,7 @@ async function renderAttCalendar(){
         return `<div onclick="attPick('${ds}')" style="cursor:pointer;text-align:center;padding:10px 4px;border-radius:10px;border:1.5px solid ${isSel?'var(--navy)':'var(--border)'};background:${isSel?'var(--navy)':(isToday?'var(--sky)':'#fff')};color:${isSel?'#fff':'#333'}">
           <div style="font-size:11px;opacity:.65">${DOW[i]}</div>
           <div style="font-size:17px;font-weight:700">${dd.getDate()}</div>
-          <div style="height:7px;line-height:7px">${marks.has(ds)?`<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${isSel?'#6EE7B7':'var(--green)'}"></span>`:''}</div>
+          <div style="min-height:7px">${_attChips(attMap[ds]||[], isSel)}</div>
         </div>`;
       }).join('') + `</div>`;
 
@@ -2599,14 +2641,14 @@ async function renderAttCalendar(){
     const y = base.getFullYear(), m = base.getMonth();
     const startDow = (new Date(y,m,1).getDay()+6)%7;
     const dim = new Date(y,m+1,0).getDate();
-    const marks = await _attDatesWithData(`${y}-${_attPad(m+1)}-01`, `${y}-${_attPad(m+1)}-${_attPad(dim)}`);
+    const attMap = await _attRangeData(`${y}-${_attPad(m+1)}-01`, `${y}-${_attPad(m+1)}-${_attPad(dim)}`);
     let cells = DOW.map(d => `<div style="text-align:center;font-size:11px;font-weight:700;color:#888;padding:4px">${d}</div>`).join('');
     for(let i=0;i<startDow;i++) cells += '<div></div>';
     for(let day=1;day<=dim;day++){
       const ds = `${y}-${_attPad(m+1)}-${_attPad(day)}`, isSel = ds === sel, isToday = ds === tdy;
-      cells += `<div onclick="attPick('${ds}')" style="cursor:pointer;text-align:center;padding:7px 2px;border-radius:8px;background:${isSel?'var(--navy)':(isToday?'var(--sky)':'transparent')};color:${isSel?'#fff':'#333'}">
+      cells += `<div onclick="attPick('${ds}')" style="cursor:pointer;text-align:center;vertical-align:top;padding:7px 2px;border-radius:8px;background:${isSel?'var(--navy)':(isToday?'var(--sky)':'transparent')};color:${isSel?'#fff':'#333'}">
         <div style="font-size:13px;font-weight:${(isToday||isSel)?'700':'400'}">${day}</div>
-        <div style="height:6px;line-height:6px">${marks.has(ds)?`<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${isSel?'#6EE7B7':'var(--green)'}"></span>`:''}</div>
+        <div style="min-height:6px;text-align:left;padding:0 2px">${_attChips(attMap[ds]||[], isSel, 3)}</div>
       </div>`;
     }
     html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">${navBtn(-1,'‹')}<b style="font-size:14px">${MONTHS[m]} ${y}</b>${navBtn(1,'›')}</div>
@@ -2622,7 +2664,14 @@ async function renderAttCalendar(){
         return `<div onclick="_attDate='${y}-${_attPad(i+1)}-01';attSetView('month')" style="cursor:pointer;text-align:center;padding:14px 6px;border-radius:10px;border:1.5px solid ${isCur?'var(--navy)':'var(--border)'};background:${isCur?'var(--navy)':(isTodayM?'var(--sky)':'#fff')};color:${isCur?'#fff':'#333'};font-weight:600;font-size:13px">${mn}</div>`;
       }).join('') + `</div>`;
   }
-  el.innerHTML = `<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px">${html}</div>`;
+  const legend = _attView === 'year' ? '' :
+    `<div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:#555;flex-wrap:wrap">
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10B981;margin-right:4px"></span>Present</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F59E0B;margin-right:4px"></span>Late</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3B82F6;margin-right:4px"></span>On Leave</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EF4444;margin-right:4px"></span>Absent (past days)</span>
+    </div>`;
+  el.innerHTML = `<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px">${html}${legend}</div>`;
 }
 
 function showAttendance(){
@@ -8509,7 +8558,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v55';
+    const _SW_VER = 'dcpayroll-v56';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -8606,7 +8655,12 @@ function showUpdateBanner(newSW){
     window._swUpdateReady = true;
     sessionStorage.setItem('_payrollUpdating','1');
     banner.remove();
-    // newSW.postMessage removed - causes Headers clone error
+    // v56: if the new SW is still waiting, tell it to activate; either way,
+    // reload — fetch is network-first, so the reload always gets fresh files.
+    // (Previously this button only removed the banner; the reload never fired
+    // because controllerchange had already happened before the click.)
+    try{ if(newSW && (newSW.state === 'installed' || newSW.state === 'waiting')) newSW.postMessage({type:'SKIP_WAITING'}); }catch(e){}
+    setTimeout(()=>window.location.reload(), 300);
   });
 }
 

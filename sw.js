@@ -38,7 +38,10 @@
 // v55: Attendance calendar — replaced the date input with Week / Month / Year
 // calendar views; days with attendance records show a green dot; click a day
 // to load its records. View choice remembered per device.
-const CACHE_VERSION = 'dental-city-payroll-v55-nocache';
+// v56: calendar now shows color-coded employee names per day — green Present,
+// amber Late (past 10:00 + 15min grace), blue On Leave (approved), red Absent
+// (past days only). Month view shows up to 3 names per day with a +N overflow.
+const CACHE_VERSION = 'dental-city-payroll-v56-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -69,7 +72,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheName.includes('v53')) {
+          if (cacheName !== CACHE_NAME) { // v56: was hardcoded 'v53' — kept stale caches, deleted fresh ones
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
