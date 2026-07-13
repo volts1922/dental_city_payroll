@@ -41,7 +41,10 @@
 // v56: calendar now shows color-coded employee names per day — green Present,
 // amber Late (past 10:00 + 15min grace), blue On Leave (approved), red Absent
 // (past days only). Month view shows up to 3 names per day with a +N overflow.
-const CACHE_VERSION = 'dental-city-payroll-v56-nocache';
+// v57: payslip fix — generating a payslip for a period with zero attendance
+// (e.g. a future cutoff like the 16th–31st) now shows a warning instead of
+// fabricating a full-pay payslip; days worked always come from real records.
+const CACHE_VERSION = 'dental-city-payroll-v57-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
