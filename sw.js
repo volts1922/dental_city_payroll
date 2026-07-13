@@ -44,7 +44,11 @@
 // v57: payslip fix — generating a payslip for a period with zero attendance
 // (e.g. a future cutoff like the 16th–31st) now shows a warning instead of
 // fabricating a full-pay payslip; days worked always come from real records.
-const CACHE_VERSION = 'dental-city-payroll-v57-nocache';
+// v58: Owner nav slimmed to review/approve — removed per-branch encoding pages
+// (Employees, Attendance, Leave, Loans, Payroll); those live on superadmin and
+// dev accounts. Nav groups now render from group tags instead of fragile slice
+// offsets. Owner now lands on All Employees after login.
+const CACHE_VERSION = 'dental-city-payroll-v58-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache

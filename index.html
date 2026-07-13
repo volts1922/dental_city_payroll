@@ -1197,9 +1197,9 @@ function _finishLogin(){
   if(topbarCloudBtn) topbarCloudBtn.style.display = currentRole==='dev' ? 'inline-block' : 'none';
   buildNav();
   if(isOwner()){
-    // Owner sees branch picker + regular dashboard (branch-specific)
+    // Owner sees branch picker + lands on the cross-branch overview (v58)
     ownerShowBranchPicker(true);
-    navigate('Attendance','showAttendance');
+    navigate('All Employees','showAllEmployees');
     initBranch();
   } else {
     navigate('Attendance','showAttendance');
@@ -1464,30 +1464,32 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 const NAV_OWNER=[
   // ── Overview ──────────────────────────────────────────────────────────────
   
-  {icon:'👥',label:'All Employees',    fn:'showAllEmployees'},
-  {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals'},
-  {icon:'💰',label:'Payroll Summary',  fn:'showPayrollSummary'},
+  {icon:'👥',label:'All Employees',    fn:'showAllEmployees',   group:'Overview'},
+  {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals', group:'Overview'},
+  {icon:'💰',label:'Payroll Summary',  fn:'showPayrollSummary', group:'Overview'},
   // ── Branch Operations (active when a branch is selected via picker) ───────
-  {icon:'👤',label:'Employees',        fn:'showEmployees'},
-  {icon:'📅',label:'Attendance',       fn:'showAttendance'},
-  {icon:'🌴',label:'Leave',            fn:'showLeave'},
-  {icon:'💳',label:'Loans',            fn:'showLoans'},
-  {icon:'💰',label:'Payroll',          fn:'showPayroll'},
-  {icon:'🎁',label:'13th Month',       fn:'show13thMonth'},
-  {icon:'🏛',label:'Gov Reports',      fn:'showGovReports'},
-  {icon:'📄',label:'BIR 2316',         fn:'showBIR2316'},
+  {icon:'🎁',label:'13th Month',       fn:'show13thMonth',      group:'Reports'},
+  {icon:'🏛',label:'Gov Reports',      fn:'showGovReports',     group:'Reports'},
+  {icon:'📄',label:'BIR 2316',         fn:'showBIR2316',        group:'Reports'},
   // ── Management ────────────────────────────────────────────────────────────
-  {icon:'🎉',label:'Holidays',         fn:'showHolidayManager'},
-  {icon:'🕐',label:'Shift Manager',    fn:'showShiftManager'},
-  {icon:'👥',label:'Account Manager',  fn:'showAccountManager'},
-  {icon:'💾',label:'Backup',           fn:'showBackupManager'},
-  {icon:'🔄',label:'Refresh Data',     fn:'ownerRefresh'},
+  {icon:'🎉',label:'Holidays',         fn:'showHolidayManager', group:'Management'},
+  {icon:'🕐',label:'Shift Manager',    fn:'showShiftManager',   group:'Management'},
+  {icon:'👥',label:'Account Manager',  fn:'showAccountManager', group:'Management'},
+  {icon:'💾',label:'Backup',           fn:'showBackupManager',  group:'Management'},
+  {icon:'🔄',label:'Refresh Data',     fn:'ownerRefresh',       group:'Management'},
 ];
 
 const NAV_DEVELOPER=[
   ...NAV_OWNER,
-  {icon:'📊',label:'Dev Dashboard',     fn:'showDeveloperDashboard'},
-  {icon:'🔍',label:'System Audit',     fn:'comprehensiveSystemAudit'},
+  // v58: per-branch encoding pages live here now (removed from Owner) —
+  // dev is the emergency full-access account.
+  {icon:'👤',label:'Employees',        fn:'showEmployees',  group:'Branch Ops'},
+  {icon:'📅',label:'Attendance',       fn:'showAttendance', group:'Branch Ops'},
+  {icon:'🌴',label:'Leave',            fn:'showLeave',      group:'Branch Ops'},
+  {icon:'💳',label:'Loans',            fn:'showLoans',      group:'Branch Ops'},
+  {icon:'💰',label:'Payroll',          fn:'showPayroll',    group:'Branch Ops'},
+  {icon:'📊',label:'Dev Dashboard',    fn:'showDeveloperDashboard',   group:'Developer'},
+  {icon:'🔍',label:'System Audit',     fn:'comprehensiveSystemAudit', group:'Developer'},
 ];
 
 const NAV_ADMIN=[
@@ -1615,9 +1617,10 @@ function buildNav(){
 
   if(isOwner()){
     // Owner nav with group dividers
-    const overviewItems  = items.slice(0,3);   // All Employees, Approvals, Payroll Summary
-    const branchItems    = items.slice(3,11);  // Employees, Attendance, Leave, Loans, Payroll, 13th Month, Gov Reports, BIR 2316
-    const mgmtItems      = items.slice(11);    // Holidays, Shift Manager, Account Manager, Backup, Refresh
+    // v58: group by each item's `group` tag — slice offsets broke every time
+    // the nav list changed (see v53 changelog), this can't misalign.
+    const groupOrder = [];
+    items.forEach(n => { const g = n.group || 'Menu'; if(!groupOrder.includes(g)) groupOrder.push(g); });
 
     const renderGroup = (label, groupItems) => `
       <div style="padding:6px 14px 2px;font-size:10px;font-weight:700;letter-spacing:1px;
@@ -1628,9 +1631,7 @@ function buildNav(){
         </div>`).join('')}`;
 
     document.getElementById('nav').innerHTML =
-      renderGroup('Overview', overviewItems) +
-      renderGroup('Branch Ops', branchItems) +
-      renderGroup('Management', mgmtItems);
+      groupOrder.map(g => renderGroup(g, items.filter(n => (n.group || 'Menu') === g))).join('');
   } else {
     document.getElementById('nav').innerHTML=items.map(n=>`
       <div class="nav-item${currentPage===n.label?' active':''}" onclick="navigate('${n.label}','${n.fn}')">
@@ -8561,7 +8562,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v57';
+    const _SW_VER = 'dcpayroll-v58';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
