@@ -1903,6 +1903,11 @@ function getActiveLoanDeduction(eid){
 function showDashboard(){
   // Owner/Dev: Show branch picker prompt if no branch selected
   if(isOwner() && !getBranch()){
+    // v62: Owner always starts in All Branches — no branch prompt
+    showOwnerDashboard();
+    return;
+  }
+  if(false){
     document.getElementById('main').innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:500px;gap:20px;text-align:center">
         <div style="font-size:48px">🏢</div>
@@ -2807,7 +2812,7 @@ async function loadAtt(){
             <td>${badge(r.status||'—')}</td>
             <td>
               <button class="btn btn-success btn-sm admin-only" onclick="markAttRecordIndividual('${eid}','${date}')">✚ Mark</button>
-              <button class="btn btn-danger btn-sm admin-only" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>
+              ${(isOwner()||isSuperAdmin())?`<button class="btn btn-danger btn-sm" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>`:''}
             </td>
           </tr>`);
         });
@@ -3016,6 +3021,7 @@ async function clockOutPastDate(eid, date){
 }
 
 async function deleteAttRecord(eid, date){
+  if(!(isOwner()||isSuperAdmin())){toast('⛔ Only Owner, Dev, or Superadmin can delete time records');return;}
   const name = (load(KEYS.employees)[eid]||{}).name || eid;
   if(!(await _confirm(`Delete attendance for "${_esc(name)}" on ${date}?`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
   
@@ -3042,6 +3048,7 @@ async function deleteAttRecord(eid, date){
 }
 
 function editAttRecord(eid, date){
+  if(!(isOwner()||isSuperAdmin())){toast('⛔ Only Owner, Dev, or Superadmin can edit time records');return;}
   const emps = load(KEYS.employees);
   const att  = load(KEYS.attendance);
   const name = (emps[eid]||{}).name || eid;
@@ -8747,7 +8754,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v63';
+    const _SW_VER = 'dcpayroll-v64';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

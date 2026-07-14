@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v53
+// DC PAYROLL SERVICE WORKER v64
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -74,7 +74,14 @@
 // (each employee with their branch, colour-coded, and assigned shift as a
 // badge). The editable assign-shifts list also shows a branch chip per
 // employee. Read-only overview; editing still applies to the selected branch.
-const CACHE_VERSION = 'dental-city-payroll-v63-nocache';
+// v64: security + BIR release — quote-safe _esc() escaping at 100+ render
+// sites and in formRow (stored-XSS closed); username rename disabled until it
+// syncs to Supabase Auth; attendance edits now send only DB-allowed statuses
+// (silent sync-reject fixed); custom payroll range shows a double-deduction
+// warning; BIR 1604-C Alphalist .DAT export (owner/dev/superadmin only) with
+// RDO code field; attendance edit/delete restricted to owner/dev/superadmin
+// (UI + RLS); owner login lands on All Branches — branch prompt removed.
+const CACHE_VERSION = 'dental-city-payroll-v64-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -168,4 +175,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v53');
+console.log('[SW] Service Worker loaded v64');
