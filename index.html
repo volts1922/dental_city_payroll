@@ -5268,7 +5268,7 @@ function showBIR2316(){
         </select>
         <button class="btn btn-primary" onclick="generateBIR2316List()">Generate List</button>
         <button class="btn btn-teal" onclick="exportBIR2316()">Export Summary CSV</button>
-        <button class="btn btn-secondary" onclick="exportAlphalistDAT()">Export Alphalist .DAT</button>
+        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-secondary" onclick="exportAlphalistDAT()">Export Alphalist .DAT</button>`:''}
       </div>
     </div>
 
@@ -5506,6 +5506,7 @@ function _datName(n){ // "First [Middle] Last" -> [LAST, FIRST, MIDDLE]
   return [last.toUpperCase(), parts.join(' ').toUpperCase(), ''];
 }
 function exportAlphalistDAT(){
+  if(!(isOwner()||isSuperAdmin())){toast('⛔ Only Owner, Dev, or Superadmin can export the Alphalist .DAT');return;}
   if(!_birData.length){toast('⚠️ Generate list first');return;}
   const year=document.getElementById('birYear')?.value||new Date().getFullYear();
   const rawTin=(localStorage.getItem('bir_emp_tin')||'').replace(/\D/g,'');
