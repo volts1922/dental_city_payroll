@@ -5268,6 +5268,7 @@ function showBIR2316(){
         </select>
         <button class="btn btn-primary" onclick="generateBIR2316List()">Generate List</button>
         <button class="btn btn-teal" onclick="exportBIR2316()">Export Summary CSV</button>
+        <button class="btn btn-secondary" onclick="exportAlphalistDAT()">Export Alphalist .DAT</button>
       </div>
     </div>
 
@@ -5292,6 +5293,12 @@ function showBIR2316(){
           <input class="form-control" id="birEmpAddr" placeholder="Business Address"
             value="${localStorage.getItem('bir_emp_addr')||''}"
             oninput="localStorage.setItem('bir_emp_addr',this.value)">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">RDO Code (for .DAT)</label>
+          <input class="form-control" id="birEmpRDO" placeholder="e.g. 049" maxlength="3"
+            value="${localStorage.getItem('bir_emp_rdo')||''}"
+            oninput="localStorage.setItem('bir_emp_rdo',this.value)">
         </div>
       </div>
     </div>
@@ -5483,6 +5490,91 @@ function exportBIR2316(){
   rows.push(['','','','TOTALS:',tG.toFixed(2),tN.toFixed(2),tT.toFixed(2),tW.toFixed(2)]);
   downloadCSV(`BIR_2316_${year}.csv`,rows);
   toast('📥 BIR 2316 summary exported!');
+}
+
+// ═══ BIR 1604-C ALPHALIST .DAT EXPORT (Schedule 1) ═══════════════════
+// Layout follows BIR Annex A (1604-C Schedule 1, cols 1-19) encoded in the
+// Alphalist Data Entry v7.4 comma-delimited convention (H/D/C records).
+// ⚠️ ALWAYS run the output through the BIR Alphalist Validation Module
+// before eSubmission. If validation rejects a field, adjust the order in
+// the marked arrays below — one line per field.
+function _datNum(v){ return (Math.round((parseFloat(v)||0)*100)/100).toFixed(2); }
+function _datName(n){ // "First [Middle] Last" -> [LAST, FIRST, MIDDLE]
+  const parts=String(n||'').trim().replace(/,/g,' ').split(/\s+/);
+  if(parts.length===1) return [parts[0].toUpperCase(),'',''];
+  const last=parts.pop();
+  return [last.toUpperCase(), parts.join(' ').toUpperCase(), ''];
+}
+function exportAlphalistDAT(){
+  if(!_birData.length){toast('⚠️ Generate list first');return;}
+  const year=document.getElementById('birYear')?.value||new Date().getFullYear();
+  const rawTin=(localStorage.getItem('bir_emp_tin')||'').replace(/\D/g,'');
+  if(rawTin.length<9){toast('⚠️ Enter a valid Employer TIN first (9 digits + branch code)');return;}
+  const tin=rawTin.slice(0,9), branch=(rawTin.slice(9)||'0000').padStart(4,'0');
+  const rdo=localStorage.getItem('bir_emp_rdo')||'000';
+  const empName=(localStorage.getItem('bir_emp_name')||'').toUpperCase();
+  if(!empName){toast('⚠️ Enter Employer Name first');return;}
+  const missingTIN=_birData.filter(d=>!(d.tin||'').replace(/\D/g,''));
+  if(missingTIN.length && !confirm(`${missingTIN.length} employee(s) have no TIN — their TIN will export as 000000000. BIR validation may reject this. Continue?`)) return;
+
+  const lines=[];
+  // HEADER record — field order adjustable here:
+  lines.push(['H1604C','H1',tin,branch,`"${empName}"`,`12/31/${year}`,rdo].join(','));
+
+  let tGross=0,tNonTax=0,tTaxable=0,tTax=0;
+  _birData.forEach((d,i)=>{
+    const [ln,fn,mn]=_datName(d.name);
+    const eTin=((d.tin||'').replace(/\D/g,'')||'000000000').slice(0,9);
+    const contrib=(d.annualSSS||0)+(d.annualPH||0)+(d.annualPI||0);
+    const t13nt=Math.min(d.thirteenth||0,90000), t13ex=Math.max((d.thirteenth||0)-90000,0);
+    // Below ₱250k annual taxable → wholly non-taxable salaries (col 7e), zero taxable
+    const below250=(d.taxableComp||0)<=250000 && (d.annualTax||0)===0;
+    const sal250=below250?(d.taxableComp||0):0;
+    const basicTax=below250?0:(d.taxableComp||0)-t13ex>0?(d.taxableComp||0)-t13ex:0;
+    const totNonTax=t13nt+contrib+sal250+(d.annualAllow||0);
+    const totTax=below250?0:(d.taxableComp||0);
+    tGross+=d.grossComp||0; tNonTax+=totNonTax; tTaxable+=totTax; tTax+=d.annualTax||0;
+    // DETAIL record (Schedule 1, cols 1-19) — field order adjustable here:
+    lines.push([
+      'D1604C','D1',                    // record type
+      i+1,                              // 1  seq no
+      eTin,'0000',                      //    employee TIN + branch
+      `"${ln}"`,`"${fn}"`,`"${mn}"`,    // 2  name
+      '',                               // 3  nationality (blank = Filipino)
+      'R',                              // 4  employment status (R=Regular)
+      `01/01`,`12/31`,                  // 5  period of employment MM/DD
+      '',                               // 6  reason of separation
+      _datNum(d.grossComp),             // 7a gross comp (present)
+      _datNum(t13nt),                   // 7b 13th month non-taxable
+      _datNum(d.annualAllow),           // 7c de minimis
+      _datNum(contrib),                 // 7d SSS/PHIC/HDMF employee share
+      _datNum(sal250),                  // 7e salaries ≤250k
+      _datNum(totNonTax),               // 7f total non-taxable
+      _datNum(basicTax),                // 7g basic salary (taxable)
+      _datNum(t13ex),                   // 7h 13th month excess of 90k
+      '0.00',                           // 7i other taxable
+      _datNum(totTax),                  // 7j total taxable (present)
+      '','','','','',                   // 8-11 previous employer (none)
+      '0.00','0.00','0.00','0.00','0.00','0.00','0.00','0.00','0.00','0.00', // 12a-12j prev employer amounts
+      _datNum(totTax),                  // 13 total taxable (present+prev)
+      _datNum(d.annualTax),             // 14 tax due
+      '0.00',                           // 15a withheld (prev employer)
+      _datNum(d.annualTax),             // 15b withheld Jan-Nov (present)
+      '0.00',                           // 16 PERA 5% credit
+      '0.00','0.00',                    // 17a/17b year-end adjustment
+      _datNum(d.annualTax),             // 18 tax withheld as adjusted
+      'Y'                               // 19 substituted filing
+    ].join(','));
+  });
+  // CONTROL record (totals) — field order adjustable here:
+  lines.push(['C1604C','C1',tin,branch,_birData.length,
+    _datNum(tGross),_datNum(tNonTax),_datNum(tTaxable),_datNum(tTax)].join(','));
+
+  const fname=`${tin}${branch}1231${year}1604C.dat`;
+  const a=document.createElement('a');
+  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(lines.join('\r\n'));
+  a.download=fname; a.click();
+  toast(`📥 ${fname} exported — validate with the BIR Alphalist Validation Module before eSubmission!`, 7000);
 }
 
 
