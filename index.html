@@ -83,6 +83,7 @@ tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
 tbody tr:hover{background:var(--sky);}
 tbody tr:last-child{border-bottom:none;}
 tbody td{padding:9px 12px;color:var(--text);white-space:nowrap;}
+tbody tr.total-row td{color:#fff;} /* v61.1: dark summary rows — tbody td color was overriding the row's white text */
 
 /* Badge */
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
@@ -6871,7 +6872,7 @@ function loadPayrollSummary(){
       <table>
         <thead><tr><th>Branch</th><th style="text-align:center">Employees</th><th style="text-align:right">Gross Pay</th><th style="text-align:right">Net Pay</th></tr></thead>
         <tbody>${branchRows}
-          <tr style="background:var(--navy);color:#fff;font-weight:700">
+          <tr class="total-row" style="background:var(--navy);color:#fff;font-weight:700">
             <td>TOTAL — All Branches</td>
             <td style="text-align:center">${grandEmps}</td>
             <td style="text-align:right">${fmt(grandGross)}</td>
@@ -6948,7 +6949,7 @@ function showBranchPayrollDetail(branch, month){
             <th style="text-align:right">Net Pay</th>
           </tr></thead>
           <tbody>${rows}
-            <tr style="background:var(--navy);color:#fff;font-weight:700">
+            <tr class="total-row" style="background:var(--navy);color:#fff;font-weight:700">
               <td colspan="3">TOTAL — ${branch}</td>
               <td style="text-align:right">${fmt(bGross)}</td>
               <td style="text-align:right">${fmt(bDed)}</td>
@@ -8605,7 +8606,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v61';
+    const _SW_VER = 'dcpayroll-v62';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

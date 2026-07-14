@@ -66,7 +66,11 @@
 // computeTax TRAIN). Convention: contributions on the 1st cutoff, monthly
 // withholding tax on the 2nd cutoff, loans 50/50 per cutoff (full monthly on
 // monthly register). Individual payslip now includes loan deductions (was 0).
-const CACHE_VERSION = 'dental-city-payroll-v61-nocache';
+// v62: readability fix — TOTAL rows in Payroll Summary (all-branches and
+// per-branch) showed dark text on the navy panel because the global tbody td
+// color rule overrode the row's white text. Total rows now use a .total-row
+// class that keeps cell text white.
+const CACHE_VERSION = 'dental-city-payroll-v62-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
