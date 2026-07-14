@@ -1580,7 +1580,7 @@ function updateOwnerNavBadges(){
 
 // Owner per-branch pages — show the branch picker so owner can switch branch context
 const OWNER_CROSS_BRANCH_PAGES = ['All Branches','All Employees','All Attendance',
-  'Payroll Summary','Leave Summary','Account Manager','Refresh Data'];
+  'Payroll Summary','Leave Summary','Account Manager','Refresh Data','Shift Manager']; // v63: overview reads all branches
 
 // Ensure current branch data is loaded into localStorage before any compute function
 // Load branch data into local cache WITHOUT pushing back to Supabase.
@@ -7524,12 +7524,53 @@ function resetToDefaultHolidays(){
 function showShiftManager(){
   const emps = load(KEYS.employees);
   const shifts = _getShifts();
-  
+
+  // v63: Owner-only overview — every employee across all branches with their
+  // branch and assigned shift, colour-coded per branch. Read-only reference so
+  // the owner can see who's where and on which shift at a glance.
+  let ownerOverview = '';
+  if(isOwner()){
+    const COLS = ['#3B82F6','#10B981','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#EF4444','#14B8A6','#F97316'];
+    const all = (typeof getAllEmployees === 'function' ? getAllEmployees() : [])
+      .filter(e => e.status !== 'Resigned');
+    const byBranch = {};
+    all.forEach(e => { (byBranch[e._branch] = byBranch[e._branch] || []).push(e); });
+    const branchNames = Object.keys(byBranch).sort();
+    const shiftColor = { Morning:'#F59E0B', Afternoon:'#3B82F6', Full:'#10B981' };
+    ownerOverview = `
+      <div style="margin-bottom:24px">
+        <h4 style="margin-bottom:4px">All Branches — Employee Shifts</h4>
+        <div style="font-size:11px;color:#666;margin-bottom:10px">Read-only overview. Switch a branch in the top bar to edit its assignments below.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+          ${branchNames.map((b,i) => {
+            const col = COLS[i % COLS.length];
+            const list = byBranch[b].sort((x,y)=>String(x.name).localeCompare(String(y.name)));
+            return `<div style="border:1.5px solid var(--border);border-radius:12px;overflow:hidden;background:#fff">
+              <div style="background:${col};color:#fff;padding:8px 12px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+                <span>🏢 ${_esc(b)}</span><span style="background:rgba(255,255,255,.25);border-radius:10px;padding:1px 8px;font-size:11px">${list.length}</span>
+              </div>
+              <div style="padding:8px 10px">
+                ${list.map(e => {
+                  const sh = e.shift || '—';
+                  const sc = shiftColor[sh] || '#64748B';
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px;border-bottom:1px solid #f1f5f9">
+                    <span style="color:#1E293B">${_esc(String(e.name||e._id))}</span>
+                    <span style="background:${sc}1f;color:${sc};font-weight:600;border-radius:6px;padding:1px 8px;font-size:11px">${_esc(sh)}</span>
+                  </div>`;
+                }).join('') || '<div style="font-size:11px;color:#94A3B8;padding:4px 0">No active employees</div>'}
+              </div>
+            </div>`;
+          }).join('') || '<div style="color:#94A3B8">No branch data loaded yet — open Refresh Data.</div>'}
+        </div>
+      </div>`;
+  }
+
   const html = `
     <div class="section-header">
       <div class="section-title">🕐 Shift Manager</div>
     </div>
     <div style="padding:20px">
+      ${ownerOverview}
       <h4>Edit Shift Times</h4>
       <div style="margin-bottom:30px;padding:15px;background:#f5f5f5;border-radius:8px">
         ${Object.entries(shifts).map(([k,s]) => `
@@ -7557,9 +7598,10 @@ function showShiftManager(){
       <h4>Assign Shifts to Employees</h4>
       <div style="margin-bottom:20px">
         ${Object.entries(emps).filter(([,e]) => e.status !== 'Resigned').map(([id,e]) => `
-          <div style="padding:10px;margin:8px 0;background:#f5f5f5;border-radius:4px">
-            <label style="font-weight:bold">${e.name}</label>
-            <select id="shift_${id}" onchange="setShift('${id}',this.value)" style="margin-left:20px;padding:6px;border:1px solid #ccc">
+          <div style="padding:10px;margin:8px 0;background:#f5f5f5;border-radius:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label style="font-weight:bold">${_esc(e.name||id)}</label>
+            <span style="background:var(--sky);color:var(--navy);font-size:11px;font-weight:600;border-radius:6px;padding:2px 8px">🏢 ${_esc(e.branch||getBranch()||'—')}</span>
+            <select id="shift_${id}" onchange="setShift('${id}',this.value)" style="margin-left:auto;padding:6px;border:1px solid #ccc">
               ${Object.keys(shifts).map(shiftName => `
                 <option value="${shiftName}" ${e.shift===shiftName?'selected':''}>${shiftName}</option>
               `).join('')}
@@ -8606,7 +8648,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v62';
+    const _SW_VER = 'dcpayroll-v63';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

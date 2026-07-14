@@ -70,7 +70,11 @@
 // per-branch) showed dark text on the navy panel because the global tbody td
 // color rule overrode the row's white text. Total rows now use a .total-row
 // class that keeps cell text white.
-const CACHE_VERSION = 'dental-city-payroll-v62-nocache';
+// v63: Shift Manager — owner now sees an all-branches overview at the top
+// (each employee with their branch, colour-coded, and assigned shift as a
+// badge). The editable assign-shifts list also shows a branch chip per
+// employee. Read-only overview; editing still applies to the selected branch.
+const CACHE_VERSION = 'dental-city-payroll-v63-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
