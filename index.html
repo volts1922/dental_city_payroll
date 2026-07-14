@@ -3120,7 +3120,7 @@ function editAttRecord(eid, date){
               date: date,
               time_in: timeInStr,
               time_out: timeOutStr,
-              status: rec.status || 'clocked_in',  // Send original status or default
+              status: ['clocked_in','clocked_out','on_break'].includes(rec.status) ? rec.status : 'clocked_out',  // v62: DB check constraint only allows these; edited records have in+out
               updated_at: new Date().toISOString()
             }, {onConflict: 'employee_id,branch_id,date'});
             
@@ -4256,6 +4256,10 @@ async function showPayslip(empId, month, startDate, endDate){
     console.log('Detected: 2nd HALF - applying BIR tax only');
   } else {
     console.log('Detected: CUSTOM range');
+    // v62 guard: custom ranges apply FULL monthly contributions + HALF loans.
+    // Running one alongside normal cutoffs in the same month double-deducts.
+    const _ok = await _confirm(`⚠️ Custom date range selected.<br><br>This will deduct <b>full monthly</b> SSS/PhilHealth/Pag-IBIG and <b>half</b> of loan amortizations.<br><br>If the 1st/2nd half cutoffs are also processed this month, contributions will be <b>deducted twice</b>. Continue only if this replaces the normal cutoffs.`, {ok:'Continue', cancel:'Cancel', danger:true, icon:'⚠️'});
+    if(!_ok) return;
   }
   
   // Calculate FULL MONTH gross (always 22 business days) for deduction basis
@@ -8139,7 +8143,7 @@ function openAccountSettings(){
   const html = `
     <div style="display:flex;gap:12px;margin-bottom:16px">
       <button id="tab_pass" class="btn btn-primary" style="flex:1;padding:8px" onclick="switchAccountTab('pass')">🔐 Password</button>
-      <button id="tab_user" class="btn btn-secondary" style="flex:1;padding:8px" onclick="switchAccountTab('user')">👤 Username</button>
+      <button id="tab_user" class="btn btn-secondary" style="flex:1;padding:8px;opacity:.5;cursor:not-allowed" onclick="toast('⚠️ Username change is temporarily disabled')" title="Temporarily disabled">👤 Username 🔒</button>
     </div>
     
     <div id="pass_form">
@@ -8225,7 +8229,9 @@ async function accountSettingsSave(){
       toast(`❌ Error changing password: ${e.message}`);
     }
   } else {
-    // Username change
+    // Username change — DISABLED (v62): rename doesn't sync to Supabase Auth,
+    // leaves a duplicate payroll_accounts row, and locks the user out of cloud login.
+    toast('⚠️ Username change is temporarily disabled'); return;
     const inp = document.getElementById('changeUserInput');
     if(!inp) { toast('❌ Input not found'); return; }
     const newUser = (inp.value || '').trim().toLowerCase().replace(/\s+/g,'_');
