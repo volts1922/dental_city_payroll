@@ -53,7 +53,20 @@
 // employee's assigned shift now drives the late deduction (payroll, payslip,
 // calendar) instead of a hardcoded 10:00 for everyone; fixed 'Save Employee
 // Shifts' corrupting the employees blob by saving it as an array.
-const CACHE_VERSION = 'dental-city-payroll-v59-nocache';
+// v60: (1) Loan deductions unified to a 50/50 split across both monthly
+// cutoffs — payroll screen, payslip, summaries and the balance reduction all
+// use one rule now (screen previously deducted the full monthly amount every
+// cutoff = double deduction; payslip deducted 1st half only). (2) Stored-XSS
+// hardening: form inputs strip HTML characters, all cloud blobs are deep-
+// sanitized on load, calendar name chips escaped.
+// v61: deductions unified to ONE rulebook. Payslips previously used ad-hoc
+// rates (SSS 4% of gross, PhilHealth 2.5%, Pag-IBIG flat 100, and the 8%
+// self-employed percentage tax formula for employees). Now every screen uses
+// the official tables (computeSSS 2025 5% MSC, computePH, computePagibig,
+// computeTax TRAIN). Convention: contributions on the 1st cutoff, monthly
+// withholding tax on the 2nd cutoff, loans 50/50 per cutoff (full monthly on
+// monthly register). Individual payslip now includes loan deductions (was 0).
+const CACHE_VERSION = 'dental-city-payroll-v61-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache

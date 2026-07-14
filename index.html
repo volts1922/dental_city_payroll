@@ -512,6 +512,16 @@ const _cache = {};
 // v54: last-known cloud updated_at per branch|dataType (stale-write guard)
 const _cloudStamp = {};
 
+// v60: recursively strip < > from every string in a blob — stored-XSS render
+// guard. Payroll text fields (names, reasons, remarks) never legitimately
+// contain angle brackets; photos are base64 data-URLs and are unaffected.
+function _deepStrip(o){
+  if(typeof o === 'string') return o.indexOf('<') === -1 && o.indexOf('>') === -1 ? o : o.replace(/[<>]/g,'');
+  if(Array.isArray(o)){ for(let i=0;i<o.length;i++) o[i]=_deepStrip(o[i]); return o; }
+  if(o && typeof o === 'object'){ Object.keys(o).forEach(k=>{ o[k]=_deepStrip(o[k]); }); }
+  return o;
+}
+
 // ── SYNC STATUS ───────────────────────────────────────────────────────────────
 function setSyncBar(status, msg){
   const el = document.getElementById('syncBar');
@@ -600,7 +610,7 @@ async function loadFromCloud(){
           }catch(e){ console.warn('Ghost purge error:', e.message); }
         }
         
-        _cache[row.data_type]=cleanData; 
+        _cache[row.data_type]=_deepStrip(cleanData); // v60: XSS guard
         returned[row.data_type]=true; 
       } 
     });
@@ -688,7 +698,7 @@ async function loadAllBranchesFromCloud(){
         }catch(e){ console.warn('Ghost purge error:', e.message); }
       }
       
-      _ownerData[row.branch_key][row.data_type] = branchData;
+      _ownerData[row.branch_key][row.data_type] = _deepStrip(branchData); // v60: XSS guard
     });
     
     // If branches table empty, fall back to branches found in payroll_data
@@ -1772,7 +1782,7 @@ async function getBranchUUID(branchName){
   const {data} = await _sb.from('branches').select('id').eq('name', branchName).single();
   return data?.id || null;
 }
-function fval(k){ const el=document.getElementById('f_'+k); return el?el.value.trim():''; }
+function fval(k){ const el=document.getElementById('f_'+k); if(!el) return ''; return String(el.value).trim().replace(/[<>]/g,''); } // v60: strip HTML chars (stored-XSS input guard)
 function badge(status){
   const map={Active:'blue',Inactive:'gray',Resigned:'red',Present:'green',Absent:'red','Half-day':'yellow',Late:'yellow',Approved:'green',Rejected:'red',Pending:'yellow',Paid:'green',Unpaid:'red',Active2:'blue'};
   const cls=map[status]||'gray';
@@ -1877,9 +1887,13 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
   };
 }
 
+// v61: returns the FULL MONTHLY amortization (single source of truth).
+// Monthly contexts (payroll register, summaries, full-month payslip) use it
+// as-is; per-cutoff payslips take half (50/50 rule across the two cutoffs).
 function getActiveLoanDeduction(eid){
   const loans=load(KEYS.loans);
-  return (loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
+  const monthly=(loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
+  return Math.round(monthly*100)/100;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2620,7 +2634,7 @@ async function _attRangeData(startStr, endStr){
 function _attChips(ppl, isSel, max){
   const shown = max ? ppl.slice(0, max) : ppl;
   let h = shown.map(p =>
-    `<span style="display:block;font-size:10px;font-weight:600;border-radius:6px;padding:1px 3px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${isSel ? 'rgba(255,255,255,.18)' : p.c + '1f'};color:${isSel ? '#fff' : p.c}">${p.n}</span>`
+    `<span style="display:block;font-size:10px;font-weight:600;border-radius:6px;padding:1px 3px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${isSel ? 'rgba(255,255,255,.18)' : p.c + '1f'};color:${isSel ? '#fff' : p.c}">${_esc(p.n)}</span>`
   ).join('');
   if(max && ppl.length > max) h += `<span style="display:block;font-size:9px;color:${isSel?'#fff':'#888'};margin-top:1px">+${ppl.length - max} more</span>`;
   return h;
@@ -4267,14 +4281,16 @@ async function showPayslip(empId, month, startDate, endDate){
   const basicPay = rate * daysWorked;
   const gross = basicPay + otPay + ndPay;
 
-  // Determine deductions based on FULL MONTH gross
+  // Determine deductions based on FULL MONTH gross — v61: real government
+  // tables (same as payroll register), loans full on monthly / half per cutoff
+  const _loanM = getActiveLoanDeduction(empId);
   let pay;
   if(deductionType === 'full_month'){
-    // FULL MONTH: ALL deductions (SSS + PH + PI + BIR)
-    const monthlySSS = Math.round(fullMonthGross * 0.04);
-    const monthlyPH = Math.round(fullMonthGross * 0.025);
-    const monthlyPI = 100;
-    const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
+    // FULL MONTH: ALL deductions (SSS + PH + PI + BIR) — official tables
+    const monthlySSS = computeSSS(fullMonthGross);
+    const monthlyPH = computePH(fullMonthGross);
+    const monthlyPI = computePagibig(fullMonthGross);
+    const monthlyBIR = Math.round(computeTax(Math.max(fullMonthGross - monthlySSS - monthlyPH - monthlyPI, 0))*100)/100;
     
     pay = {
       daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
@@ -4282,14 +4298,14 @@ async function showPayslip(empId, month, startDate, endDate){
       ph: monthlyPH,
       pi: monthlyPI,
       tax: monthlyBIR,
-      loanDeduction: 0,
+      loanDeduction: _loanM,
       net: 0
     };
   } else if(deductionType === 'first_half'){
-    // 1st Half: Deductions calculated from FULL MONTH, payment split
-    const monthlySSS = Math.round(fullMonthGross * 0.04);
-    const monthlyPH = Math.round(fullMonthGross * 0.025);
-    const monthlyPI = 100;
+    // 1st Half: contributions in full (official tables), no tax
+    const monthlySSS = computeSSS(fullMonthGross);
+    const monthlyPH = computePH(fullMonthGross);
+    const monthlyPI = computePagibig(fullMonthGross);
     
     pay = {
       daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
@@ -4297,25 +4313,26 @@ async function showPayslip(empId, month, startDate, endDate){
       ph: monthlyPH,
       pi: monthlyPI,
       tax: 0,
-      loanDeduction: 0,
+      loanDeduction: Math.round((_loanM/2)*100)/100,
       net: 0
     };
   } else if(deductionType === 'second_half'){
-    // 2nd Half: BIR calculated from FULL MONTH
-    const monthlyBIR = Math.max(0, (fullMonthGross - 5000) * 0.08);
+    // 2nd Half: monthly withholding tax (BIR TRAIN table), no contributions
+    const _sssM = computeSSS(fullMonthGross), _phM = computePH(fullMonthGross), _piM = computePagibig(fullMonthGross);
+    const monthlyBIR = Math.round(computeTax(Math.max(fullMonthGross - _sssM - _phM - _piM, 0))*100)/100;
     
     pay = {
       daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
       sss: 0, ph: 0, pi: 0,
       tax: monthlyBIR,
-      loanDeduction: 0,
+      loanDeduction: Math.round((_loanM/2)*100)/100,
       net: 0
     };
   } else {
-    // Custom range: Use full month basis too
-    const monthlySSS = Math.round(fullMonthGross * 0.04);
-    const monthlyPH = Math.round(fullMonthGross * 0.025);
-    const monthlyPI = 100;
+    // Custom range: contributions in full (official tables), no tax
+    const monthlySSS = computeSSS(fullMonthGross);
+    const monthlyPH = computePH(fullMonthGross);
+    const monthlyPI = computePagibig(fullMonthGross);
     
     pay = {
       daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
@@ -4323,7 +4340,7 @@ async function showPayslip(empId, month, startDate, endDate){
       ph: monthlyPH,
       pi: monthlyPI,
       tax: 0,
-      loanDeduction: 0,
+      loanDeduction: Math.round((_loanM/2)*100)/100,
       net: 0
     };
   }
@@ -4493,29 +4510,37 @@ async function generatePayslipBatch(period){
     
     const rate = parseFloat(emp.daily_rate || 0);
     const allowances = emp.allowances || {};
-    const loanDed = period === 'first_half' ? getActiveLoanDeduction(empId) : 0;
-    
+    const loanDed = getActiveLoanDeduction(empId); // full monthly amortization
+
+    // v61: ONE deduction rulebook — the same government tables as the payroll
+    // register (computeSSS / computePH / computePagibig / computeTax on the
+    // standard monthly salary). Convention: contributions on the 1st cutoff,
+    // monthly withholding tax on the 2nd cutoff, loans split 50/50.
+    const _m   = rate * WORKING_DAYS;
+    const _sssM = computeSSS(_m), _phM = computePH(_m), _piM = computePagibig(_m);
+    const _taxM = Math.round(computeTax(Math.max(_m - _sssM - _phM - _piM, 0))*100)/100;
+    const _halfLoan = Math.round((loanDed/2)*100)/100;
+
     let pay;
     if(period === 'first_half'){
       const basicPay = rate * daysWorked;
       const gross = basicPay + totalAllowances(allowances);
       pay = {
         basic: basicPay, gross: gross,
-        sss: Math.round(gross * 0.04), ph: Math.round(gross * 0.025), pi: 100, tax: 0,
-        loanDeduction: loanDed, net: 0
+        sss: _sssM, ph: _phM, pi: _piM, tax: 0,
+        loanDeduction: _halfLoan, net: 0
       };
       pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.loanDeduction;
       pay.net = pay.gross - pay.totalDeductions;
     } else if(period === 'second_half'){
       const basicPay = rate * daysWorked;
       const gross = basicPay + totalAllowances(allowances);
-      const birTax = Math.max(0, (gross - 5000) * 0.08);
       pay = {
         basic: basicPay, gross: gross,
-        sss: 0, ph: 0, pi: 0, tax: birTax,
-        loanDeduction: 0, net: 0
+        sss: 0, ph: 0, pi: 0, tax: _taxM,
+        loanDeduction: _halfLoan, net: 0
       };
-      pay.totalDeductions = birTax;
+      pay.totalDeductions = pay.tax + pay.loanDeduction;
       pay.net = pay.gross - pay.totalDeductions;
     } else {
       pay = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, loanDed, 0, 0, {regular:0, special:0}, allowances);
@@ -4597,7 +4622,7 @@ async function confirmPayrollRun(){
     let remaining = d.loanDeduction;
     empLoans.forEach(l=>{
       if(remaining<=0) return;
-      const amort = Math.min(parseFloat(l.monthly_amort||0), parseFloat(l.balance||0), remaining);
+      const amort = Math.min(parseFloat(l.monthly_amort||0), parseFloat(l.balance||0), remaining); // v61: monthly register confirm — full monthly amort
       l.balance = Math.max(parseFloat(l.balance||0) - amort, 0);
       remaining -= amort;
       if(l.balance<=0){ l.status='Paid'; }
@@ -6228,7 +6253,7 @@ function showOwnerDashboard(){
     const late    = Object.values(att).reduce((s,recs)=>s+(recs||[]).filter(r=>r.date===td&&r.status==='Late').length,0);
     const netPay  = Object.entries(emps).filter(([,e])=>e.status==='Active')
       .reduce((s,[eid,e])=>{
-        const loanDed=(loans[eid]||[]).filter(l=>l.status==='Active').reduce((x,l)=>x+parseFloat(l.monthly_amort||0),0);
+        const loanDed=getActiveLoanDeduction(eid); // monthly view — full monthly amort
         return s+computeNetPay(parseFloat(e.daily_rate||0),null,0,0,loanDed).net;
       },0);
     totalEmps+=active; totalPresent+=present; totalPayroll+=netPay;
@@ -6820,7 +6845,7 @@ function loadPayrollSummary(){
       const hd    = recs.filter(r=>r.status==='Half-day').length;
       const otH   = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
       const ndH   = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
-      const lDed  = (loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
+      const lDed  = getActiveLoanDeduction(eid); // monthly view — full monthly amort
       const hasAtt= dp+abs+hd>0;
       const dw    = hasAtt?dp+(hd*0.5):null;
       const pay   = computeNetPay(rate,dw,abs,hd,lDed,otH,ndH);
@@ -8580,7 +8605,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v59';
+    const _SW_VER = 'dcpayroll-v61';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
