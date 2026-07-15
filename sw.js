@@ -84,7 +84,11 @@
 // v65: hardcoded dev credential removed from public source — dev now logs
 // in via Supabase Auth like all accounts; offline login uses a per-device
 // cache written after each successful cloud login (pr_offline_login).
-const CACHE_VERSION = 'dental-city-payroll-v65-nocache';
+// v66: 9-branch scale fixes — owner-load timeout 5s→15s; attendance archive
+// (owner/superadmin "Archive Old" button moves records >14 months to a
+// pr_attendance_archive cloud row, kept not deleted); archive rows excluded
+// from owner bulk load and per-branch load so payloads stay small.
+const CACHE_VERSION = 'dental-city-payroll-v66-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -178,4 +182,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v65');
+console.log('[SW] Service Worker loaded v66');

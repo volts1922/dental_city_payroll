@@ -584,7 +584,8 @@ async function loadFromCloud(){
   const bkey = getBranch() || 'main';
   try{
     const {data, error} = await _sb.from('payroll_data')
-      .select('data_type,data,updated_at').eq('branch_key', bkey);
+      .select('data_type,data,updated_at').eq('branch_key', bkey)
+      .neq('data_type','pr_attendance_archive'); // v66: archive loads only on demand
     if(error) throw error;
     (data||[]).forEach(r=>{ if(r.updated_at) _cloudStamp[bkey+'|'+r.data_type] = new Date(r.updated_at).getTime(); });
     // Reset known data types so deleted-in-cloud data doesn't linger locally
@@ -637,7 +638,7 @@ async function loadAllBranchesFromCloud(){
   try{
     // Set 5s timeout to prevent hanging
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Cloud load timeout')), 5000)
+      setTimeout(() => reject(new Error('Cloud load timeout')), 15000) // v66: was 5s — too tight for 9-branch payloads on slow clinic internet
     );
     
     // For Owner: fetch ALL branches from branches table (source of truth)
@@ -663,7 +664,7 @@ async function loadAllBranchesFromCloud(){
     let data = null, error = null;
     try {
       const result = await Promise.race([
-        _sb.from('payroll_data').select('branch_key,data_type,data,updated_at'),
+        _sb.from('payroll_data').select('branch_key,data_type,data,updated_at').neq('data_type','pr_attendance_archive'),
         timeoutPromise
       ]);
       data = result.data;
@@ -2740,6 +2741,7 @@ function showAttendance(){
         <button class="btn btn-success admin-only" onclick="markAttModal()">✚ Mark Attendance</button>
         <button class="btn admin-only" style="background:#DC2626;color:#fff" onclick="clearAllAtt()">🗑 Clear This Date</button>
         <button class="btn btn-teal admin-only" onclick="exportAtt()">Export CSV</button>
+        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-secondary" onclick="archiveOldAttendance()">📦 Archive Old</button>`:''}
       </div>
     </div>
 
@@ -3026,6 +3028,53 @@ async function clockOutPastDate(eid, date){
       }
     }
   }, '🔴 Clock Out');
+}
+
+// ═══ v66: ATTENDANCE ARCHIVE — moves records older than 14 months into a
+// separate cloud row (pr_attendance_archive). Data is KEPT, never deleted;
+// the live blob just stays small so saves and owner login stay fast.
+// Safety order: archive is written to cloud FIRST; live data is only trimmed
+// after the archive write succeeds. Any failure = nothing changes.
+async function archiveOldAttendance(){
+  if(!(isOwner()||isSuperAdmin())){toast('⛔ Owner, Dev, or Superadmin only');return;}
+  if(!_sb){toast('⚠️ Cloud connection required to archive');return;}
+  const bkey = getBranch();
+  if(!bkey){toast('⚠️ Select a branch first (archive works per branch)');return;}
+  const cut = new Date(); cut.setMonth(cut.getMonth()-14);
+  const cutStr = cut.toISOString().split('T')[0];
+  const att = load(KEYS.attendance)||{};
+  const keep={}, old={}; let nOld=0, nKeep=0;
+  Object.keys(att).forEach(eid=>{
+    (Array.isArray(att[eid])?att[eid]:[]).forEach(r=>{
+      if(r && r.date && r.date < cutStr){ (old[eid]=old[eid]||[]).push(r); nOld++; }
+      else if(r){ (keep[eid]=keep[eid]||[]).push(r); nKeep++; }
+    });
+  });
+  if(!nOld){toast(`✅ No attendance older than ${cutStr} — nothing to archive`);return;}
+  if(!(await _confirm(`📦 Archive <b>${nOld}</b> attendance record(s) older than <b>${cutStr}</b>?<br><br>Records are moved to a cloud archive (kept forever, restorable) — not deleted. The live data (${nKeep} recent records) stays as-is and the app gets faster.`,{ok:'Archive',cancel:'Cancel',icon:'📦'}))) return;
+  showLoading('📦 Archiving old attendance...');
+  try{
+    let archive={};
+    const {data:rows} = await _sb.from('payroll_data').select('data')
+      .eq('branch_key',bkey).eq('data_type','pr_attendance_archive').limit(1);
+    if(rows&&rows[0]&&rows[0].data){
+      archive = typeof rows[0].data==='string' ? JSON.parse(rows[0].data) : rows[0].data;
+    }
+    Object.keys(old).forEach(eid=>{ archive[eid]=(archive[eid]||[]).concat(old[eid]); });
+    const {error} = await _sb.from('payroll_data').upsert(
+      {branch_key:bkey, data_type:'pr_attendance_archive', data:archive, updated_at:new Date().toISOString()},
+      {onConflict:'branch_key,data_type'});
+    if(error) throw error;
+    // archive safe in cloud — now trim live data
+    save(KEYS.attendance, keep);
+    await syncToCloud('pr_attendance', keep);
+    hideLoading();
+    toast(`📦 Archived ${nOld} records for ${bkey}. Live data: ${nKeep} recent records.`, 6000);
+    await _auditLog('ATTENDANCE_ARCHIVED', _currentUser, `${bkey}: ${nOld} records < ${cutStr}`);
+  }catch(e){
+    hideLoading();
+    toast('❌ Archive failed: '+(e.message||'unknown')+' — nothing was changed.', 6000);
+  }
 }
 
 async function deleteAttRecord(eid, date){
@@ -8762,7 +8811,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v65';
+    const _SW_VER = 'dcpayroll-v66';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
