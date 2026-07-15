@@ -1384,7 +1384,8 @@ function initBranch(){
     // Only Owner/Dev may freely set/rename a branch. Everyone else is locked
     // to whatever branch is on their account — if that's missing, it's a setup
     // problem the owner needs to fix, not something the logged-in user can change.
-    if(isOwner()) setTimeout(showBranchModal,600);
+    // v67: Owner/Dev never get the Set Branch modal — no branch = All Branches view
+    if(isOwner()){ updateBranchUI('All Branches'); }
     else toast('⚠️ No branch assigned to this account. Ask the owner to set it in Account Manager.', 5000);
   } else updateBranchUI(n);
 }
@@ -8811,7 +8812,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v66';
+    const _SW_VER = 'dcpayroll-v67';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

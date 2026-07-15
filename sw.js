@@ -88,7 +88,9 @@
 // (owner/superadmin "Archive Old" button moves records >14 months to a
 // pr_attendance_archive cloud row, kept not deleted); archive rows excluded
 // from owner bulk load and per-branch load so payloads stay small.
-const CACHE_VERSION = 'dental-city-payroll-v66-nocache';
+// v67: Owner/Dev login no longer shows the "Set Branch Name" modal — empty
+// branch now means All Branches (sidebar shows "All Branches", title kept).
+const CACHE_VERSION = 'dental-city-payroll-v67-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -182,4 +184,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v66');
+console.log('[SW] Service Worker loaded v67');
