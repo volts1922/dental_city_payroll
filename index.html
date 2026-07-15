@@ -848,12 +848,9 @@ function hideLoading(){ document.getElementById('loadingOverlay').classList.remo
 // ── USERS — Username / Password login (no email needed) ───────────────────────
 // ⚠ Change branch names and passwords before giving to your client!
 const USERS = {
-  // ── Developer (hidden — not shown in Account Manager) ────────────────────
-  // Emergency/offline-only fallback account. Real accounts (owner, admins,
-  // staff) now live exclusively in Supabase Auth + payroll_accounts — no
-  // hardcoded demo credentials here anymore, to avoid confusion with the
-  // real per-branch logins.
-  dev: { password:'3cb1ab4ce4d07723f5f2e6947ab7f09ccf9f0d3d47c792935fb9e8243c076f4b', role:'dev', name:'dev', _hidden:true },
+  // v64: NO hardcoded credentials in source. All accounts (including dev)
+  // live in Supabase Auth + payroll_accounts. Offline fallback uses the
+  // per-device cache saved after a successful cloud login (pr_offline_login).
 };
 
 // ── Cloud-persisted accounts (Supabase) — merges over hardcoded USERS on load ─
@@ -1091,6 +1088,12 @@ async function doLogin(){
         if(row){
           user = { ...(USERS[u]||{}), name: (USERS[u]||{}).name || row.username, role: row.role, branch: row.branch||'', totp_enabled: row.totp_enabled, password: enteredHash };
           USERS[u] = user;
+          // v64: per-device offline-login cache (replaces hardcoded dev account)
+          try{
+            const _c = JSON.parse(localStorage.getItem('pr_offline_login')||'{}');
+            _c[u] = { password: enteredHash, role: user.role, name: user.name, branch: user.branch||'' };
+            localStorage.setItem('pr_offline_login', JSON.stringify(_c));
+          }catch(_e){}
         }
       }
     }catch(e){
@@ -1100,6 +1103,11 @@ async function doLogin(){
 
   // Offline/fallback path (e.g. no internet): check against locally cached accounts
   if(!user){
+    // v64: hydrate per-device cached logins (works fully offline)
+    try{
+      const _c = JSON.parse(localStorage.getItem('pr_offline_login')||'{}');
+      Object.keys(_c).forEach(k=>{ if(!USERS[k]) USERS[k]=_c[k]; });
+    }catch(_e){}
     await _loadAccountsFromCloud().catch(()=>{});
     const localUser = USERS[u];
     if(localUser){
@@ -8754,7 +8762,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v64';
+    const _SW_VER = 'dcpayroll-v65';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

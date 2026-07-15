@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v64
+// DC PAYROLL SERVICE WORKER v65
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -81,7 +81,10 @@
 // warning; BIR 1604-C Alphalist .DAT export (owner/dev/superadmin only) with
 // RDO code field; attendance edit/delete restricted to owner/dev/superadmin
 // (UI + RLS); owner login lands on All Branches — branch prompt removed.
-const CACHE_VERSION = 'dental-city-payroll-v64-nocache';
+// v65: hardcoded dev credential removed from public source — dev now logs
+// in via Supabase Auth like all accounts; offline login uses a per-device
+// cache written after each successful cloud login (pr_offline_login).
+const CACHE_VERSION = 'dental-city-payroll-v65-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -175,4 +178,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v64');
+console.log('[SW] Service Worker loaded v65');
