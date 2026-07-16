@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v70
+// DC PAYROLL SERVICE WORKER v71
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -90,7 +90,7 @@
 // from owner bulk load and per-branch load so payloads stay small.
 // v67: Owner/Dev login no longer shows the "Set Branch Name" modal — empty
 // branch now means All Branches (sidebar shows "All Branches", title kept).
-const CACHE_VERSION = 'dental-city-payroll-v70-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v71-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
