@@ -944,6 +944,47 @@ function _timingSafeCompare(a, b){
   return result === 0;
 }
 
+// ── v69 helpers ───────────────────────────────────────────────────────────────
+async function _pbkdf2Hex(pass, saltHex, iter=100000){
+  const enc = new TextEncoder();
+  const salt = new Uint8Array((saltHex.match(/../g)||[]).map(h=>parseInt(h,16)));
+  const key = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt, iterations:iter}, key, 256);
+  return Array.from(new Uint8Array(bits)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function _randHex(n){ return Array.from(crypto.getRandomValues(new Uint8Array(n))).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+
+// v69: count approved PAID leave days in a month (VL/SL/Emergency/Paternity are
+// employer-paid; Maternity is an SSS benefit so it's excluded from payroll pay).
+// attDates = Set of dates that already have an attendance record (no double pay).
+function _paidLeaveDays(leaves, eid, month, attDates){
+  const PAID = ['Vacation Leave','Sick Leave','Emergency Leave','Paternity Leave'];
+  let n = 0;
+  (leaves[eid]||[]).forEach(lv=>{
+    if(lv.status!=='Approved' || !PAID.includes(lv.type)) return;
+    if(!lv.start_date || !lv.end_date) return;
+    let cur = new Date(lv.start_date+'T00:00:00');
+    const end = new Date(lv.end_date+'T00:00:00');
+    while(cur<=end){
+      const ds = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+      if(ds.startsWith(month) && !attDates.has(ds)) n++;
+      cur.setDate(cur.getDate()+1);
+    }
+  });
+  return n;
+}
+
+// v69: approve/reject OT on a time_clock row (admins only)
+async function setOTApproval(id, status){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }
+  if(!_sb){ toast('⚠️ Cloud unavailable'); return; }
+  const {error} = await _sb.from('time_clock').update({approval_status: status, updated_at: new Date().toISOString()}).eq('id', id);
+  if(error){ toast('❌ '+error.message); return; }
+  await _auditLog('OT_'+status.toUpperCase(), _currentUser||'', 'time_clock '+id);
+  toast(status==='approved' ? '✅ OT approved' : '🚫 OT rejected');
+  showOwnerApprovals();
+}
+
 function _isHash(str){ return typeof str==='string' && /^[a-f0-9]{64}$/.test(str); }
 
 // ── SUPABASE SYNC RETRY ───────────────────────────────────────────────────────
@@ -1091,8 +1132,10 @@ async function doLogin(){
           USERS[u] = user;
           // v64: per-device offline-login cache (replaces hardcoded dev account)
           try{
+            // v69: cache a salted PBKDF2 (100k iter) instead of an unsalted SHA-256
             const _c = JSON.parse(localStorage.getItem('pr_offline_login')||'{}');
-            _c[u] = { password: enteredHash, role: user.role, name: user.name, branch: user.branch||'' };
+            const _salt = _randHex(16);
+            _c[u] = { pbkdf2: { salt:_salt, iter:100000, hash: await _pbkdf2Hex(p,_salt) }, role: user.role, name: user.name, branch: user.branch||'' };
             localStorage.setItem('pr_offline_login', JSON.stringify(_c));
           }catch(_e){}
         }
@@ -1105,9 +1148,19 @@ async function doLogin(){
   // Offline/fallback path (e.g. no internet): check against locally cached accounts
   if(!user){
     // v64: hydrate per-device cached logins (works fully offline)
+    // v69: PBKDF2-format cache entries are verified here directly (salted, slow);
+    //      legacy sha256 entries still hydrate into USERS below and upgrade on next online login.
     try{
       const _c = JSON.parse(localStorage.getItem('pr_offline_login')||'{}');
-      Object.keys(_c).forEach(k=>{ if(!USERS[k]) USERS[k]=_c[k]; });
+      const _ce = _c[u];
+      if(_ce && _ce.pbkdf2 && _ce.pbkdf2.salt && _ce.pbkdf2.hash){
+        const _h = await _pbkdf2Hex(p, _ce.pbkdf2.salt, _ce.pbkdf2.iter||100000);
+        if(_timingSafeCompare(_h, _ce.pbkdf2.hash)){
+          user = { name:_ce.name||u, role:_ce.role||'branch_admin', branch:_ce.branch||'', password: enteredHash };
+          USERS[u] = user;
+        }
+      }
+      Object.keys(_c).forEach(k=>{ if(!USERS[k] && _c[k].password) USERS[k]=_c[k]; });
     }catch(_e){}
     await _loadAccountsFromCloud().catch(()=>{});
     const localUser = USERS[u];
@@ -3349,6 +3402,8 @@ async function clockOut(){
       // v68: a completed pair is always clocked_out (was leaving 'Present'/'clocked_in' stuck)
       const finalStatus = 'clocked_out';
       
+      // v69: normal days auto-approve; days with OT stay pending for admin approval
+      const {ot: _otNow} = computeOT(_timeOnly(timeInISO), _timeOnly(timeOutISO));
       const {data, error} = await _sb.from('time_clock').upsert({
         employee_id: eid,
         branch_id: branchUUID,
@@ -3356,6 +3411,7 @@ async function clockOut(){
         status: finalStatus,
         time_in: timeInISO,
         time_out: timeOutISO,
+        approval_status: _otNow>0 ? 'pending' : 'approved',
         updated_at: now_iso
       }, {onConflict: 'employee_id,branch_id,date'});
       if(error) {
@@ -3888,6 +3944,7 @@ function fileLeave(){
 }
 
 function setLeave(eid,idx,status){
+  if(!isAdmin()){ toast('⛔ Only admins can approve or deny leave'); return; } // v69
   const leaves=load(KEYS.leaves);
   leaves[eid][idx].status=status;
   save(KEYS.leaves,leaves);
@@ -4172,7 +4229,9 @@ async function computePayroll(){
             time_in: r.time_in,
             time_out: r.time_out,
             hours: parseFloat(workResult.decimalHours),
-            ot_hours: computedOT,
+            // v69: OT is paid only once approved (auto-approved at clock-out when no OT)
+            ot_hours: (r.approval_status==='approved') ? computedOT : 0,
+            ot_pending: (r.approval_status!=='approved' && computedOT>0) ? computedOT : 0,
             nd_hours: computedND,
             holiday: r.holiday || ''
           });
@@ -4211,7 +4270,10 @@ async function computePayroll(){
     const loanDed    = getActiveLoanDeduction(eid);
     const allowances = e.allowances || {};
     const hasAtt     = daysPresent+absences+halfDays > 0;
-    const daysWorked = hasAtt ? daysPresent + (halfDays*0.5) : 0; // v68: no attendance = no pay (was silently paying full month)
+    // v69: approved paid leave (VL/SL/EL/PL) counts as paid days
+    const _lvs = load(KEYS.leaves)||{};
+    const paidLeave = _paidLeaveDays(_lvs, eid, month, new Set(recs.map(r=>r.date)));
+    const daysWorked = (hasAtt ? daysPresent + (halfDays*0.5) : 0) + paidLeave; // v68: no attendance = no pay (was silently paying full month)
     const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, lateMinutes);
     const dw         = daysWorked!==null ? daysWorked.toFixed(1) : WORKING_DAYS.toFixed(1);
     const totalAllow = totalAllowances(allowances);
@@ -5188,11 +5250,29 @@ function show13thMonth(){
 
 let _13thData = [];
 
-function compute13th(){
+async function compute13th(){
   ownerEnsureBranchData();
   const year    = parseInt(document.getElementById('yearSel')?.value || new Date().getFullYear());
   const emps    = load(KEYS.employees);
-  const att     = load(KEYS.attendance);
+  // v69: 13th month now reads the same attendance source as payroll (Supabase
+  // time_clock) instead of this device's localStorage, which could be empty/stale.
+  let att = load(KEYS.attendance) || {};
+  if(_sb){
+    try{
+      const {data, error} = await _sb.from('time_clock').select('employee_id,date,time_in,time_out,status')
+        .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`);
+      if(error) throw error;
+      att = {};
+      (data||[]).forEach(r=>{
+        let st = r.status;
+        if((st==='clocked_in'||st==='clocked_out') && r.time_in && r.time_out) st='Present';
+        else if(st==='clocked_in') st='Present';
+        else if(st==='clocked_out') st='Absent';
+        if(!att[r.employee_id]) att[r.employee_id]=[];
+        att[r.employee_id].push({date:r.date, status:st});
+      });
+    }catch(e){ console.warn('13th: cloud fetch failed — using local attendance:', e.message); }
+  }
   _13thData     = [];
 
   const rows = Object.entries(emps)
@@ -5228,9 +5308,8 @@ function compute13th(){
           basicThisMonth    = rate * daysWorked;
           if(daysWorked > 0) monthsWorked++;
         } else {
-          // No attendance = assume full month worked
-          basicThisMonth = rate * WORKING_DAYS;
-          monthsWorked++;
+          // v69: no attendance = no basic earned that month (was assuming full month)
+          basicThisMonth = 0;
         }
         totalBasic    += basicThisMonth;
         monthDetails.push({month:monthStr, basic:basicThisMonth});
@@ -7016,7 +7095,7 @@ async function _monthPayrollByBranch(month){
         if(!cloud[bn]) cloud[bn]={};
         if(!cloud[bn][r.employee_id]) cloud[bn][r.employee_id]=[];
         cloud[bn][r.employee_id].push({date:r.date, status, time_in:r.time_in, time_out:r.time_out,
-          ot_hours:ot, nd_hours:nd, holiday:r.holiday||''});
+          ot_hours:(r.approval_status==='approved')?ot:0, nd_hours:nd, holiday:r.holiday||''}); // v69: OT gated on approval
       });
     }catch(e){ console.warn('Summary cloud fetch failed — falling back to local blobs:', e.message); cloud=null; }
   }
@@ -7041,7 +7120,8 @@ async function _monthPayrollByBranch(month){
       const speHol  = recs.filter(r=>r.holiday==='Special Holiday').length;
       const lDed = (loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
       const hasAtt = dp+abs+hd>0;
-      const dw   = hasAtt ? dp+(hd*0.5) : 0; // v68: no attendance = no pay
+      const _plv = _paidLeaveDays(bdata.pr_leaves||{}, eid, month, new Set(recs.map(r=>r.date)));
+      const dw   = (hasAtt ? dp+(hd*0.5) : 0) + _plv; // v68: no attendance = no pay · v69: + paid leave
       const pay  = computeNetPay(rate, dw, abs, hd, lDed, otH, ndH, {regular:regHol,special:speHol}, e.allowances||{}, lateMin);
       res.emps.push({eid, name:e.name, role:e.role, dw, otH:+otH.toFixed(2), gross:pay.gross, net:pay.net});
       res.gross+=pay.gross; res.net+=pay.net;
@@ -7376,10 +7456,40 @@ function showOwnerLeave(filterBranch='All', filterStatus='All'){
 // OWNER APPROVALS — All pending leaves + new loans across all branches
 // ══════════════════════════════════════════════════════════════════════════════
 
-function showOwnerApprovals(){
+async function showOwnerApprovals(){
   // Gather all pending leaves and new loans across all branches
   const pendingLeaves = [];
   const activeLoans   = [];
+
+  // v69: pending OT from time_clock (auto-approved days never appear here)
+  const pendingOT = [];
+  if(_sb){
+    try{
+      const {data} = await _sb.from('time_clock').select('*').eq('approval_status','pending').order('date',{ascending:false}).limit(200);
+      const _bn = {};
+      try{ const {data:bs} = await _sb.from('branches').select('id,name'); (bs||[]).forEach(b=>_bn[b.id]=b.name); }catch(_e){}
+      (data||[]).forEach(r=>{
+        const {ot} = computeOT(_timeOnly(r.time_in), _timeOnly(r.time_out));
+        if(ot>0) pendingOT.push({id:r.id, eid:r.employee_id, branch:_bn[r.branch_id]||'—', date:r.date,
+          tin:_timeOnly(r.time_in)||'—', tout:_timeOnly(r.time_out)||'—', ot});
+      });
+    }catch(e){ console.warn('OT approvals fetch failed:', e.message); }
+  }
+  const otRows = pendingOT.length ? pendingOT.map(o=>`
+    <tr>
+      <td><b>${o.eid}</b></td>
+      <td><span class="badge badge-blue">${_esc(o.branch)}</span></td>
+      <td>${o.date}</td>
+      <td style="text-align:center">${o.tin} → ${o.tout}</td>
+      <td style="text-align:center;font-weight:700;color:#D97706">${o.ot} h</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-success btn-sm" onclick="setOTApproval('${o.id}','approved')">✅ Approve OT</button>
+          <button class="btn btn-danger btn-sm"  onclick="setOTApproval('${o.id}','rejected')">❌ Reject</button>
+        </div>
+      </td>
+    </tr>`).join('')
+  : `<tr><td colspan="6" style="text-align:center;padding:20px;color:#555">✅ No overtime awaiting approval</td></tr>`;
 
   ALL_BRANCHES.forEach(b=>{
     const bdata  = _ownerData[b] || {};
@@ -7464,6 +7574,19 @@ function showOwnerApprovals(){
         <div class="card-lbl">💰 Total Loan Balance</div>
       </div>
     </div>
+
+    <!-- v69: Pending Overtime -->
+    <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:8px;display:flex;align-items:center;gap:8px">
+      ⏰ Overtime Awaiting Approval
+      ${pendingOT.length?`<span style="background:#FEF3C7;color:#D97706;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">${pendingOT.length} pending — OT pay is held until approved</span>`:'<span style="background:#DCFCE7;color:#16A34A;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">All clear ✅</span>'}
+    </div>
+    <div class="table-wrap" style="margin-bottom:20px"><div class="table-scroll">
+      <table><thead><tr>
+        <th>Employee</th><th>Branch</th><th>Date</th>
+        <th style="text-align:center">Time</th><th style="text-align:center">OT hrs</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${otRows}</tbody></table>
+    </div></div>
 
     <!-- Pending Leaves -->
     <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:8px;display:flex;align-items:center;gap:8px">
@@ -8851,7 +8974,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v68';
+    const _SW_VER = 'dcpayroll-v69';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
