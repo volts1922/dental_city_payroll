@@ -967,7 +967,8 @@ function _paidLeaveDays(leaves, eid, month, attDates){
     const end = new Date(lv.end_date+'T00:00:00');
     while(cur<=end){
       const ds = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-      if(ds.startsWith(month) && !attDates.has(ds)) n++;
+      const dow = cur.getDay(); // v70: leave counts working days only (skip Sat/Sun)
+      if(ds.startsWith(month) && !attDates.has(ds) && dow!==0 && dow!==6) n++;
       cur.setDate(cur.getDate()+1);
     }
   });
@@ -1314,6 +1315,7 @@ const ND_RATE       = 0.10;  // Night differential (10pm-6am)
 const REG_HOL       = 2.00;  // Regular holiday
 const SPE_HOL       = 1.30;  // Special holiday
 const REG_HOL_OT    = 2.60;  // Regular holiday + overtime
+const SPE_HOL_OT    = 1.69;  // v70: Special holiday + overtime (1.30 × 1.30 per DOLE)
 
 // ── TARDINESS (LATE) ──────────────────────────────────────────────────────────
 // Standard PH clinic practice: mall-based branches typically run a 10:00 AM
@@ -1889,7 +1891,7 @@ function computeTax(t){
   return 183541.80+(t-666667)*0.35;
 }
 
-function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}, lateMinutes=0){
+function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}, lateMinutes=0, otBreakdown={regHol:0,speHol:0}, unworkedRegHol=0){
   const fullMonthly = dailyRate * WORKING_DAYS;
   const hourlyRate  = dailyRate / 8;
 
@@ -1902,8 +1904,11 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
   }
   gross = Math.max(gross, 0);
 
-  // ── Overtime pay ──────────────────────────────────────────────────────────
-  const otPay = hourlyRate * OT_MULTIPLIER * (otHours||0);
+  // ── Overtime pay (v70: holiday OT paid at the correct premium) ─────────────
+  const otReg    = (otBreakdown.regHol)||0;   // OT hours worked on a regular holiday
+  const otSpe    = (otBreakdown.speHol)||0;   // OT hours worked on a special holiday
+  const otNormal = Math.max((otHours||0) - otReg - otSpe, 0);
+  const otPay = hourlyRate * (OT_MULTIPLIER*otNormal + REG_HOL_OT*otReg + SPE_HOL_OT*otSpe);
 
   // ── Night differential ────────────────────────────────────────────────────
   const ndPay = hourlyRate * ND_RATE * (ndHours||0);
@@ -1911,6 +1916,9 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
   // ── Holiday pay ───────────────────────────────────────────────────────────
   const regHolPay = dailyRate * (REG_HOL - 1) * ((holidayDays.regular)||0);
   const speHolPay = dailyRate * (SPE_HOL - 1) * ((holidayDays.special)||0);
+  // v70: unworked regular holidays pay 100% of the daily wage (PH labor law).
+  // Unworked SPECIAL days stay 'no work, no pay' — nothing added for them.
+  const unworkedRegHolPay = dailyRate * 1.0 * (unworkedRegHol||0);
 
   // ── Allowances ────────────────────────────────────────────────────────────
   const totalAllow = totalAllowances(allowances);
@@ -1920,7 +1928,7 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
   // the grace period, at the same per-minute rate as the hourly rate.
   const lateDeduction = (hourlyRate / 60) * (lateMinutes||0);
 
-  gross = gross + otPay + ndPay + regHolPay + speHolPay + totalAllow;
+  gross = gross + otPay + ndPay + regHolPay + speHolPay + unworkedRegHolPay + totalAllow;
 
   const sss = computeSSS(fullMonthly);
   const ph  = computePH(fullMonthly);
@@ -1937,6 +1945,7 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
     ndPay:           Math.round(ndPay*100)/100,
     regHolPay:       Math.round(regHolPay*100)/100,
     speHolPay:       Math.round(speHolPay*100)/100,
+    unworkedRegHolPay: Math.round(unworkedRegHolPay*100)/100,
     totalAllow:      Math.round(totalAllow*100)/100,
     allowBreakdown:  allowances,
     sss:             Math.round(sss*100)/100,
@@ -4265,6 +4274,13 @@ async function computePayroll(){
     const lateMinutes= recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
     const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
     const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
+    // v70: OT hours worked on holidays get the higher premium
+    const otRegHol   = recs.filter(r=>r.holiday==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
+    const otSpeHol   = recs.filter(r=>r.holiday==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
+    // v70: unworked regular holidays this month (only for employees with attendance)
+    const _workedDates = new Set(recs.map(r=>r.date));
+    const _hasAttUR = daysPresent+absences+halfDays > 0;
+    const unworkedRegHol = _hasAttUR ? getHolidays().filter(h=>h.type==='RH' && h.date.startsWith(month) && !_workedDates.has(h.date)).length : 0;
 
     console.log(`[PAYROLL] ${eid}: records=${recs.length}, present=${daysPresent}, hours=[${recs.map(r=>`${r.date}=${r.hours||'?'}`).join(',')}]`);
     const loanDed    = getActiveLoanDeduction(eid);
@@ -4274,7 +4290,7 @@ async function computePayroll(){
     const _lvs = load(KEYS.leaves)||{};
     const paidLeave = _paidLeaveDays(_lvs, eid, month, new Set(recs.map(r=>r.date)));
     const daysWorked = (hasAtt ? daysPresent + (halfDays*0.5) : 0) + paidLeave; // v68: no attendance = no pay (was silently paying full month)
-    const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, lateMinutes);
+    const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, lateMinutes, {regHol:otRegHol, speHol:otSpeHol}, unworkedRegHol);
     const dw         = daysWorked!==null ? daysWorked.toFixed(1) : WORKING_DAYS.toFixed(1);
     const totalAllow = totalAllowances(allowances);
     _payrollData.push({eid, name:e.name, branch:e.branch||'—', ...pay, days_worked:dw,
@@ -7118,11 +7134,15 @@ async function _monthPayrollByBranch(month){
       const lateMin = recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
       const regHol  = recs.filter(r=>r.holiday==='Regular Holiday').length;
       const speHol  = recs.filter(r=>r.holiday==='Special Holiday').length;
+      const otRegHol= recs.filter(r=>r.holiday==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
+      const otSpeHol= recs.filter(r=>r.holiday==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
+      const _wd     = new Set(recs.map(r=>r.date));
+      const _unwRH  = (dp+abs+hd>0) ? getHolidays().filter(h=>h.type==='RH' && h.date.startsWith(month) && !_wd.has(h.date)).length : 0; // v70
       const lDed = (loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
       const hasAtt = dp+abs+hd>0;
       const _plv = _paidLeaveDays(bdata.pr_leaves||{}, eid, month, new Set(recs.map(r=>r.date)));
       const dw   = (hasAtt ? dp+(hd*0.5) : 0) + _plv; // v68: no attendance = no pay · v69: + paid leave
-      const pay  = computeNetPay(rate, dw, abs, hd, lDed, otH, ndH, {regular:regHol,special:speHol}, e.allowances||{}, lateMin);
+      const pay  = computeNetPay(rate, dw, abs, hd, lDed, otH, ndH, {regular:regHol,special:speHol}, e.allowances||{}, lateMin, {regHol:otRegHol,speHol:otSpeHol}, _unwRH);
       res.emps.push({eid, name:e.name, role:e.role, dw, otH:+otH.toFixed(2), gross:pay.gross, net:pay.net});
       res.gross+=pay.gross; res.net+=pay.net;
     });
@@ -8974,7 +8994,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v69';
+    const _SW_VER = 'dcpayroll-v70';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
