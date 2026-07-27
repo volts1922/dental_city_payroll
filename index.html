@@ -2255,7 +2255,7 @@ function _renderEmployees(q=''){
   
   // Filter: show only non-deleted, non-inactive, valid employees AND matching current branch
   const filtered=Object.entries(emps).filter(([id,e])=>
-    e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='inactive'
+    e && e.name && String(e.name).trim()!=='' && String(e.name).trim()!=='-' && !e.deleted_at && e.status!=='Inactive'
     // Owner sees all. Others see their branch — but if a record is missing its
     // .branch field (legacy/import data), don't hide it: the data was already
     // loaded scoped to this branch's cloud bucket, so it belongs here.
@@ -4610,7 +4610,7 @@ async function generatePayslipBatch(period){
   if(!month) { toast('⚠️ Select month first'); return; }
   
   const emps = load(KEYS.employees);
-  const activeEmps = Object.entries(emps).filter(([id,e]) => e && e.name && e.status !== 'inactive');
+  const activeEmps = Object.entries(emps).filter(([id,e]) => e && e.name && e.status === 'Active');
   
   if(activeEmps.length === 0) { toast('⚠️ No active employees'); return; }
   
@@ -9003,7 +9003,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v71';
+    const _SW_VER = 'dcpayroll-v72';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
