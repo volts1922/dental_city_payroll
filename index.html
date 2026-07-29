@@ -1578,6 +1578,7 @@ const NAV_DEVELOPER=[
   // v58: per-branch encoding pages live here now (removed from Owner) —
   // dev is the emergency full-access account.
   {icon:'👤',label:'Employees',        fn:'showEmployees',  group:'Branch Ops'},
+  {icon:'⏱',label:'Time Kiosk',       fn:'showKiosk',      group:'Branch Ops'},
   {icon:'📅',label:'Attendance',       fn:'showAttendance', group:'Branch Ops'},
   {icon:'🌴',label:'Leave',            fn:'showLeave',      group:'Branch Ops'},
   {icon:'💳',label:'Loans',            fn:'showLoans',      group:'Branch Ops'},
@@ -1587,6 +1588,7 @@ const NAV_DEVELOPER=[
 ];
 
 const NAV_ADMIN=[
+  {icon:'⏱',label:'Time Kiosk',   fn:'showKiosk'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
   {icon:'💳',label:'Loans',       fn:'showLoans'},
@@ -1594,6 +1596,7 @@ const NAV_ADMIN=[
 
 // Full branch-level admin — fixes misclocks, runs payroll, etc. Scoped to one branch.
 const NAV_SUPERADMIN=[
+  {icon:'⏱',label:'Time Kiosk',   fn:'showKiosk'},
   {icon:'👥',label:'Employees',   fn:'showEmployees'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
@@ -2289,6 +2292,7 @@ function _renderEmployees(q=''){
         <td>
           <button class="btn btn-secondary btn-sm" onclick="editEmp('${id}')">✏</button>
           <button class="btn btn-primary btn-sm" onclick="open201('${id}')">📋 201</button>
+          <button class="btn btn-sm admin-only" style="background:#0ea5e9;color:#fff" onclick="setEmpPin('${id}')" title="Set / reset clock-in PIN">🔐 PIN</button>
           <button class="btn btn-danger btn-sm admin-only" onclick="deleteEmp('${id}')">🗑</button>
         </td>
       </tr>`;
@@ -3039,9 +3043,9 @@ async function refreshLiveAttendance(){
         ${e.onBreak ? `<div style="font-size:12px;color:#92400e;margin-bottom:10px">☕ ${_esc(e.breakType)} since ${e.breakMins} min ago</div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${e.onBreak
-            ? `<button class="btn btn-sm" style="background:#16a34a;color:#fff" onclick="getBranchUUID(getBranch()).then(bid=>endBreak('${e.eid}', bid)).then(()=>refreshLiveAttendance())">▶️ End Break</button>`
-            : `<button class="btn btn-sm" style="background:#f59e0b;color:#fff" onclick="getBranchUUID(getBranch()).then(bid=>startBreak('${e.eid}', bid, 'Lunch')).then(()=>refreshLiveAttendance())">☕ Break</button>`}
-          <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid)).then(()=>refreshLiveAttendance())">🔴 Clock Out</button>
+            ? `<button class="btn btn-sm" style="background:#16a34a;color:#fff" onclick="getBranchUUID(getBranch()).then(bid=>pinEndBreak('${e.eid}', bid)).then(()=>refreshLiveAttendance())">▶️ End Break</button>`
+            : `<button class="btn btn-sm" style="background:#f59e0b;color:#fff" onclick="getBranchUUID(getBranch()).then(bid=>pinStartBreak('${e.eid}', bid)).then(()=>refreshLiveAttendance())">☕ Break</button>`}
+          <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>pinClockOut('${e.eid}', bid)).then(()=>refreshLiveAttendance())">🔴 Clock Out</button>
         </div>
       </div>
     `).join('');
@@ -9053,7 +9057,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v74';
+    const _SW_VER = 'dcpayroll-v75';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -10040,6 +10044,219 @@ async function clockIn(empId, branchId) {
     toast(`❌ ${e.message}`);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v75: PIN-AUTHENTICATED CLOCK ACTIONS
+// Every punch (in / break / end break / out) is authenticated so the DTR is
+// attributable to the actual person, not "whoever was at the terminal".
+// PIN hashes live in employee_pins and are verified server-side by
+// verify_employee_pin(); the browser never receives a hash.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Prompts for a PIN and resolves true only on a verified match.
+let _pinPendingResolve = null;
+// openModal() has no cancel hook, so dismissing the prompt would otherwise leave
+// the awaiting punch hanging forever. Patch closeModal once to settle it as false.
+if(!window._pinClosePatched){
+  window._pinClosePatched = true;
+  const _origCloseModal = closeModal;
+  closeModal = function(){
+    const r = _pinPendingResolve; _pinPendingResolve = null;
+    _origCloseModal();
+    if(r) r(false);
+  };
+}
+
+async function _requirePin(empId, actionLabel){
+  const emps = load(KEYS.employees);
+  const name = emps[empId]?.name || empId;
+  return new Promise(resolve => {
+    _pinPendingResolve = resolve;
+    openModal(`🔐 ${actionLabel} — ${_esc(name)}`, `
+      <div style="text-align:center;padding:6px 0 2px">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Enter your PIN to confirm</div>
+        <input id="f_pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"
+          style="width:190px;text-align:center;letter-spacing:14px;font-size:30px;font-weight:700;padding:12px;
+                 border:2px solid var(--border);border-radius:12px" placeholder="••••">
+        <div id="pinMsg" style="min-height:20px;margin-top:10px;font-size:12px;color:#e11d48"></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:230px;margin:12px auto 0">
+          ${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" class="btn" style="font-size:20px;padding:12px" onclick="_pinKey('${n}')">${n}</button>`).join('')}
+          <button type="button" class="btn" style="font-size:14px;padding:12px" onclick="_pinKey('clr')">CLR</button>
+          <button type="button" class="btn" style="font-size:20px;padding:12px" onclick="_pinKey('0')">0</button>
+          <button type="button" class="btn" style="font-size:16px;padding:12px" onclick="_pinKey('del')">⌫</button>
+        </div>
+      </div>
+    `, async ()=>{
+      const el = document.getElementById('f_pin');
+      const msg = document.getElementById('pinMsg');
+      const pin = (el?.value||'').trim();
+      if(!/^[0-9]{4,6}$/.test(pin)){ if(msg) msg.textContent = 'Enter your 4-6 digit PIN.'; return; }
+      if(!_sb){ if(msg) msg.textContent = 'Offline — PIN check needs a connection.'; return; }
+      try{
+        const {data, error} = await _sb.rpc('verify_employee_pin', {p_employee_id: empId, p_pin: pin});
+        if(error) throw error;
+        if(data?.ok){ _pinPendingResolve = null; closeModal(); resolve(true); return; }
+        if(data?.reason === 'locked'){
+          if(msg) msg.textContent = `Locked for ${Math.ceil((data.locked_for_secs||600)/60)} min after too many wrong tries. Ask your admin.`;
+        } else if(data?.reason === 'no_pin'){
+          if(msg) msg.textContent = 'No PIN set for you yet — ask your admin.';
+        } else {
+          if(msg) msg.textContent = `Wrong PIN. ${data?.tries_left ?? 0} ${(data?.tries_left===1?'try':'tries')} left before lockout.`;
+        }
+        if(el){ el.value=''; el.focus(); }
+      }catch(e){
+        if(msg) msg.textContent = 'Could not verify PIN: ' + (e.message||e);
+      }
+    }, '✓ Confirm');
+    setTimeout(()=>document.getElementById('f_pin')?.focus(), 120);
+  });
+}
+
+// On-screen keypad (kiosk tablets often have no hardware keyboard).
+function _pinKey(k){
+  const el = document.getElementById('f_pin');
+  if(!el) return;
+  if(k === 'clr') el.value = '';
+  else if(k === 'del') el.value = el.value.slice(0, -1);
+  else if(el.value.length < 6) el.value += k;
+  el.focus();
+}
+
+// Admin: set or reset an employee's clock-in PIN. The PIN is sent straight to
+// set_employee_pin() which bcrypts it server-side — never stored locally.
+async function setEmpPin(empId){
+  const emps = load(KEYS.employees);
+  const name = emps[empId]?.name || empId;
+  if(!isAdmin() && !isOwner()){ toast('⛔ Admins only'); return; }
+  if(!_sb){ toast('⚠️ Needs a connection'); return; }
+
+  openModal(`🔐 Set Clock-In PIN — ${_esc(name)}`, `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      The employee enters this at the kiosk for every punch. 4–6 digits.
+      Avoid obvious ones like 1234 or 0000 — the system rejects them.
+    </div>
+    <div class="form-group">
+      <label class="form-label">New PIN *</label>
+      <input class="form-control" id="f_newpin" type="password" inputmode="numeric" maxlength="6"
+             autocomplete="new-password" placeholder="4-6 digits"
+             style="letter-spacing:8px;font-size:20px;text-align:center">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirm PIN *</label>
+      <input class="form-control" id="f_newpin2" type="password" inputmode="numeric" maxlength="6"
+             autocomplete="new-password" placeholder="re-enter"
+             style="letter-spacing:8px;font-size:20px;text-align:center">
+    </div>
+    <div id="pinSetMsg" style="min-height:18px;font-size:12px;color:#e11d48"></div>
+  `, async ()=>{
+    const msg = document.getElementById('pinSetMsg');
+    const a = (document.getElementById('f_newpin')?.value||'').trim();
+    const b = (document.getElementById('f_newpin2')?.value||'').trim();
+    if(!/^[0-9]{4,6}$/.test(a)){ if(msg) msg.textContent='PIN must be 4-6 digits.'; return; }
+    if(a !== b){ if(msg) msg.textContent='PINs do not match.'; return; }
+    try{
+      const branchUUID = await getBranchUUID(emps[empId]?.branch || getBranch());
+      const {error} = await _sb.rpc('set_employee_pin', {p_employee_id: empId, p_branch_id: branchUUID, p_pin: a});
+      if(error) throw error;
+      closeModal();
+      toast(`🔐 PIN set for ${name}`);
+    }catch(e){
+      if(msg) msg.textContent = (e.message||String(e)).replace(/^.*?:\s*/,'');
+    }
+  }, '🔐 Save PIN');
+  setTimeout(()=>document.getElementById('f_newpin')?.focus(), 120);
+}
+
+// ── TIME KIOSK ───────────────────────────────────────────────────────────────
+// Shared-terminal screen: the employee taps their own name, then enters their
+// PIN. Shows each person's current state so the right action is the only one
+// offered (clocked out → Clock In; in → Break/Clock Out; on break → End Break).
+async function showKiosk(){
+  const main = document.getElementById('main');
+  main.innerHTML = `<div class="section-header"><div class="section-title">⏱ Time Kiosk — ${_esc(getBranch())}</div>
+    <button class="btn btn-secondary" onclick="showKiosk()">🔄 Refresh</button></div>
+    <div id="kioskBody" style="padding:4px"><div style="text-align:center;color:#999;padding:40px">Loading…</div></div>`;
+
+  const emps = load(KEYS.employees);
+  let state = {};
+  try{
+    if(_sb){
+      const branchUUID = await getBranchUUID(getBranch());
+      const td = _phToday();
+      const {data: rows} = await _sb.from('time_clock').select('employee_id,status,time_in,time_out')
+        .eq('branch_id', branchUUID).eq('date', td);
+      (rows||[]).forEach(r => { state[r.employee_id] = r; });
+    }
+  }catch(e){ console.warn('kiosk state load failed', e); }
+
+  const list = Object.entries(emps)
+    .filter(([id,e]) => e && e.name && e.status === 'Active' && (isOwner() || !e.branch || e.branch === getBranch()))
+    .sort((a,b)=> String(a[1].name).localeCompare(String(b[1].name)));
+
+  if(!list.length){
+    document.getElementById('kioskBody').innerHTML =
+      '<div style="text-align:center;color:#999;padding:40px">No active employees for this branch</div>';
+    return;
+  }
+
+  const card = ([id,e]) => {
+    const st = state[id];
+    const status = st?.status || 'clocked_out';
+    const done   = !!(st && st.time_out);
+    const badge  = done ? `<span style="background:#94a3b8;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">✔ DONE</span>`
+                : status==='on_break' ? `<span style="background:#f59e0b;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">☕ ON BREAK</span>`
+                : status==='clocked_in' ? `<span style="background:#22c55e;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">✓ IN</span>`
+                : `<span style="background:#e2e8f0;color:#475569;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">OUT</span>`;
+    let actions;
+    if(done){
+      actions = `<div style="font-size:12px;color:#64748b">Shift complete for today</div>`;
+    } else if(status==='on_break'){
+      actions = `<button class="btn" style="background:#16a34a;color:#fff;width:100%" onclick="_kioskDo('${id}','endBreak')">▶️ End Break</button>`;
+    } else if(status==='clocked_in'){
+      actions = `<div style="display:flex;gap:8px">
+          <button class="btn" style="background:#f59e0b;color:#fff;flex:1" onclick="_kioskDo('${id}','startBreak')">☕ Break</button>
+          <button class="btn btn-danger" style="flex:1" onclick="_kioskDo('${id}','clockOut')">🔴 Clock Out</button>
+        </div>`;
+    } else {
+      actions = `<button class="btn btn-primary" style="width:100%" onclick="_kioskDo('${id}','clockIn')">🟢 Clock In</button>`;
+    }
+    return `<div style="border:1.5px solid var(--border);border-radius:12px;padding:14px;background:var(--bg-light)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:700;font-size:15px">${_esc(e.name)}</div>${badge}
+      </div>
+      ${actions}
+    </div>`;
+  };
+
+  document.getElementById('kioskBody').innerHTML =
+    `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+      ${list.map(card).join('')}
+     </div>`;
+}
+
+// Every kiosk action goes through the PIN gate, then repaints the board.
+async function _kioskDo(empId, action){
+  try{
+    const branchUUID = await getBranchUUID(getBranch());
+    if(action==='clockIn')        await pinClockIn(empId, branchUUID);
+    else if(action==='clockOut')  await pinClockOut(empId, branchUUID);
+    else if(action==='startBreak')await pinStartBreak(empId, branchUUID);
+    else if(action==='endBreak')  await pinEndBreak(empId, branchUUID);
+  }catch(e){ toast('❌ '+(e.message||e)); }
+  showKiosk();
+}
+
+// PH-local YYYY-MM-DD, matching how every clock writer stores `date`.
+function _phToday(){
+  const d = new Date(Date.now() + 8*3600*1000);
+  return d.toISOString().slice(0,10);
+}
+
+// Wrappers used by the kiosk + live board so every punch is authenticated.
+async function pinClockIn(empId, branchId){ if(await _requirePin(empId,'Clock In'))    { await clockIn(empId, branchId);    refreshBreakUI(); } }
+async function pinClockOut(empId, branchId){ if(await _requirePin(empId,'Clock Out'))  { await clockOut(empId, branchId);   refreshBreakUI(); } }
+async function pinStartBreak(empId, branchId){ if(await _requirePin(empId,'Start Break')){ await startBreak(empId, branchId,'Lunch'); } }
+async function pinEndBreak(empId, branchId){ if(await _requirePin(empId,'End Break'))  { await endBreak(empId, branchId); } }
 
 // v74: single hook the break actions call so the board repaints immediately.
 function refreshBreakUI(){
