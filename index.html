@@ -2930,12 +2930,25 @@ async function refreshLiveAttendance(){
     }
     
     // Get all clocked-in employees for today (Philippines timezone)
+    // v74: include 'on_break' — previously anyone on break vanished from the
+    // owner's live board entirely, which looked like they had gone home.
     const {data: records} = await _sb.from('time_clock')
       .select('*')
       .eq('branch_id', branchData.id)
       .eq('date', todayPhDate)  // ← Use Philippines timezone date
-      .eq('status', 'clocked_in');
-    
+      .in('status', ['clocked_in', 'on_break']);
+
+    // v74: open break rows, so the board can show how long someone has been out.
+    let openBreaks = {};
+    try {
+      const {data: brs} = await _sb.from('time_breaks')
+        .select('employee_id, break_in, break_type')
+        .eq('branch_id', branchData.id)
+        .eq('date', todayPhDate)
+        .is('break_out', null);
+      (brs||[]).forEach(b => { openBreaks[b.employee_id] = b; });
+    } catch(e) { console.warn('break fetch failed', e); }
+
     if(!records || records.length === 0) {
       const la = document.getElementById('liveAttendance');
       if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">No employees clocked in</div>';
@@ -2976,24 +2989,42 @@ async function refreshLiveAttendance(){
       const shiftEnd = new Date(timeIn.getTime() + shiftHours * 60 * 60 * 1000);
       const timeRemaining = Math.max(0, Math.floor((shiftEnd - now) / (1000 * 60)));
       
+      // v74: break state for this employee
+      const br = openBreaks[rec.employee_id];
+      let breakMins = 0;
+      if(br && br.break_in){
+        try {
+          const [dp, tp] = String(br.break_in).split(' ');
+          const [by, bm, bd] = dp.split('-');
+          const [bh, bmin, bs] = (tp||'0:0:0').split(':');
+          const bStart = new Date(by, bm-1, bd, bh, bmin, bs||0);
+          breakMins = Math.max(0, Math.floor((now - bStart)/60000));
+        } catch(e){ breakMins = 0; }
+      }
+
       return {
         eid: rec.employee_id,
         name: emp.name,
         hoursWorked,
         timeRemaining,
         timeIn: timeIn.toISOString(), // Store raw ISO
-        branch: emp.branch
+        branch: emp.branch,
+        onBreak: rec.status === 'on_break',
+        breakMins,
+        breakType: br?.break_type || 'Break'
       };
     });
     
     const html = liveEmps.map(e => `
-      <div style="border:1.5px solid var(--border);border-radius:10px;padding:15px;background:var(--bg-light)">
+      <div style="border:1.5px solid ${e.onBreak ? '#f59e0b' : 'var(--border)'};border-radius:10px;padding:15px;background:${e.onBreak ? '#fffbeb' : 'var(--bg-light)'}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div>
             <div style="font-weight:700;font-size:14px">${_esc(e.name)}</div>
             <div style="font-size:11px;color:#666">${formatEmpId(e.eid, e.branch)}</div>
           </div>
-          <span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>
+          ${e.onBreak
+            ? `<span style="background:#f59e0b;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">☕ ON BREAK · ${e.breakMins}m</span>`
+            : `<span style="background:#22c55e;color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">✓ PRESENT</span>`}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">
           <div><span style="color:#888">Clocked In:</span> <b>${(() => {
@@ -3005,7 +3036,13 @@ async function refreshLiveAttendance(){
           <div><span style="color:#888">Hours Worked:</span> <b>${e.hoursWorked}h</b></div>
           <div><span style="color:#888">Shift End In:</span> <b style="color:#e11d48">${e.timeRemaining}m</b></div>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid)).then(()=>refreshLiveAttendance())">🔴 Clock Out</button>
+        ${e.onBreak ? `<div style="font-size:12px;color:#92400e;margin-bottom:10px">☕ ${_esc(e.breakType)} since ${e.breakMins} min ago</div>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${e.onBreak
+            ? `<button class="btn btn-sm" style="background:#16a34a;color:#fff" onclick="getBranchUUID(getBranch()).then(bid=>endBreak('${e.eid}', bid)).then(()=>refreshLiveAttendance())">▶️ End Break</button>`
+            : `<button class="btn btn-sm" style="background:#f59e0b;color:#fff" onclick="getBranchUUID(getBranch()).then(bid=>startBreak('${e.eid}', bid, 'Lunch')).then(()=>refreshLiveAttendance())">☕ Break</button>`}
+          <button class="btn btn-danger btn-sm" onclick="getBranchUUID(getBranch()).then(bid=>clockOut('${e.eid}', bid)).then(()=>refreshLiveAttendance())">🔴 Clock Out</button>
+        </div>
       </div>
     `).join('');
     
@@ -9016,7 +9053,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v73';
+    const _SW_VER = 'dcpayroll-v74';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -10004,6 +10041,11 @@ async function clockIn(empId, branchId) {
   }
 }
 
+// v74: single hook the break actions call so the board repaints immediately.
+function refreshBreakUI(){
+  try { if(typeof refreshLiveAttendance === 'function') refreshLiveAttendance(); } catch(e){}
+}
+
 async function startBreak(empId, branchId, breakType = 'Lunch') {
   try {
     const now = new Date();
@@ -10023,13 +10065,26 @@ async function startBreak(empId, branchId, breakType = 'Lunch') {
     const breakInTimeStr = `${todayPh} ${hours}:${minutes}:${seconds}`;
     
     const {data: clock} = await _sb.from('time_clock').select('*').eq('employee_id', empId).eq('branch_id', branchId).eq('date', todayPh).single();
-    if(!clock || clock.status !== 'clocked_in') throw new Error('Not clocked in');
-    await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
-    const {data: breakRecord} = await _sb.from('time_breaks').insert({
-      clock_id: clock.id, employee_id: empId, branch_id: branchId, date: todayPh, 
-      break_type: breakType, break_in: breakInTimeStr, auto_deducted: true
+    if(!clock) throw new Error('Not clocked in today');
+    if(clock.status === 'on_break') throw new Error('Already on break');
+    if(clock.status !== 'clocked_in') throw new Error('Not clocked in');
+
+    // v74: insert the break record FIRST, then flip the clock status. If the
+    // insert fails we must not leave the employee stranded in 'on_break' with
+    // no matching break row (that was the old order, and it stuck people).
+    const {data: breakRecord, error: insErr} = await _sb.from('time_breaks').insert({
+      clock_id: clock.id, employee_id: empId, branch_id: branchId, date: todayPh,
+      break_type: breakType, break_in: breakInTimeStr, status: 'on_break'
     }).select();
+    if(insErr || !breakRecord || !breakRecord.length) throw new Error(insErr?.message || 'Could not start break');
+
+    const {error: updErr} = await _sb.from('time_clock').update({status: 'on_break'}).eq('id', clock.id);
+    if(updErr){ // roll back the orphan break row so state stays consistent
+      await _sb.from('time_breaks').delete().eq('id', breakRecord[0].id);
+      throw new Error(updErr.message || 'Could not set break status');
+    }
     toast(`☕ ${breakType} started`);
+    if(typeof refreshBreakUI === 'function') refreshBreakUI();
     return breakRecord[0];
   } catch(e) {
     console.error(e);
@@ -10060,9 +10115,12 @@ async function endBreak(empId, branchId) {
       .is('break_out', null).order('created_at', {ascending: false}).limit(1).single();
     if(!breaks) throw new Error('No active break');
     const breakDurationMins = _calcTime(breaks.break_in, breakOutTimeStr);
-    await _sb.from('time_breaks').update({break_out: breakOutTimeStr, approval_status: 'auto_approved'}).eq('id', breaks.id);
+    // v74: also flip the break row's own status to 'returned' — it previously
+    // stayed 'on_break' forever, so closed breaks still looked open.
+    await _sb.from('time_breaks').update({break_out: breakOutTimeStr, status: 'returned', approval_status: 'auto_approved'}).eq('id', breaks.id);
     await _sb.from('time_clock').update({status: 'clocked_in'}).eq('employee_id', empId).eq('branch_id', branchId).eq('date', todayPh);
-    toast(`✅ Break ended. ${breakDurationMins} mins deducted`);
+    toast(`✅ Break ended — ${breakDurationMins} mins`);
+    if(typeof refreshBreakUI === 'function') refreshBreakUI();
     return {breakDurationMins};
   } catch(e) {
     console.error(e);
@@ -10093,6 +10151,21 @@ async function clockOut(empId, branchId) {
     const {data: clock} = await _sb.from('time_clock').select('*')
       .eq('employee_id', empId).eq('branch_id', branchId).eq('date', todayPh).single();
     if(!clock || !clock.time_in) throw new Error('Not clocked in');
+
+    // v74: if they're still on break, auto-close the open break at clock-out.
+    // Otherwise the break row stays open forever and its minutes are never
+    // deducted (break_out null → skipped in the totalBreakMins loop below).
+    if(clock.status === 'on_break'){
+      const {data: openBr} = await _sb.from('time_breaks').select('id')
+        .eq('employee_id', empId).eq('branch_id', branchId).eq('date', todayPh)
+        .is('break_out', null).order('created_at', {ascending:false}).limit(1);
+      if(openBr && openBr.length){
+        await _sb.from('time_breaks').update({
+          break_out: timeOutStr, status: 'returned', approval_status: 'auto_approved'
+        }).eq('id', openBr[0].id);
+      }
+    }
+
     const grossMins = _calcTime(clock.time_in, timeOutStr);
     const grossHours = (grossMins / 60).toFixed(2);
     const {data: breaks} = await _sb.from('time_breaks').select('break_in, break_out')
