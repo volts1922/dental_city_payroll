@@ -2817,7 +2817,6 @@ function showAttendance(){
           <button id="attVwyear" class="btn btn-sm" style="border-radius:0;border:none" onclick="attSetView('year')">Year</button>
         </div>
         <button class="btn btn-success admin-only" onclick="markAttModal()">✚ Mark Attendance</button>
-        <button class="btn admin-only" style="background:#DC2626;color:#fff" onclick="clearAllAtt()">🗑 Clear This Date</button>
         <button class="btn btn-teal admin-only" onclick="exportAtt()">Export CSV</button>
         ${(isOwner()||isSuperAdmin())?`<button class="btn btn-secondary" onclick="archiveOldAttendance()">📦 Archive Old</button>`:''}
       </div>
@@ -3060,6 +3059,14 @@ async function refreshLiveAttendance(){
 }
 
 async function clearAllAtt(){
+  // v77: bulk attendance deletion retired from the Attendance screen — admins
+  // should not be able to wipe a whole day's records (it destroys the DTR and
+  // the payroll basis for every employee at once). Function kept as a guarded
+  // stub so any stale cached UI or bookmark can't still trigger a wipe.
+  if(!isOwner()){ toast('⛔ Bulk clearing attendance has been disabled.'); return; }
+  toast('⛔ Bulk clear is disabled. Edit individual records via Mark Attendance.');
+  return;
+  /* eslint-disable no-unreachable */
   if(!(await _confirm(`Delete ALL attendance for ${_attDate}?<br><br>This removes all entries for every employee.`, {ok:'Delete All', cancel:'Cancel', danger:true, icon:'⚠️'}))) return;
 
   let count = 0;
@@ -3097,6 +3104,7 @@ async function clearAllAtt(){
   toast(`🗑 Cleared ${count} attendance record(s) for ${_attDate}`);
   loadAtt();
   refreshLiveAttendance();
+  /* eslint-enable no-unreachable */
 }
 
 // Clock Out for past dates
@@ -3874,10 +3882,47 @@ function markAttModal(){
 }
 
 // Save individual employee Mark Attendance
+// v77: snapshot every field in the Mark Attendance modal so the PIN prompt
+// (which reuses the same single modal element) doesn't wipe what the admin
+// has already typed for other employees.
+function _snapshotMarkAttForm(){
+  const snap = {};
+  document.querySelectorAll('[id^="ms_"],[id^="hol_"],[id^="ti_"],[id^="to_"],[id^="ot_"],[id^="nd_"]')
+    .forEach(el => { snap[el.id] = el.value; });
+  return snap;
+}
+function _restoreMarkAttForm(snap){
+  Object.entries(snap||{}).forEach(([id,v]) => {
+    const el = document.getElementById(id);
+    if(el) el.value = v;
+  });
+}
+
 async function saveMarkAttendanceIndividual(empId, date){
   const tin = document.getElementById(`ti_${empId}`)?.value;
   const tout = document.getElementById(`to_${empId}`)?.value;
   const markStatus = document.getElementById(`ms_${empId}`).value;
+  // v77: these three inputs existed in the form but were never read — anything
+  // the admin typed into OT / ND / Holiday was silently thrown away on save.
+  const manualOt = parseFloat(document.getElementById(`ot_${empId}`)?.value || 0) || 0;
+  const manualNd = parseFloat(document.getElementById(`nd_${empId}`)?.value || 0) || 0;
+  const holiday  = document.getElementById(`hol_${empId}`)?.value || '';
+
+  // v77: manually-entered attendance that claims the employee was physically
+  // present must be confirmed with that employee's PIN. Absent / Rest Day are
+  // exempt — you obviously can't collect a PIN from someone who didn't show up.
+  const PRESENCE_STATUSES = ['Present','Late','Half-day'];
+  if(PRESENCE_STATUSES.includes(markStatus)){
+    const snap = _snapshotMarkAttForm();
+    const ok = await _requirePin(empId, `Confirm ${markStatus} — ${date}`);
+    if(!ok){
+      markAttModal(); _restoreMarkAttForm(snap);
+      toast('⚠️ Not saved — PIN not confirmed');
+      return;
+    }
+    // PIN prompt consumed the modal; rebuild it so the admin can keep working.
+    markAttModal(); _restoreMarkAttForm(snap);
+  }
 
   // ALWAYS save locally to KEYS.attendance first (with computed Hours/OT), so
   // history/reports/payroll/exports (which read KEYS.attendance) have real
@@ -3896,7 +3941,16 @@ async function saveMarkAttendanceIndividual(empId, date){
       }
       ot_hours = ot;
     }
-    att[empId].push({ date, status: markStatus, time_in: tin || '—', time_out: tout || '—', hours, ot_hours });
+    // v77: an explicit OT figure from the admin wins over the computed one
+    // (e.g. approved OT that doesn't line up with raw clock times).
+    if(manualOt > 0) ot_hours = manualOt;
+    att[empId].push({
+      date, status: markStatus,
+      time_in: tin || '—', time_out: tout || '—',
+      hours, ot_hours,
+      nd_hours: manualNd,   // v77: previously dropped
+      holiday               // v77: previously dropped
+    });
     save(KEYS.attendance, att);
   } catch(e) { console.error('Local attendance save error:', e); }
 
@@ -9058,7 +9112,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v76';
+    const _SW_VER = 'dcpayroll-v77';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
