@@ -6865,6 +6865,7 @@ function showAllEmployees(q='', filterBranch='All'){
     <td>${badge(e.status||'Active')}</td>
     <td>
       <button class="btn btn-secondary btn-sm" onclick="ownerEditEmp('${e._branch}','${e._id}')">✏</button>
+      <button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="setEmpPin('${e._id}','${e._branch}')" title="Set / reset clock-in PIN">🔐 PIN</button>
       <button class="btn btn-danger btn-sm" onclick="ownerDeleteEmp('${e._branch}','${e._id}','${safeName}')">🗑</button>
     </td>
   </tr>`;
@@ -9057,7 +9058,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v75';
+    const _SW_VER = 'dcpayroll-v76';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -10124,11 +10125,19 @@ function _pinKey(k){
 
 // Admin: set or reset an employee's clock-in PIN. The PIN is sent straight to
 // set_employee_pin() which bcrypts it server-side — never stored locally.
-async function setEmpPin(empId){
-  const emps = load(KEYS.employees);
-  const name = emps[empId]?.name || empId;
+// branchName is optional: the owner's All-Employees view passes it because that
+// employee may live in another branch's data bucket, not this device's local set.
+async function setEmpPin(empId, branchName){
   if(!isAdmin() && !isOwner()){ toast('⛔ Admins only'); return; }
   if(!_sb){ toast('⚠️ Needs a connection'); return; }
+
+  let emp = null;
+  if(branchName && typeof _ownerData === 'object' && _ownerData[branchName]){
+    emp = (_ownerData[branchName].pr_employees||{})[empId] || null;
+  }
+  if(!emp) emp = load(KEYS.employees)[empId] || null;
+  const name = emp?.name || empId;
+  const empBranch = branchName || emp?.branch || getBranch();
 
   openModal(`🔐 Set Clock-In PIN — ${_esc(name)}`, `
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
@@ -10155,7 +10164,7 @@ async function setEmpPin(empId){
     if(!/^[0-9]{4,6}$/.test(a)){ if(msg) msg.textContent='PIN must be 4-6 digits.'; return; }
     if(a !== b){ if(msg) msg.textContent='PINs do not match.'; return; }
     try{
-      const branchUUID = await getBranchUUID(emps[empId]?.branch || getBranch());
+      const branchUUID = await getBranchUUID(empBranch);
       const {error} = await _sb.rpc('set_employee_pin', {p_employee_id: empId, p_branch_id: branchUUID, p_pin: a});
       if(error) throw error;
       closeModal();
