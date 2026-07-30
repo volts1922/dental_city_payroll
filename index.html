@@ -2825,12 +2825,14 @@ function showAttendance(){
 
     <div id="attCalendar" style="margin-top:12px"></div>
 
-    <!-- Real-time Attendance Status Widget -->
-    <div class="section-header" style="margin-top:20px">
-      <div class="section-title">🟢 Currently Present</div>
-      <button class="btn btn-sm btn-teal" onclick="refreshLiveAttendance()">🔄 Refresh</button>
+    <!-- v79: the live "Currently Present" widget moved into the Time Kiosk.
+         Attendance is now history + corrections only; the kiosk is the single
+         live view, so the same person is no longer rendered on two screens. -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;margin-bottom:8px">
+      <div class="section-title">📋 Attendance Records</div>
+      <button class="btn btn-sm btn-secondary" onclick="showKiosk()">⏱ Live view → Time Kiosk</button>
     </div>
-    <div id="liveAttendance" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:10px 0"></div>
+    <div class="table-wrap"><div class="table-scroll">
       <table><thead><tr><th>ID</th><th>Name</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>OT Hours</th><th>ND Hours</th><th>Holiday</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="attBody"></tbody></table>
     </div></div>`;
@@ -9113,7 +9115,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v78';
+    const _SW_VER = 'dcpayroll-v79';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -10306,7 +10308,7 @@ async function showKiosk(){
     <div id="kioskBody" style="padding:4px"><div style="text-align:center;color:#999;padding:40px">Loading…</div></div>`;
 
   const emps = load(KEYS.employees);
-  let state = {};
+  let state = {}, openBreaks = {};
   try{
     if(_sb){
       const branchUUID = await getBranchUUID(getBranch());
@@ -10314,6 +10316,10 @@ async function showKiosk(){
       const {data: rows} = await _sb.from('time_clock').select('employee_id,status,time_in,time_out')
         .eq('branch_id', branchUUID).eq('date', td);
       (rows||[]).forEach(r => { state[r.employee_id] = r; });
+      // v79: open breaks, so a card can show how long someone has been out.
+      const {data: brs} = await _sb.from('time_breaks').select('employee_id,break_in,break_type')
+        .eq('branch_id', branchUUID).eq('date', td).is('break_out', null);
+      (brs||[]).forEach(b => { openBreaks[b.employee_id] = b; });
     }
   }catch(e){ console.warn('kiosk state load failed', e); }
 
@@ -10327,10 +10333,49 @@ async function showKiosk(){
     return;
   }
 
+  // v79: parse a PH-local "YYYY-MM-DD HH:MM:SS" (or ISO) stamp into a Date.
+  const _parseStamp = (s) => {
+    if(!s) return null;
+    try{
+      if(String(s).includes('T')) return new Date(s);
+      const [dp, tp] = String(s).split(' ');
+      const [Y,M,D] = dp.split('-');
+      const [h,m,sec] = (tp||'0:0:0').split(':');
+      return new Date(+Y, +M-1, +D, +h, +m, +(sec||0));
+    }catch(err){ return null; }
+  };
+
   const card = ([id,e]) => {
     const st = state[id];
     const status = st?.status || 'clocked_out';
     const done   = !!(st && st.time_out);
+    const now    = new Date();
+
+    // ── v79: live timing detail, merged in from the old Attendance widget ──
+    const tIn        = _parseStamp(st?.time_in);
+    const shiftHours = parseFloat(e.shift_hours || 8) || 8;
+    let inLabel = '—', worked = null, remainMin = null;
+    if(tIn && !isNaN(tIn)){
+      inLabel = to12h(String(st.time_in).slice(11,16));
+      const endRef = done ? _parseStamp(st.time_out) : now;
+      worked = Math.max(0, (endRef - tIn) / 3600000);
+      if(!done) remainMin = Math.max(0, Math.round((tIn.getTime() + shiftHours*3600000 - now) / 60000));
+    }
+    const br = openBreaks[id];
+    let breakMins = 0;
+    if(br?.break_in){
+      const bs = _parseStamp(br.break_in);
+      if(bs && !isNaN(bs)) breakMins = Math.max(0, Math.floor((now - bs)/60000));
+    }
+    const detail = tIn ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px;color:#475569;margin-bottom:10px">
+        <div><span style="color:#94a3b8">In:</span> <b>${inLabel}</b></div>
+        <div><span style="color:#94a3b8">Worked:</span> <b>${worked!=null?worked.toFixed(2)+'h':'—'}</b></div>
+        ${done
+          ? `<div style="grid-column:1/-1"><span style="color:#94a3b8">Out:</span> <b>${to12h(String(st.time_out).slice(11,16))}</b></div>`
+          : `<div style="grid-column:1/-1"><span style="color:#94a3b8">Shift ends in:</span> <b style="color:${remainMin<=0?'#dc2626':'#0f766e'}">${remainMin<=0?'overtime':remainMin+'m'}</b></div>`}
+        ${status==='on_break' ? `<div style="grid-column:1/-1;color:#92400e">☕ ${_esc(br?.break_type||'Break')} — ${breakMins} min so far</div>` : ''}
+      </div>` : '';
     const badge  = done ? `<span style="background:#94a3b8;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">✔ DONE</span>`
                 : status==='on_break' ? `<span style="background:#f59e0b;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">☕ ON BREAK</span>`
                 : status==='clocked_in' ? `<span style="background:#22c55e;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">✓ IN</span>`
@@ -10348,10 +10393,14 @@ async function showKiosk(){
     } else {
       actions = `<button class="btn btn-primary" style="width:100%" onclick="_kioskDo('${id}','clockIn')">🟢 Clock In</button>`;
     }
-    return `<div style="border:1.5px solid var(--border);border-radius:12px;padding:14px;background:var(--bg-light)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-weight:700;font-size:15px">${_esc(e.name)}</div>${badge}
+    return `<div style="border:1.5px solid ${status==='on_break'?'#f59e0b':'var(--border)'};border-radius:12px;padding:14px;background:${status==='on_break'?'#fffbeb':'var(--bg-light)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:15px">${_esc(e.name)}</div>
+          <div style="font-size:10.5px;color:#94a3b8">${id}${e.role?' · '+_esc(e.role):''}</div>
+        </div>${badge}
       </div>
+      ${detail}
       ${actions}
     </div>`;
   };
@@ -10387,8 +10436,17 @@ async function pinStartBreak(empId, branchId){ if(await _requirePin(empId,'Start
 async function pinEndBreak(empId, branchId){ if(await _requirePin(empId,'End Break'))  { await endBreak(empId, branchId); } }
 
 // v74: single hook the break actions call so the board repaints immediately.
+// v79: the live widget now lives in the kiosk, so repaint whichever screen is
+// actually on display. refreshLiveAttendance() self-guards on its element, but
+// being explicit here avoids a pointless DB round-trip from the kiosk.
 function refreshBreakUI(){
-  try { if(typeof refreshLiveAttendance === 'function') refreshLiveAttendance(); } catch(e){}
+  try {
+    if(document.getElementById('kioskBody')){
+      if(typeof showKiosk === 'function') showKiosk();
+    } else if(document.getElementById('liveAttendance')){
+      if(typeof refreshLiveAttendance === 'function') refreshLiveAttendance();
+    }
+  } catch(e){}
 }
 
 async function startBreak(empId, branchId, breakType = 'Lunch') {
