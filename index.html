@@ -2817,6 +2817,7 @@ function showAttendance(){
           <button id="attVwyear" class="btn btn-sm" style="border-radius:0;border:none" onclick="attSetView('year')">Year</button>
         </div>
         <button class="btn btn-success admin-only" onclick="markAttModal()">✚ Mark Attendance</button>
+        <button class="btn admin-only" style="background:#0ea5e9;color:#fff" onclick="showPinManager()">🔐 Manage PINs</button>
         <button class="btn btn-teal admin-only" onclick="exportAtt()">Export CSV</button>
         ${(isOwner()||isSuperAdmin())?`<button class="btn btn-secondary" onclick="archiveOldAttendance()">📦 Archive Old</button>`:''}
       </div>
@@ -9112,7 +9113,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v77';
+    const _SW_VER = 'dcpayroll-v78';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -10179,6 +10180,66 @@ function _pinKey(k){
 
 // Admin: set or reset an employee's clock-in PIN. The PIN is sent straight to
 // set_employee_pin() which bcrypts it server-side — never stored locally.
+// ── PIN MANAGER (branch admins) ──────────────────────────────────────────────
+// Deliberately scoped: lists only this branch's staff and only exposes PIN
+// set/reset. No daily rate, no salary, no employee editing — a branch admin
+// can onboard their own team to the kiosk without seeing anyone's pay.
+async function showPinManager(){
+  if(!isAdmin() && !isOwner()){ toast('⛔ Admins only'); return; }
+  if(!_sb){ toast('⚠️ Needs a connection'); return; }
+
+  const emps = load(KEYS.employees);
+  const branch = getBranch();
+  const list = Object.entries(emps)
+    .filter(([id,e]) => e && e.name && e.status === 'Active' && (isOwner() || !e.branch || e.branch === branch))
+    .sort((a,b)=> String(a[1].name).localeCompare(String(b[1].name)));
+
+  // Which of them already have a PIN (never returns the PIN itself).
+  let pinState = {};
+  try{
+    const branchUUID = await getBranchUUID(branch);
+    const {data} = await _sb.rpc('employees_with_pin', {p_branch_id: branchUUID});
+    (data||[]).forEach(r => { pinState[r.employee_id] = r; });
+  }catch(e){ console.warn('pin state load failed', e); }
+
+  const rows = list.map(([id,e])=>{
+    const st = pinState[id] || {};
+    const chip = st.is_locked
+      ? `<span style="background:#dc2626;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">🔒 LOCKED</span>`
+      : st.has_pin
+        ? `<span style="background:#22c55e;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">✓ PIN SET</span>`
+        : `<span style="background:#f59e0b;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600">⚠ NO PIN</span>`;
+    return `<tr>
+      <td>${id}</td>
+      <td><b>${_esc(e.name)}</b></td>
+      <td>${_esc(e.role||'—')}</td>
+      <td>${chip}</td>
+      <td><button class="btn btn-sm" style="background:#0ea5e9;color:#fff"
+            onclick="setEmpPin('${id}','${_esc(e.branch||branch)}').then(()=>{})">
+            ${st.has_pin ? '🔁 Reset PIN' : '🔐 Set PIN'}</button></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
+
+  document.getElementById('main').innerHTML = `
+    <div class="section-header">
+      <div class="section-title">🔐 Clock-In PINs — ${_esc(branch)}</div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="showAttendance()">← Back to Attendance</button>
+        <button class="btn btn-secondary" onclick="showPinManager()">🔄 Refresh</button>
+      </div>
+    </div>
+    <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 14px;font-size:12px;color:#1e40af;margin-bottom:12px">
+      Employees enter these at the Time Kiosk for every punch. PINs are stored encrypted —
+      they can be reset but never viewed, so write one down before handing it over.
+      Five wrong tries locks that employee out for 10 minutes.
+    </div>
+    <div class="table-wrap"><div class="table-scroll">
+      <table><thead><tr><th>ID</th><th>Employee</th><th>Role</th><th>PIN Status</th><th>Action</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div></div>`;
+  applyRole();
+}
+
 // branchName is optional: the owner's All-Employees view passes it because that
 // employee may live in another branch's data bucket, not this device's local set.
 async function setEmpPin(empId, branchName){
@@ -10223,6 +10284,10 @@ async function setEmpPin(empId, branchName){
       if(error) throw error;
       closeModal();
       toast(`🔐 PIN set for ${name}`);
+      // If the PIN manager is on screen, repaint so the status chip updates.
+      if(document.querySelector('.section-title')?.textContent?.includes('Clock-In PINs')){
+        showPinManager();
+      }
     }catch(e){
       if(msg) msg.textContent = (e.message||String(e)).replace(/^.*?:\s*/,'');
     }
