@@ -411,6 +411,14 @@ async function _auditLog(action, user, details){
   } catch(err) {
     console.warn('Local audit failed:', err.message);
   }
+
+  // v83: these 13 security events (failed logins, password changes, 2FA,
+  // OT approvals…) previously lived ONLY in this device's localStorage, so
+  // they vanished when the cache cleared and were invisible from any other
+  // machine. Mirror them into the tamper-proof server-side trail as well.
+  // Login *failures* happen pre-auth, so the RPC will reject them — that's
+  // expected and swallowed by _audit(); the local copy still records them.
+  try { _audit('SEC_'+action, 'security', user||null, {details: details||null}); } catch(e){}
   
   // Non-blocking cloud sync (ignore all errors)
   if(_sb){
@@ -1211,6 +1219,18 @@ async function doLogin(){
   currentRole = user.role;
   currentUser = user.name;
   _currentUser = u; // Store username for audit logs
+
+  // v83: record the successful sign-in. `last_login` existed on the accounts
+  // table but nothing ever wrote to it — every account read "NEVER", so there
+  // was no way to tell a live account from a dormant/test one. Fire-and-forget:
+  // a failure here must never block the user getting into the app.
+  if(_sb){
+    _sb.from('payroll_accounts').update({ last_login: new Date().toISOString() })
+      .eq('username', u)
+      .then(({error})=>{ if(error) console.warn('[last_login]', error.message); })
+      .catch(e=>console.warn('[last_login]', e?.message||e));
+    _audit('LOGIN_SUCCESS','payroll_accounts',u,{role:user.role, branch:user.branch||null});
+  }
   
   // Developer/Owner should have no specific branch context (All Branches view)
   if(user.role === 'dev' || user.role === 'owner'){
@@ -2526,6 +2546,7 @@ function addEmp(){
 }
 
 function editEmp(id){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const emps=load(KEYS.employees);
   openModal('Edit Employee',empForm(emps[id]),async()=>{
     if(!fval('name')||!fval('daily_rate')){toast('⚠️ Name and daily rate required');return;}
@@ -2576,6 +2597,7 @@ function editEmp(id){
 }
 
 async function deleteEmp(id){
+  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can do this'); return; }  // v83
   const emps = load(KEYS.employees);
   const name = emps[id]?.name || id;
 
@@ -3575,6 +3597,7 @@ function showAttendanceTracker(period='week'){
 
 // ── Mark Attendance for Individual Employee ─────────────────────────────────
 async function markAttRecordIndividual(eid, date){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const emps=load(KEYS.employees), att=load(KEYS.attendance);
   const emp = emps[eid];
   if(!emp) {toast('Employee not found'); return;}
@@ -3715,6 +3738,7 @@ async function markAttRecordIndividual(eid, date){
 }
 
 function markAttModal(){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const pickedDate = _attDate || today();  // v55: calendar drives _attDate directly
   _attDate = pickedDate;  // Update global
   
@@ -3784,6 +3808,7 @@ function _restoreMarkAttForm(snap){
 }
 
 async function saveMarkAttendanceIndividual(empId, date){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const tin = document.getElementById(`ti_${empId}`)?.value;
   const tout = document.getElementById(`to_${empId}`)?.value;
   const markStatus = document.getElementById(`ms_${empId}`).value;
@@ -3925,6 +3950,7 @@ function showLeave(){
 }
 
 function fileLeave(){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const emps=load(KEYS.employees);
   openModal('File Leave Request',`
     <div class="form-group"><label class="form-label">Employee *</label>
@@ -4087,6 +4113,7 @@ function loanForm(d={}){
 }
 
 function addLoan(){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   openModal('Add Loan',loanForm(),()=>{
     if(!fval('eid')){toast('⚠️ Select employee');return;}
     const loans=load(KEYS.loans), eid=fval('eid');
@@ -4097,6 +4124,7 @@ function addLoan(){
 }
 
 function editLoan(eid,idx){
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const loans=load(KEYS.loans), ln=loans[eid][idx];
   openModal('Edit Loan',loanForm({...ln,_eid:eid}),()=>{
     loans[eid][idx]={...loans[eid][idx],type:fval('ltype'),total_amount:parseFloat(fval('total_amount'))||0,monthly_amort:parseFloat(fval('monthly_amort'))||0,balance:parseFloat(fval('balance'))||0,start_date:fval('start_date'),status:fval('lstatus'),remarks:fval('remarks')};
@@ -8898,7 +8926,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v82';
+    const _SW_VER = 'dcpayroll-v83';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
