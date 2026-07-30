@@ -1716,6 +1716,12 @@ function ownerShowBranchPicker(show){
 }
 
 async function ownerSwitchBranch(branch){
+  // v85: the picker is hidden for non-owners, but the function was still
+  // callable from the console — a branch admin could switch their view to
+  // another branch. (Server-side RLS still scoped their data to their own
+  // branch, so this leaked no cloud records, but it could surface locally
+  // cached _ownerData and was misleading.) Real guard now.
+  if(!['dev','owner'].includes(currentRole)){ toast('⛔ You are scoped to your own branch'); return; }
   if(!branch) return;
   showLoading(`Loading ${branch} data...`);
   // Load cached data into LOCAL CACHE ONLY (no cloud push) — avoids overwriting
@@ -2144,9 +2150,13 @@ function showDashboard(){
   document.getElementById('main').innerHTML=`
     <div class="section-header" style="margin-bottom:12px">
       <div class="section-title">📊 Real-Time Status</div>
-      <select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
-        ${getBranchOptions().map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
-      </select>
+      ${isOwner()
+        ? `<select id="branchFilter" onchange="window._dashBranch=this.value;showDashboard()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
+             ${getBranchOptions().map(b=>`<option value="${b}" ${b===activeBranch?'selected':''}>${b}</option>`).join('')}
+           </select>`
+        /* v85: non-owners are scoped to one branch — a dropdown with a single
+           option is just noise, and implies a choice they don't have. */
+        : `<span style="padding:6px 12px;border-radius:20px;background:var(--sky);color:var(--navy);font-size:12px;font-weight:700">🏢 ${_esc(getBranch())}</span>`}
     </div>
     ${branchStats ? `
     <div class="cards" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
@@ -7112,10 +7122,15 @@ function showAllAttendance(filterBranch='All', filterDate=''){
       <div class="btn-row">
         <input type="date" value="${dt}" onchange="showAllAttendance(document.getElementById('branchFilter2').value,this.value)"
           style="padding:7px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-        <select id="branchFilter2" onchange="showAllAttendance(this.value,document.querySelector('[type=date]').value)"
-          style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
-          ${branches.map(b=>`<option${b===filterBranch?' selected':''}>${b}</option>`).join('')}
-        </select>
+        ${isOwner()
+          ? `<select id="branchFilter2" onchange="showAllAttendance(this.value,document.querySelector('[type=date]').value)"
+               style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none">
+               ${branches.map(b=>`<option${b===filterBranch?' selected':''}>${b}</option>`).join('')}
+             </select>`
+          /* v85: single-branch users get a label, not a one-option dropdown.
+             Hidden input keeps the date picker's onchange handler working. */
+          : `<input type="hidden" id="branchFilter2" value="${_esc(getBranch())}">
+             <span style="padding:7px 12px;border-radius:20px;background:var(--sky);color:var(--navy);font-size:12px;font-weight:700">🏢 ${_esc(getBranch())}</span>`}
         <button class="btn btn-teal btn-sm" onclick="exportAllAttendance()">Export CSV</button>
       </div>
     </div>
@@ -8935,7 +8950,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v84';
+    const _SW_VER = 'dcpayroll-v85';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
