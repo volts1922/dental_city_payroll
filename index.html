@@ -1569,6 +1569,7 @@ const NAV_OWNER=[
   {icon:'🎉',label:'Holidays',         fn:'showHolidayManager', group:'Management'},
   {icon:'🕐',label:'Shift Manager',    fn:'showShiftManager',   group:'Management'},
   {icon:'👥',label:'Account Manager',  fn:'showAccountManager', group:'Management'},
+  {icon:'🧾',label:'Audit Trail',      fn:'showAuditLog',       group:'Management'},
   {icon:'💾',label:'Backup',           fn:'showBackupManager',  group:'Management'},
   {icon:'🔄',label:'Refresh Data',     fn:'ownerRefresh',       group:'Management'},
 ];
@@ -1597,6 +1598,7 @@ const NAV_ADMIN=[
 // Full branch-level admin — fixes misclocks, runs payroll, etc. Scoped to one branch.
 const NAV_SUPERADMIN=[
   {icon:'⏱',label:'Time Kiosk',   fn:'showKiosk'},
+  {icon:'🧾',label:'Audit Trail', fn:'showAuditLog'},
   {icon:'👥',label:'Employees',   fn:'showEmployees'},
   {icon:'📅',label:'Attendance',  fn:'showAttendance'},
   {icon:'🌴',label:'Leave',       fn:'showLeave'},
@@ -3221,6 +3223,7 @@ async function deleteAttRecord(eid, date){
         .eq('branch_id', branchData.id)
         .eq('date', date);
       
+      _audit('ATTENDANCE_DELETED','time_clock',eid+'@'+date,{employee:name, date});
       toast(`🗑 Attendance deleted for ${_esc(name)} on ${date}`);
       loadAtt();
     } catch(e) {
@@ -3857,6 +3860,10 @@ async function saveMarkAttendanceIndividual(empId, date){
 
     await _sb.from('time_clock').upsert(payload, {onConflict: 'employee_id,branch_id,date'});
 
+    _audit('ATTENDANCE_EDITED','time_clock',empId+'@'+date,{
+      status:markStatus, time_in:tin||null, time_out:tout||null,
+      ot_hours:manualOt, nd_hours:manualNd, holiday:holiday||null
+    });
     toast(`✅ Saved!`);
     await loadAtt();
     await refreshLiveAttendance();
@@ -3943,7 +3950,13 @@ function fileLeave(){
 function setLeave(eid,idx,status){
   if(!isAdmin()){ toast('⛔ Only admins can approve or deny leave'); return; } // v69
   const leaves=load(KEYS.leaves);
+  const _lvBefore = leaves[eid][idx].status;
   leaves[eid][idx].status=status;
+  _audit('LEAVE_'+String(status||'').toUpperCase(),'leaves',eid+'#'+idx,{
+    from:_lvBefore, to:status, type:leaves[eid][idx].type||null,
+    start:leaves[eid][idx].start_date||null, end:leaves[eid][idx].end_date||null,
+    days:leaves[eid][idx].days||null
+  });
   save(KEYS.leaves,leaves);
 
   // v54: leaves blob already synced by save() → syncToCloud
@@ -4096,7 +4109,9 @@ function markLoanPaid(eid,idx){
   // writes off money the employee still owes. Owner/Superadmin only.
   if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can mark a loan paid'); return; }
   const loans=load(KEYS.loans);
+  const _lnBefore = {balance: loans[eid][idx].balance, status: loans[eid][idx].status, type: loans[eid][idx].type};
   loans[eid][idx].status='Paid'; loans[eid][idx].balance=0;
+  _audit('LOAN_WRITTEN_OFF','loans',eid+'#'+idx,{before:_lnBefore, after:{balance:0,status:'Paid'}});
   save(KEYS.loans,loans); toast('✅ Marked Paid!'); showLoans();
 }
 
@@ -4119,8 +4134,14 @@ async function deleteLoan(eid,idx){
   }
   
   const loanRecord = loans[eid][idx];
-  
-  _confirm(`Delete loan record?<br><br>Amount: ₱${loanRecord.amount || 0} | Status: ${loanRecord.status || 'Active'}`, 
+  // v82: snapshot before deletion so the audit trail records what was erased.
+  const _delLoanSnapshot = {
+    type: loanRecord.type||null, total_amount: loanRecord.total_amount||null,
+    balance: loanRecord.balance||null, monthly_amort: loanRecord.monthly_amort||null,
+    status: loanRecord.status||null, start_date: loanRecord.start_date||null
+  };
+
+  _confirm(`Delete loan record?<br><br>Amount: ₱${loanRecord.total_amount || 0} | Balance: ₱${loanRecord.balance || 0} | Status: ${loanRecord.status || 'Active'}`,
     {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'})
     .then(async ok=>{ 
       if(!ok) return;
@@ -4150,6 +4171,7 @@ async function deleteLoan(eid,idx){
         console.warn('Cloud sync warning:', err);
       }
       
+      _audit('LOAN_DELETED','loans',eid+'#'+idx,{deleted:_delLoanSnapshot||null});
       toast('✅ Loan record deleted');
       showLoans();
     });
@@ -8876,7 +8898,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v81';
+    const _SW_VER = 'dcpayroll-v82';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -9650,6 +9672,11 @@ async function approvePayroll(runId){
       
       // Update payroll status
       approvals[runId].status = 'Approved';
+      _audit('PAYROLL_APPROVED','payroll_approvals',runId,{
+        branch: approvals[runId].branch||null, period: approvals[runId].date||approvals[runId].month||null,
+        employees: Object.keys(approvals[runId].employees||{}).length,
+        total_net: Object.values(approvals[runId].employees||{}).reduce((s,e)=>s+parseFloat(e.net||0),0)
+      });
       approvals[runId].approved_at = new Date().toISOString();
       approvals[runId].approved_by = _currentUser || 'System';
       
@@ -9712,6 +9739,9 @@ async function denyPayroll(runId){
       }
       
       approvals[runId].status = 'Denied';
+      _audit('PAYROLL_DENIED','payroll_approvals',runId,{
+        branch: approvals[runId].branch||null, period: approvals[runId].date||approvals[runId].month||null
+      });
       approvals[runId].denied_at = new Date().toISOString();
       approvals[runId].denied_by = _currentUser || 'System';
       
@@ -10020,6 +10050,7 @@ async function setEmpPin(empId, branchName){
       const {error} = await _sb.rpc('set_employee_pin', {p_employee_id: empId, p_branch_id: branchUUID, p_pin: a});
       if(error) throw error;
       closeModal();
+      _audit('PIN_SET','employee_pins',empId,{employee:name, branch:empBranch});
       toast(`🔐 PIN set for ${name}`);
       // If the PIN manager is on screen, repaint so the status chip updates.
       if(document.querySelector('.section-title')?.textContent?.includes('Clock-In PINs')){
@@ -10169,6 +10200,93 @@ async function pinClockIn(empId, branchId){ if(await _requirePin(empId,'Clock In
 async function pinClockOut(empId, branchId){ if(await _requirePin(empId,'Clock Out'))  { await clockOut(empId, branchId);   refreshBreakUI(); } }
 async function pinStartBreak(empId, branchId){ if(await _requirePin(empId,'Start Break')){ await startBreak(empId, branchId,'Lunch'); } }
 async function pinEndBreak(empId, branchId){ if(await _requirePin(empId,'End Break'))  { await endBreak(empId, branchId); } }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v82: AUDIT TRAIL
+// Every sensitive action records who/what/when to pr_audit_log via the
+// pr_log_audit RPC. The actor is derived server-side from the session, so it
+// cannot be forged, and the table is append-only (no UPDATE/DELETE/TRUNCATE
+// granted to clients). Logging must never block the user's action — a failed
+// log is warned to console, not surfaced as an error.
+// ─────────────────────────────────────────────────────────────────────────────
+async function _audit(action, tableName, recordId, changes){
+  try{
+    if(!_sb) return;
+    const {error} = await _sb.rpc('pr_log_audit', {
+      p_action: String(action||'').slice(0,80),
+      p_table_name: tableName ? String(tableName).slice(0,80) : null,
+      p_record_id: recordId ? String(recordId).slice(0,120) : null,
+      p_changes: changes || null
+    });
+    if(error) console.warn('[AUDIT] not recorded:', action, error.message);
+  }catch(e){ console.warn('[AUDIT] not recorded:', action, e?.message||e); }
+}
+
+// v82: Audit trail viewer. Read-only by construction — the table grants no
+// UPDATE/DELETE to clients, and RLS scopes rows to the caller's branch
+// (owner/dev see everything).
+async function showAuditLog(filterAction=''){
+  if(!isAdmin() && !isOwner()){ toast('⛔ Admins only'); return; }
+  const main = document.getElementById('main');
+  main.innerHTML = `<div class="section-header"><div class="section-title">🧾 Audit Trail</div>
+    <div class="btn-row">
+      <select id="auditFilter" class="btn btn-secondary" style="min-width:190px" onchange="showAuditLog(this.value)">
+        ${['','PAYROLL_APPROVED','PAYROLL_DENIED','PIN_SET','LOAN_WRITTEN_OFF','LOAN_DELETED',
+           'ATTENDANCE_EDITED','ATTENDANCE_DELETED','LEAVE_APPROVED','LEAVE_REJECTED']
+          .map(a=>`<option value="${a}"${a===filterAction?' selected':''}>${a||'All actions'}</option>`).join('')}
+      </select>
+      <button class="btn btn-secondary" onclick="showAuditLog('${filterAction}')">🔄 Refresh</button>
+    </div></div>
+    <div id="auditBody"><div style="text-align:center;color:#999;padding:36px">Loading…</div></div>`;
+
+  if(!_sb){ document.getElementById('auditBody').innerHTML =
+    '<div style="text-align:center;color:#999;padding:36px">Audit trail needs a connection.</div>'; return; }
+
+  try{
+    let q = _sb.from('pr_audit_log')
+      .select('created_at,action,actor_username,actor_role,table_name,record_id,changes')
+      .order('created_at',{ascending:false}).limit(300);
+    if(filterAction) q = q.eq('action', filterAction);
+    const {data, error} = await q;
+    if(error) throw error;
+
+    if(!data || !data.length){
+      document.getElementById('auditBody').innerHTML =
+        `<div style="text-align:center;color:#999;padding:36px">No audit entries${filterAction?' for '+_esc(filterAction):''} yet.</div>`;
+      return;
+    }
+    const colour = a => a.includes('DELETED')||a.includes('WRITTEN_OFF') ? '#dc2626'
+                     : a.includes('APPROVED') ? '#16a34a'
+                     : a.includes('DENIED')||a.includes('REJECTED') ? '#b45309' : '#0f766e';
+    const rows = data.map(r=>{
+      const when = new Date(r.created_at);
+      const ph = new Date(when.getTime() + 8*3600000).toISOString().replace('T',' ').slice(0,16);
+      let detail = '';
+      try{ detail = r.changes ? Object.entries(r.changes)
+        .map(([k,v])=>`${k}: ${typeof v==='object'&&v!==null?JSON.stringify(v):v}`).join(' · ') : ''; }catch(e){}
+      return `<tr>
+        <td style="white-space:nowrap">${ph}</td>
+        <td><b style="color:${colour(r.action)}">${_esc(r.action)}</b></td>
+        <td>${_esc(r.actor_username||'—')}<div style="font-size:10.5px;color:#94a3b8">${_esc(r.actor_role||'')}</div></td>
+        <td>${_esc(r.record_id||'—')}</td>
+        <td style="font-size:11.5px;color:#475569;max-width:420px">${_esc(detail).slice(0,300)}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('auditBody').innerHTML = `
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 14px;font-size:12px;color:#1e40af;margin-bottom:12px">
+        Append-only record of sensitive actions. Entries cannot be edited or deleted by anyone using the app,
+        and the person shown is taken from their login session — it cannot be typed in. Showing the latest ${data.length}.
+      </div>
+      <div class="table-wrap"><div class="table-scroll">
+        <table><thead><tr><th>When (PH)</th><th>Action</th><th>By</th><th>Record</th><th>Details</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div></div>`;
+  }catch(e){
+    document.getElementById('auditBody').innerHTML =
+      `<div style="color:#dc2626;padding:16px">Could not load audit trail: ${_esc(e.message||e)}</div>`;
+  }
+}
 
 // v74: single hook the break actions call so the board repaints immediately.
 // v79: the live widget now lives in the kiosk, so repaint whichever screen is
