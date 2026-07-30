@@ -4021,7 +4021,7 @@ function showLeave(){
       <td>
         <button class="btn btn-success btn-sm admin-only" onclick="setLeave('${eid}',${i},'Approved')">✔</button>
         <button class="btn btn-danger btn-sm admin-only" onclick="setLeave('${eid}',${i},'Rejected')">✖</button>
-        <button class="btn btn-danger btn-sm admin-only" onclick="deleteLeave('${eid}',${i})">🗑</button>
+        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-danger btn-sm" onclick="deleteLeave('${eid}',${i})">🗑</button>`:''}
       </td>
     </tr>`;
   })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No leave records</td></tr>`;
@@ -4101,8 +4101,11 @@ function setLeave(eid,idx,status){
 }
 
 async function deleteLeave(eid,idx){
+  // v80: approved VL/SL counts as paid days in payroll, so deleting a leave
+  // record removes the audit trail for pay already issued. Owner/Superadmin only.
+  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can delete leave records'); return; }
   const leaves=load(KEYS.leaves);
-  
+
   if(!leaves[eid]){
     toast('❌ Employee not found');
     return;
@@ -4159,9 +4162,9 @@ function showLoans(){
       <td>${fmt(ln.balance)}</td><td>${ln.start_date||'—'}</td>
       <td>${badge(ln.status||'Active')}</td>
       <td>
-        <button class="btn btn-success btn-sm admin-only" onclick="markLoanPaid('${eid}',${i})">✔ Paid</button>
+        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-success btn-sm" onclick="markLoanPaid('${eid}',${i})">✔ Paid</button>`:''}
         <button class="btn btn-secondary btn-sm admin-only" onclick="editLoan('${eid}',${i})">✏</button>
-        <button class="btn btn-danger btn-sm admin-only" onclick="deleteLoan('${eid}',${i})">🗑</button>
+        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-danger btn-sm" onclick="deleteLoan('${eid}',${i})">🗑</button>`:''}
       </td>
     </tr>`;
   })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No loan records</td></tr>`;
@@ -4210,14 +4213,20 @@ function editLoan(eid,idx){
 }
 
 function markLoanPaid(eid,idx){
+  // v80: this zeroes the balance and stops the payroll deduction — i.e. it
+  // writes off money the employee still owes. Owner/Superadmin only.
+  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can mark a loan paid'); return; }
   const loans=load(KEYS.loans);
   loans[eid][idx].status='Paid'; loans[eid][idx].balance=0;
   save(KEYS.loans,loans); toast('✅ Marked Paid!'); showLoans();
 }
 
 async function deleteLoan(eid,idx){
+  // v80: deleting a loan erases the debt record entirely. Branch admins may
+  // originate and edit loans, but writing one off is an Owner/Superadmin call.
+  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can delete loans'); return; }
   const loans=load(KEYS.loans);
-  
+
   // Validate employee exists
   if(!loans[eid]){
     toast('❌ Employee not found');
@@ -9115,7 +9124,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v79';
+    const _SW_VER = 'dcpayroll-v80';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
