@@ -3384,128 +3384,7 @@ function calculateWorkHours(clockIn, clockOut){
   };
 }
 
-async function clockIn(){
-  const sel=document.getElementById('clkEmpSel').value;
-  if(!sel){toast('⚠️ Select an employee first');return;}
-  const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,8), td=today();
-  const empName = sel.split(' (')[0];
-  if(!(await _confirm(`Clock IN "${empName}" at ${nowStr}?<br>Date: ${td}`, {ok:'Clock In', cancel:'Cancel', icon:'⏵'}))) return;
-  if(!att[eid]) att[eid]=[];
-  const existing=att[eid].find(r=>r.date===td);
-  if(existing&&existing.time_in&&existing.time_in!=='—'){toast(`⚠️ Already clocked in at ${existing.time_in}`);return;}
-  if(existing){ existing.time_in=nowStr; existing.status='Present'; }
-  else att[eid].push({date:td,status:'Present',time_in:nowStr,time_out:'—',hours:0,ot_hours:0,nd_hours:0,holiday:''});
-  save(KEYS.attendance,att);
-  
-  // SYNC TO SUPABASE with proper format
-  if(_sb){
-    try {
-      const now_iso = new Date().toISOString();
-      const branchUUID = await getBranchUUID(getBranch());
-      const {data, error} = await _sb.from('time_clock').upsert({
-        employee_id: eid,
-        branch_id: branchUUID,
-        date: td,
-        status: 'clocked_in',
-        time_in: `${td} ${nowStr}`, // v68: PH-local naive timestamp — toISOString() stored UTC (-8h), breaking late/OT/ND math
-        time_out: null,
-        updated_at: now_iso
-      }, {onConflict: 'employee_id,branch_id,date'});
-      if(error) {
-        console.warn('⚠️ Supabase sync error:', error.status, error.message);
-        toast(`⚠️ Sync warning: ${error.message}`);
-      } else {
-        console.log('✓ Synced to Supabase:', data);
-      }
-    } catch(e) { 
-      console.error('Supabase exception:', e);
-      toast(`⚠️ Sync failed: ${e.message}`);
-    }
-  }
-  
-  document.getElementById('clkStatus').textContent=`✅ Clocked IN at ${nowStr}`;
-  document.getElementById('clkStatus').style.color='var(--green)';
-  loadAtt();
-  // Auto-refresh dashboard if viewing it
-  setTimeout(()=>{
-    // Dashboard removed
-  }, 500);
-}
 
-async function clockOut(){
-  const sel=document.getElementById('clkEmpSel').value;
-  if(!sel){toast('⚠️ Select an employee first');return;}
-  const eid=_clkEidMap[sel], att=load(KEYS.attendance), now=new Date();
-  const nowStr=now.toTimeString().slice(0,8), td=today();
-  const existing=(att[eid]||[]).find(r=>r.date===td);
-  if(!existing||!existing.time_in||existing.time_in==='—'){toast('⚠️ Not clocked in yet. Please clock in first.');return;}
-  if(existing.time_out&&existing.time_out!=='—'&&existing.time_out.split(':').length===3){toast(`⚠️ Already clocked out at ${existing.time_out}`);return;}
-  const empName = sel.split(' (')[0];
-  if(!(await _confirm(`Clock OUT "${empName}" at ${nowStr}?<br>Clocked in at: ${existing.time_in}`, {ok:'Clock Out', cancel:'Cancel', icon:'⏹'}))) return;
-  existing.time_out=nowStr;
-  
-  // Calculate hours worked using 12-hour format
-  const result = calculateWorkHours(existing.time_in, nowStr);
-  existing.hours = parseFloat(result.decimalHours);
-  
-  // Calculate OT/ND
-  const {ot, nd} = computeOT(existing.time_in, nowStr);
-  existing.ot_hours = Math.round(ot * 100) / 100;
-  existing.nd_hours = Math.round(nd * 100) / 100;
-  // Auto-flag Late if clocked in past shift start + grace period
-  if(existing.time_in){
-    const tinParsed=parseTime(existing.time_in);
-    const shiftStart=parseTime(SHIFT_START_TIME);
-    const cutoff=new Date(shiftStart.getTime() + LATE_GRACE_MINUTES*60000);
-    if(tinParsed>cutoff) existing.status='Late';
-  }
-  save(KEYS.attendance,att);
-  
-  // SYNC TO SUPABASE with proper format
-  if(_sb){
-    try {
-      const now_iso = new Date().toISOString();
-      const branchUUID = await getBranchUUID(getBranch());
-      // Convert time strings to ISO timestamps for this date
-      const timeInISO = `${td} ${existing.time_in}`;  // v68: PH-local naive — was UTC toISOString()
-      const timeOutISO = `${td} ${nowStr}`;            // v68: PH-local naive
-      
-      // v68: a completed pair is always clocked_out (was leaving 'Present'/'clocked_in' stuck)
-      const finalStatus = 'clocked_out';
-      
-      // v69: normal days auto-approve; days with OT stay pending for admin approval
-      const {ot: _otNow} = computeOT(_timeOnly(timeInISO), _timeOnly(timeOutISO));
-      const {data, error} = await _sb.from('time_clock').upsert({
-        employee_id: eid,
-        branch_id: branchUUID,
-        date: td,
-        status: finalStatus,
-        time_in: timeInISO,
-        time_out: timeOutISO,
-        approval_status: _otNow>0 ? 'pending' : 'approved',
-        updated_at: now_iso
-      }, {onConflict: 'employee_id,branch_id,date'});
-      if(error) {
-        console.warn('⚠️ Clock out sync error:', error.status, error.message);
-        toast(`⚠️ Sync warning: ${error.message}`);
-      } else {
-        console.log('✓ Clock out synced to Supabase:', data);
-      }
-    } catch(e) { 
-      console.error('Supabase exception:', e);
-      toast(`⚠️ Sync failed: ${e.message}`);
-    }
-  }
-  
-  document.getElementById('clkStatus').textContent=`🔴 Clocked OUT at ${nowStr} (${existing.hours}h)`;
-  document.getElementById('clkStatus').style.color='var(--red)';
-  loadAtt();
-  // Auto-refresh dashboard if viewing it
-  setTimeout(()=>{
-    // Dashboard removed
-  }, 500);
-}
 
 function showWeeklyAttendance(){
   showAttendanceTracker('week');
@@ -5112,7 +4991,10 @@ async function _autoPayrollRun(){
   // backup disabled
   // Mark as pending approval
   const approvals=load(KEYS.payroll_approvals)||{};
-  approvals[`${branch}_${m}`]={branch,month:m,status:'pending',computed_at:today(),admin:currentUser};
+  // v81 (P0-2): was 'pending' (lowercase). Both approval screens filter for
+  // 'Pending', so auto-generated runs were submitted but never appeared in the
+  // approvals list — invisible and therefore unapprovable. Canonical: 'Pending'.
+  approvals[`${branch}_${m}`]={branch,month:m,status:'Pending',computed_at:today(),admin:currentUser};
   save(KEYS.payroll_approvals,approvals);
   syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
   toast(`✅ Auto-payroll ready. Go to 'All Branches' → Review Approvals`);
@@ -6711,7 +6593,7 @@ function showOwnerDashboard(){
   // Pending payroll approvals
   const approvals = load(KEYS.payroll_approvals) || {};
   Object.entries(approvals).forEach(([runId, run])=>{
-    if(run.status==='Pending'){
+    if(String(run.status||'').toLowerCase()==='pending'){   // v81 (P0-2): case-tolerant
       const empCount = Object.keys(run.employees||{}).length;
       const totalAmt = Object.values(run.employees||{}).reduce((s,e)=>s+parseFloat(e.net||0),0);
       pendingPayruns.push({runId, branch:run.branch, date:run.date, empCount, totalAmt, status:run.status});
@@ -7395,136 +7277,6 @@ async function showBranchPayrollDetail(branch, month){
 }
 
 // ── Payroll Approvals Dashboard (Owner Only) ──────────────────────────────
-function showOwnerApprovals(){
-  if(!isOwner()){toast('⛔ Owner only');return;}
-  const approvals=load(KEYS.payroll_approvals)||{};
-  const pending=Object.entries(approvals).filter(([,a])=>a.status==='pending');
-  
-  const rows=pending.map(([k,a])=>{
-    const bdata=_ownerData[a.branch]||{};
-    const att=bdata.pr_attendance||{};
-    const emps=bdata.pr_employees||{};
-    
-    let present=0, absent=0, late=0, halfday=0, onleave=0;
-    Object.values(att).forEach(recs=>{
-      const rec=recs.find(r=>r.date?.startsWith(a.month));
-      if(rec){
-        if(rec.status==='Present') present++;
-        else if(rec.status==='Absent') absent++;
-        else if(rec.status==='Late') late++;
-        else if(rec.status==='Half-day') halfday++;
-        else if(rec.status==='On Leave') onleave++;
-      }
-    });
-    
-    return `<tr style="border-bottom:2px solid var(--border);padding:12px 0">
-      <td><b>${a.branch}</b></td>
-      <td>${a.month}</td>
-      <td>${Object.values(emps).filter(e=>e.status==='Active').length}</td>
-      <td style="text-align:center"><span style="color:var(--green);font-weight:700">${present}✓</span></td>
-      <td style="text-align:center"><span style="color:var(--red);font-weight:700">${absent}✗</span></td>
-      <td style="text-align:center"><span style="color:var(--orange);font-weight:700">${late}⏰</span></td>
-      <td style="text-align:center"><span style="color:var(--blue);font-weight:700">${halfday}🌓</span></td>
-      <td style="text-align:center"><span style="color:var(--purple);font-weight:700">${onleave}📅</span></td>
-      <td>
-        <button class="btn btn-info btn-sm" onclick="showBranchAttForApproval('${k}','${a.branch}','${a.month}')">📋 View</button>
-        <button class="btn btn-success btn-sm" onclick="approvePayroll('${k}')">✅ Approve</button>
-      </td>
-    </tr>`;
-  }).join('');
-  
-  document.getElementById('main').innerHTML=`
-    <div class="section-header">
-      <div class="section-title">💰 Payroll Approvals — Branch by Branch</div>
-    </div>
-    <div class="table-wrap"><div class="table-scroll">
-      <table><thead><tr>
-        <th>Branch</th><th>Month</th><th>Emp</th>
-        <th style="color:var(--green)">✓ Present</th>
-        <th style="color:var(--red)">✗ Absent</th>
-        <th style="color:var(--orange)">⏰ Late</th>
-        <th style="color:var(--blue)">🌓 Half</th>
-        <th style="color:var(--purple)">📅 Leave</th>
-        <th>Action</th>
-      </tr></thead>
-      <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No pending approvals</td></tr>'}</tbody>
-      </table>
-    </div></div>
-    <div id="attDetailPanel" style="margin-top:20px"></div>`;
-}
-
-function showBranchAttForApproval(key, branch, month){
-  const bdata=_ownerData[branch]||{};
-  const att=bdata.pr_attendance||{};
-  const emps=bdata.pr_employees||{};
-  
-  const rows=Object.entries(emps).filter(([,e])=>e.status==='Active').map(([eid,e])=>{
-    const recs=(att[eid]||[]).filter(r=>r.date?.startsWith(month));
-    const total=recs.length;
-    const present=recs.filter(r=>r.status==='Present').length;
-    const absent=recs.filter(r=>r.status==='Absent').length;
-    const late=recs.filter(r=>r.status==='Late').length;
-    const halfday=recs.filter(r=>r.status==='Half-day').length;
-    
-    return `<tr>
-      <td>${_esc(e.name)}</td>
-      <td style="text-align:center">${total} days</td>
-      <td style="text-align:center;color:var(--green)">${present}✓</td>
-      <td style="text-align:center;color:var(--red)">${absent}✗</td>
-      <td style="text-align:center;color:var(--orange)">${late}⏰</td>
-      <td style="text-align:center;color:var(--blue)">${halfday}🌓</td>
-    </tr>`;
-  }).join('');
-  
-  document.getElementById('attDetailPanel').innerHTML=`
-    <div style="background:var(--bg2);padding:16px;border-radius:10px">
-      <div style="font-weight:700;margin-bottom:10px">📋 ${branch} — ${month} Attendance</div>
-      <div class="table-wrap"><div class="table-scroll">
-        <table><thead><tr>
-          <th>Employee</th><th>Days</th>
-          <th style="color:var(--green)">✓</th>
-          <th style="color:var(--red)">✗</th>
-          <th style="color:var(--orange)">⏰</th>
-          <th style="color:var(--blue)">🌓</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-        </table>
-      </div></div>
-    </div>`;
-}
-
-function approvePayroll(key){
-  if(!(confirm('Approve this payroll run?'))){return;}
-  const approvals=load(KEYS.payroll_approvals)||{};
-  if(approvals[key]){
-    approvals[key].status='approved';
-    approvals[key].approved_at=today();
-    approvals[key].approved_by=currentUser;
-    save(KEYS.payroll_approvals,approvals);
-    syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
-    toast('✅ Payroll approved!');
-    showOwnerApprovals();
-  }
-}
-
-function approveAllPayroll(){
-  if(!(confirm('Approve ALL pending payroll runs?'))){return;}
-  const approvals=load(KEYS.payroll_approvals)||{};
-  let approved=0;
-  Object.entries(approvals).forEach(([k,a])=>{
-    if(a.status==='pending'){
-      a.status='approved';
-      a.approved_at=today();
-      a.approved_by=currentUser;
-      approved++;
-    }
-  });
-  save(KEYS.payroll_approvals,approvals);
-  syncToCloud(KEYS.payroll_approvals,approvals).catch(e=>console.error('[SYNC]',e));
-  toast(`✅ ${approved} payroll(s) approved!`);
-  showOwnerApprovals();
-}
-
 function exportPayrollSummary(){
   if(!window._summaryRows?.length){toast('Generate summary first');return;}
   const month = document.getElementById('sumMonth')?.value||today().slice(0,7);
@@ -9124,7 +8876,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v80';
+    const _SW_VER = 'dcpayroll-v81';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -9376,8 +9128,12 @@ async function comprehensiveSystemAudit(){
     // 3. PAYROLL GENERATION AUDIT
     let pendingPayrolls=0, approvedPayrolls=0;
     Object.values(approvals).forEach(a=>{
-      if(a.status==='pending') pendingPayrolls++;
-      if(a.status==='approved') approvedPayrolls++;
+      // v81 (P0-2): two submit paths write 'pending' and 'Pending', and
+      // approvePayroll writes 'Approved' — these readers were case-sensitive,
+      // so the approved counter could never increment. Compare normalised.
+      const _st = String(a.status||'').toLowerCase();
+      if(_st==='pending')  pendingPayrolls++;
+      if(_st==='approved') approvedPayrolls++;
     });
     
     // 4. GOVERNMENT DEDUCTIONS AUDIT
@@ -9680,7 +9436,7 @@ function renderPayrollApprovals(approvals){
   const pendingRuns = [];
   
   Object.entries(approvals).forEach(([runId, run])=>{
-    if(run.status==='Pending'){
+    if(String(run.status||'').toLowerCase()==='pending'){   // v81 (P0-2): case-tolerant
       pendingRuns.push({runId, branch:run.branch||'N/A', date:run.date||today(), empCount:Object.keys(run.employees||{}).length, totalAmt:Object.values(run.employees||{}).reduce((s,e)=>s+parseFloat(e.net||0),0), run});
     }
   });
@@ -9715,37 +9471,7 @@ function renderPayrollApprovals(approvals){
     </table></div>`}`;
 }
 
-function approvePayroll(runId){
-  _confirm(`Approve payroll run ${runId}?`,{ok:'Approve',cancel:'Cancel',icon:'💰'}).then(async ok=>{
-    if(!ok) return;
-    const approvals = load(KEYS.payroll_approvals) || {};
-    if(approvals[runId]){
-      approvals[runId].status = 'Approved';
-      approvals[runId].approved_at = new Date().toISOString();
-      approvals[runId].approved_by = _currentUser || getBranch();
-      save(KEYS.payroll_approvals, approvals);
-      await syncToCloud(KEYS.payroll_approvals, approvals);
-      addNotification(approvals[runId].branch, "approved", runId, {}); toast(`✅ Payroll ${runId} approved!`);
-      showPayrollApprovals();
-    }
-  });
-}
 
-function denyPayroll(runId){
-  _confirm(`Deny payroll run ${runId}?`,{ok:'Deny',cancel:'Cancel',danger:true}).then(async ok=>{
-    if(!ok) return;
-    const approvals = load(KEYS.payroll_approvals) || {};
-    if(approvals[runId]){
-      approvals[runId].status = 'Denied';
-      approvals[runId].denied_at = new Date().toISOString();
-      approvals[runId].denied_by = _currentUser || getBranch();
-      save(KEYS.payroll_approvals, approvals);
-      await syncToCloud(KEYS.payroll_approvals, approvals);
-      addNotification(approvals[runId].branch, "denied", runId, {}); toast(`⛔ Payroll ${runId} denied`);
-      showPayrollApprovals();
-    }
-  });
-}
 
 // ── NOTIFICATIONS SYSTEM (localStorage-based) ────────────────────────────────
 const NOTIFICATION_STORAGE_KEY = 'dc_payroll_notifications';
