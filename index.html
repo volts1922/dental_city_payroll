@@ -1306,6 +1306,10 @@ function _finishLogin(){
     navigate('All Employees','showAllEmployees');
     initBranch();
   } else {
+    // v86: explicitly hide for every non-owner role (superadmin, branch_admin)
+    // rather than relying on the element's initial state — a previous owner
+    // session in this same tab may have left it visible.
+    ownerShowBranchPicker(false);
     navigate('Attendance','showAttendance');
     initBranch();
   }
@@ -1326,6 +1330,7 @@ async function doLogout(){
   if(_sb){ try{ await _sb.auth.signOut(); }catch(e){ console.warn('Sign-out error:', e.message); } }
   currentRole=null; currentUser=null;
   Object.keys(_cache).forEach(k=>delete _cache[k]);
+  ownerShowBranchPicker(false);   // v86: don't leave an owner's branch picker on screen for the next login
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('userBadge').style.display='none';
   document.getElementById('loginUser').value='';
@@ -1700,7 +1705,19 @@ function ownerEnsureBranchData(){
 
 function ownerShowBranchPicker(show){
   const picker = document.getElementById('ownerBranchPicker');
-  if(!picker || !['dev','owner'].includes(currentRole)) return;
+  if(!picker) return;
+
+  // v86: the role check used to sit ABOVE this, so hide() returned early for
+  // exactly the roles that needed hiding. Combined with never being called
+  // with `false` and doLogout() not resetting it, an owner→logout→superadmin
+  // sequence left the picker on screen, fully populated with every branch.
+  // Hiding is now unconditional; only SHOWING is gated on role.
+  if(!show || !['dev','owner'].includes(currentRole)){
+    picker.style.display = 'none';
+    const s = document.getElementById('ownerBranchSel');
+    if(s) s.innerHTML = '';   // drop stale branch names from the DOM too
+    return;
+  }
   if(show){
     // Populate dropdown with all branches + All Branches option
     const sel = document.getElementById('ownerBranchSel');
@@ -8950,7 +8967,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v85';
+    const _SW_VER = 'dcpayroll-v86';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
