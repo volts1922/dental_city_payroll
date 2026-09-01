@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v53
+// DC PAYROLL SERVICE WORKER v87
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -74,12 +74,39 @@
 // (each employee with their branch, colour-coded, and assigned shift as a
 // badge). The editable assign-shifts list also shows a branch chip per
 // employee. Read-only overview; editing still applies to the selected branch.
-// v64: FIX — holiday pay was never included on generated payslips (both the
-// individual and batch generators built their own gross and ignored the
-// `holiday` flag on attendance records, though the payroll register counted
-// it correctly). Payslips now add the holiday premium (Regular +100%, Special
-// +30% of daily rate per flagged day) to gross and show a Holiday Pay line.
-const CACHE_VERSION = 'dental-city-payroll-v64-nocache';
+// v64: security + BIR release — quote-safe _esc() escaping at 100+ render
+// sites and in formRow (stored-XSS closed); username rename disabled until it
+// syncs to Supabase Auth; attendance edits now send only DB-allowed statuses
+// (silent sync-reject fixed); custom payroll range shows a double-deduction
+// warning; BIR 1604-C Alphalist .DAT export (owner/dev/superadmin only) with
+// RDO code field; attendance edit/delete restricted to owner/dev/superadmin
+// (UI + RLS); owner login lands on All Branches — branch prompt removed.
+// v65: hardcoded dev credential removed from public source — dev now logs
+// in via Supabase Auth like all accounts; offline login uses a per-device
+// cache written after each successful cloud login (pr_offline_login).
+// v66: 9-branch scale fixes — owner-load timeout 5s→15s; attendance archive
+// (owner/superadmin "Archive Old" button moves records >14 months to a
+// pr_attendance_archive cloud row, kept not deleted); archive rows excluded
+// from owner bulk load and per-branch load so payloads stay small.
+// v67: Owner/Dev login no longer shows the "Set Branch Name" modal — empty
+// branch now means All Branches (sidebar shows "All Branches", title kept).
+//
+// [v68-v85 changelog entries missing from this file — undocumented gap,
+// flagged for follow-up. CACHE_VERSION and _SW_VER were already at v86
+// when this file was received; contents of those versions not audited.]
+//
+// v87: FIX — holiday pay was not reaching the Payroll register or either
+// Payslip generator. Root cause: the `holiday` flag set when marking
+// attendance was never sent to Supabase (time_clock had no `holiday`
+// column), so it was lost the moment the app re-fetched cloud data — the
+// source of truth since v71. Added the `holiday` column to time_clock,
+// wired it into all 3 attendance-save call sites that were silently
+// dropping it, and added the missing holiday-pay calculation + line item
+// to both the individual Payslip and the batch Payslip generator (which
+// had no holiday logic at all, and whose full-month branch was also
+// hardcoding {regular:0, special:0} into computeNetPay instead of real
+// counts).
+const CACHE_VERSION = 'dental-city-payroll-v87-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -173,4 +200,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v53');
+console.log('[SW] Service Worker loaded v87');
