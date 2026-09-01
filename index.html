@@ -4438,6 +4438,13 @@ async function showPayslip(empId, month, startDate, endDate){
   const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length;
   const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
   let daysWorked = daysPresent + (daysHalfDay * 0.5);
+
+  // Holiday pay (v78: was missing here — payslip never counted this,
+  // even though the payroll register does via computeNetPay).
+  const regHolDays = attRecords.filter(r => r.holiday === 'Regular Holiday').length;
+  const speHolDays = attRecords.filter(r => r.holiday === 'Special Holiday').length;
+  const _workedDates = new Set(attRecords.map(r => r.date));
+  const unworkedRegHol = getHolidays().filter(h => h.type === 'RH' && h.date >= startDate && h.date <= endDate && !_workedDates.has(h.date)).length;
   
   // Calculate expected business days in range
   const start = new Date(startDate + 'T00:00:00');
@@ -4511,7 +4518,13 @@ async function showPayslip(empId, month, startDate, endDate){
 
   // Period-specific gross (for display) — now includes OT/ND pay
   const basicPay = rate * daysWorked;
-  const gross = basicPay + otPay + ndPay;
+  // v78: holiday premiums (worked reg hol = +100% on top of basic day already
+  // counted, worked spe hol = +30%, unworked regular holiday = paid 100% wage).
+  const regHolPay = rate * (REG_HOL - 1) * regHolDays;
+  const speHolPay = rate * (SPE_HOL - 1) * speHolDays;
+  const unworkedRegHolPay = rate * unworkedRegHol;
+  const holidayPay = Math.round((regHolPay + speHolPay + unworkedRegHolPay) * 100) / 100;
+  const gross = basicPay + otPay + ndPay + holidayPay;
 
   // Determine deductions based on FULL MONTH gross — v61: real government
   // tables (same as payroll register), loans full on monthly / half per cutoff
@@ -4525,7 +4538,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyBIR = Math.round(computeTax(Math.max(fullMonthGross - monthlySSS - monthlyPH - monthlyPI, 0))*100)/100;
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
+      daysWorked, basic: basicPay, otPay, ndPay, holidayPay, regHolDays, speHolDays, unworkedRegHol, gross, lateMinutes, lateDeduction,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4540,7 +4553,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyPI = computePagibig(fullMonthGross);
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
+      daysWorked, basic: basicPay, otPay, ndPay, holidayPay, regHolDays, speHolDays, unworkedRegHol, gross, lateMinutes, lateDeduction,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4554,7 +4567,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyBIR = Math.round(computeTax(Math.max(fullMonthGross - _sssM - _phM - _piM, 0))*100)/100;
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
+      daysWorked, basic: basicPay, otPay, ndPay, holidayPay, regHolDays, speHolDays, unworkedRegHol, gross, lateMinutes, lateDeduction,
       sss: 0, ph: 0, pi: 0,
       tax: monthlyBIR,
       loanDeduction: Math.round((_loanM/2)*100)/100,
@@ -4567,7 +4580,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const monthlyPI = computePagibig(fullMonthGross);
     
     pay = {
-      daysWorked, basic: basicPay, otPay, ndPay, gross, lateMinutes, lateDeduction,
+      daysWorked, basic: basicPay, otPay, ndPay, holidayPay, regHolDays, speHolDays, unworkedRegHol, gross, lateMinutes, lateDeduction,
       sss: monthlySSS,
       ph: monthlyPH,
       pi: monthlyPI,
@@ -4602,6 +4615,7 @@ async function showPayslip(empId, month, startDate, endDate){
         <tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Basic Pay (${pay.daysWorked.toFixed(1)}d × ${fmt(rate)})</td><td style="padding:10px;text-align:right">${fmt(pay.basic)}</td></tr>
         ${pay.otPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Overtime Pay (${otHours.toFixed(2)} hrs × 1.25)</td><td style="padding:10px;text-align:right">${fmt(pay.otPay)}</td></tr>` : ''}
         ${pay.ndPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Night Differential (${ndHours.toFixed(2)} hrs)</td><td style="padding:10px;text-align:right">${fmt(pay.ndPay)}</td></tr>` : ''}
+        ${pay.holidayPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Holiday Pay${pay.regHolDays>0?` (${pay.regHolDays} Reg. Holiday worked)`:''}${pay.speHolDays>0?` (${pay.speHolDays} Spec. Holiday worked)`:''}${pay.unworkedRegHol>0?` (${pay.unworkedRegHol} unworked Reg. Holiday)`:''}</td><td style="padding:10px;text-align:right">${fmt(pay.holidayPay)}</td></tr>` : ''}
         <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">GROSS PAY</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
         ${pay.sss > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">SSS</td><td style="padding:10px;text-align:right">${fmt(pay.sss)}</td></tr>` : ''}
@@ -4747,6 +4761,11 @@ async function generatePayslipBatch(period){
     const daysAbsent = attRecords.filter(r => r.status === 'Absent').length;
     const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
     const daysWorked = daysPresent + (daysHalfDay * 0.5);
+    // v78: holiday pay was missing here too (same bug as showPayslip).
+    const regHolDays = attRecords.filter(r => r.holiday === 'Regular Holiday').length;
+    const speHolDays = attRecords.filter(r => r.holiday === 'Special Holiday').length;
+    const _workedDatesB = new Set(attRecords.map(r => r.date));
+    const unworkedRegHol = getHolidays().filter(h => h.type === 'RH' && h.date >= startDate && h.date < endDate && !_workedDatesB.has(h.date)).length;
     
     const rate = parseFloat(emp.daily_rate || 0);
     const allowances = emp.allowances || {};
@@ -4762,11 +4781,12 @@ async function generatePayslipBatch(period){
     const _halfLoan = Math.round((loanDed/2)*100)/100;
 
     let pay;
+    const _holidayPay = Math.round((rate*(REG_HOL-1)*regHolDays + rate*(SPE_HOL-1)*speHolDays + rate*unworkedRegHol)*100)/100;
     if(period === 'first_half'){
       const basicPay = rate * daysWorked;
-      const gross = basicPay + totalAllowances(allowances);
+      const gross = basicPay + _holidayPay + totalAllowances(allowances);
       pay = {
-        basic: basicPay, gross: gross,
+        basic: basicPay, holidayPay: _holidayPay, gross: gross,
         sss: _sssM, ph: _phM, pi: _piM, tax: 0,
         loanDeduction: _halfLoan, net: 0
       };
@@ -4774,16 +4794,17 @@ async function generatePayslipBatch(period){
       pay.net = pay.gross - pay.totalDeductions;
     } else if(period === 'second_half'){
       const basicPay = rate * daysWorked;
-      const gross = basicPay + totalAllowances(allowances);
+      const gross = basicPay + _holidayPay + totalAllowances(allowances);
       pay = {
-        basic: basicPay, gross: gross,
+        basic: basicPay, holidayPay: _holidayPay, gross: gross,
         sss: 0, ph: 0, pi: 0, tax: _taxM,
         loanDeduction: _halfLoan, net: 0
       };
       pay.totalDeductions = pay.tax + pay.loanDeduction;
       pay.net = pay.gross - pay.totalDeductions;
     } else {
-      pay = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, loanDed, 0, 0, {regular:0, special:0}, allowances);
+      pay = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, loanDed, 0, 0, {regular:regHolDays, special:speHolDays}, allowances, 0, {regHol:0,speHol:0}, unworkedRegHol);
+      pay.holidayPay = Math.round(((pay.regHolPay||0)+(pay.speHolPay||0)+(pay.unworkedRegHolPay||0))*100)/100;
     }
     
     const periodLabel = period === 'first_half' ? '1st Half (1-15)' : period === 'second_half' ? '2nd Half (16-EOMonth)' : 'Full Month';
@@ -4803,6 +4824,7 @@ async function generatePayslipBatch(period){
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:15px">
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Days Worked</td><td style="text-align:right">${daysWorked.toFixed(1)}</td></tr>
+          ${pay.holidayPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Holiday Pay</td><td style="text-align:right">${fmt(pay.holidayPay)}</td></tr>` : ''}
           <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">GROSS PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">SSS</td><td style="text-align:right">${fmt(pay.sss)}</td></tr>
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">PhilHealth</td><td style="text-align:right">${fmt(pay.ph)}</td></tr>
