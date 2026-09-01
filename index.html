@@ -4359,11 +4359,11 @@ async function computePayroll(){
     const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
     const lateMinutes= recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
-    const regHolDays = recs.filter(r=>r.holiday==='Regular Holiday').length;
-    const speHolDays = recs.filter(r=>r.holiday==='Special Holiday').length;
+    const regHolDays = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+    const speHolDays = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
     // v70: OT hours worked on holidays get the higher premium
-    const otRegHol   = recs.filter(r=>r.holiday==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
-    const otSpeHol   = recs.filter(r=>r.holiday==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
+    const otRegHol   = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
+    const otSpeHol   = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     // v70: unworked regular holidays this month (only for employees with attendance)
     const _workedDates = new Set(recs.map(r=>r.date));
     const _hasAttUR = daysPresent+absences+halfDays > 0;
@@ -4515,8 +4515,8 @@ async function showPayslip(empId, month, startDate, endDate){
   // v87: holiday pay — was completely missing from the payslip (bulk Payroll
   // register had this logic, individual payslip never did). Mirrors the same
   // regHolDays/speHolDays approach used in showPayroll's computeNetPay call.
-  const regHolDays = attRecords.filter(r=>r.holiday==='Regular Holiday').length;
-  const speHolDays = attRecords.filter(r=>r.holiday==='Special Holiday').length;
+  const regHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+  const speHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
   const regHolPay = Math.round(rate * (REG_HOL - 1) * regHolDays * 100) / 100;
   const speHolPay = Math.round(rate * (SPE_HOL - 1) * speHolDays * 100) / 100;
   const holidayPay = regHolPay + speHolPay;
@@ -4772,8 +4772,8 @@ async function generatePayslipBatch(period){
     // v87: holiday pay was missing entirely from the batch generator (both
     // cutoff branches, and the full-month branch hardcoded {regular:0,special:0}
     // into computeNetPay instead of the real counts).
-    const regHolDays = attRecords.filter(r=>r.holiday==='Regular Holiday').length;
-    const speHolDays = attRecords.filter(r=>r.holiday==='Special Holiday').length;
+    const regHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+    const speHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
     const holidayPay = Math.round((rate * (REG_HOL - 1) * regHolDays + rate * (SPE_HOL - 1) * speHolDays) * 100) / 100;
 
     // v61: ONE deduction rulebook — the same government tables as the payroll
@@ -5624,8 +5624,8 @@ function generateBIR2316List(){
       const ab=recs.filter(r=>r.status==='Absent').length;
       const ot=recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
       const nd=recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
-      const rh=recs.filter(r=>r.holiday==='Regular Holiday').length;
-      const sh=recs.filter(r=>r.holiday==='Special Holiday').length;
+      const rh=recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+      const sh=recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
       const dw=dp+hd+ab>0?dp+(hd*0.5):null;
       const p=computeNetPay(rate,dw,ab,hd,0,ot,nd,{regular:rh,special:sh},allow);
       aBasic+=p.gross-p.otPay-p.ndPay-p.regHolPay-p.speHolPay-p.totalAllow;
@@ -7261,10 +7261,10 @@ async function _monthPayrollByBranch(month){
       const otH  = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
       const ndH  = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
       const lateMin = recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
-      const regHol  = recs.filter(r=>r.holiday==='Regular Holiday').length;
-      const speHol  = recs.filter(r=>r.holiday==='Special Holiday').length;
-      const otRegHol= recs.filter(r=>r.holiday==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
-      const otSpeHol= recs.filter(r=>r.holiday==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
+      const regHol  = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+      const speHol  = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
+      const otRegHol= recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
+      const otSpeHol= recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
       const _wd     = new Set(recs.map(r=>r.date));
       const _unwRH  = (dp+abs+hd>0) ? getHolidays().filter(h=>h.type==='RH' && h.date.startsWith(month) && !_wd.has(h.date)).length : 0; // v70
       const lDed = (loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
@@ -8992,7 +8992,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v87';
+    const _SW_VER = 'dcpayroll-v88';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
