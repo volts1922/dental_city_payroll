@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v87
+// DC PAYROLL SERVICE WORKER v88
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -106,7 +106,16 @@
 // had no holiday logic at all, and whose full-month branch was also
 // hardcoding {regular:0, special:0} into computeNetPay instead of real
 // counts).
-const CACHE_VERSION = 'dental-city-payroll-v87-nocache';
+// v88: FIX — v87 only fixed holiday pay going forward (required a manual
+// per-record "holiday" flag on attendance, which was never actually being
+// saved historically, so past months still showed nothing). Switched all 6
+// holiday-day-counting call sites (Payroll register, both Payslip
+// generators, Payroll Summary, BIR-adjacent export) to auto-detect holidays
+// via getHolidayType(date) against the existing Holiday Manager calendar,
+// falling back to the manual flag only for dates not in that calendar. This
+// retroactively fixes past months too, since it's computed live from the
+// date rather than depending on when/whether someone flagged the record.
+const CACHE_VERSION = 'dental-city-payroll-v88-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -200,4 +209,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v87');
+console.log('[SW] Service Worker loaded v88');
