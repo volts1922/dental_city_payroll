@@ -799,6 +799,23 @@ setInterval(() => GHOST_TRACKER.check(), 5000);
 console.log('✅ v30.7 ready');
 
 const KEYS = { employees:'pr_employees', attendance:'pr_attendance', leaves:'pr_leaves', loans:'pr_loans', branches:'pr_branches', att_check_log:'pr_att_check_log', payroll_approvals:'pr_payroll_approvals', holidays:'pr_holidays', accounts:'pr_accounts' };
+// v88: per-employee shortfall carried from a cutoff where gross couldn't
+// cover full deductions (see computeNetPay's carriedDeduction/deferredDeductions).
+// NOTE: this is device-local only (localStorage), not synced through the
+// payroll_data cloud blob — payroll_data.data_type has a DB CHECK constraint
+// on a fixed list of allowed values, so adding a new synced type needs a
+// migration on that constraint first. Fine for single-device use; if payroll
+// is run from more than one device/browser, this needs that migration before
+// it can be trusted across devices.
+const _DEFERRED_DED_KEY = 'pr_deferred_ded';
+function _getCarriedDeduction(eid){ try{ return parseFloat((JSON.parse(localStorage.getItem(_DEFERRED_DED_KEY)||'{}'))[eid]||0); }catch(e){ return 0; } }
+function _setCarriedDeduction(eid, amount){
+  try{
+    const m = JSON.parse(localStorage.getItem(_DEFERRED_DED_KEY)||'{}');
+    if(amount>0) m[eid]=Math.round(amount*100)/100; else delete m[eid];
+    localStorage.setItem(_DEFERRED_DED_KEY, JSON.stringify(m));
+  }catch(e){}
+}
 
 // Shift definitions (for clinic 10am-9pm)
 const SHIFTS = {
@@ -1340,6 +1357,10 @@ async function doLogout(){
 function isOwner(){       return currentRole==='owner'||currentRole==='dev'; }
 function isBranchAdmin(){ return currentRole==='branch_admin'; }
 function isSuperAdmin(){  return currentRole==='superadmin'; }
+// v90: delete permissions locked down to Superadmin/Dev ONLY, per explicit
+// request — owner and branch_admin can no longer delete records, even though
+// they still have other admin rights (isOwner()/isAdmin() unchanged).
+function canDelete(){     return currentRole==='superadmin'||currentRole==='dev'; }
 function isAdmin(){       return currentRole==='owner'||currentRole==='superadmin'||currentRole==='branch_admin'||currentRole==='dev'; }
 function canSeeAll(){     return currentRole==='owner'||currentRole==='superadmin'||currentRole==='branch_admin'||currentRole==='dev'; }
 function isDeveloper(){   return currentRole==='dev'; }
@@ -1949,7 +1970,7 @@ function computeTax(t){
   return 183541.80+(t-666667)*0.35;
 }
 
-function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}, lateMinutes=0, otBreakdown={regHol:0,speHol:0}, unworkedRegHol=0){
+function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanDeduction=0, otHours=0, ndHours=0, holidayDays={regular:0,special:0}, allowances={}, lateMinutes=0, otBreakdown={regHol:0,speHol:0}, unworkedRegHol=0, carriedDeduction=0){
   const fullMonthly = dailyRate * WORKING_DAYS;
   const hourlyRate  = dailyRate / 8;
 
@@ -1992,14 +2013,20 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
   const ph  = computePH(fullMonthly);
   const pi  = computePagibig(fullMonthly);
   const tax = computeTax(Math.max(gross - sss - ph - pi - totalAllow, 0)); // allowances not taxable
-  const totalDed = sss + ph + pi + tax + loanDeduction + lateDeduction;
+  // v88: `carriedDeduction` is last cutoff's shortfall (see deferredDeductions
+  // below) — folded into this period's total so it's actually collected, not
+  // just displayed. Previously `deferredDeductions` was computed and shown on
+  // the payslip as "carried to next cutoff" but nothing ever added it back in
+  // — statutory contributions/loan amounts could go permanently uncollected.
+  const totalDed = sss + ph + pi + tax + loanDeduction + lateDeduction + (carriedDeduction||0);
 
   // ── v73: never emit a negative net (N-3) ──────────────────────────────────
   // Statutory shares are computed on the declared monthly salary credit, not on
   // actual gross, so a short/absent month could previously produce a NEGATIVE
   // net — a payslip asking the employee to pay the company. Standard practice:
   // deduct only up to what the period's gross can cover, and CARRY the shortfall
-  // to the next cutoff. `deferredDeductions` is what was not collected.
+  // to the next cutoff. `deferredDeductions` is what was not collected (and
+  // will come back in as `carriedDeduction` on the following run).
   const appliedDed = Math.min(totalDed, gross);
   const deferredDed = totalDed - appliedDed;
 
@@ -2020,6 +2047,7 @@ function computeNetPay(dailyRate, daysWorked=null, absences=0, halfDays=0, loanD
     pi:              Math.round(pi*100)/100,
     tax:             Math.round(tax*100)/100,
     loanDeduction:   Math.round(loanDeduction*100)/100,
+    carriedDeduction: Math.round((carriedDeduction||0)*100)/100,
     lateMinutes:     Math.round(lateMinutes||0),
     lateDeduction:   Math.round(lateDeduction*100)/100,
     totalDeductions: Math.round(totalDed*100)/100,
@@ -2352,7 +2380,7 @@ function _renderEmployees(q=''){
           <button class="btn btn-secondary btn-sm" onclick="editEmp('${id}')">✏</button>
           <button class="btn btn-primary btn-sm" onclick="open201('${id}')">📋 201</button>
           <button class="btn btn-sm admin-only" style="background:#0ea5e9;color:#fff" onclick="setEmpPin('${id}')" title="Set / reset clock-in PIN">🔐 PIN</button>
-          <button class="btn btn-danger btn-sm admin-only" onclick="deleteEmp('${id}')">🗑</button>
+          ${canDelete()?`<button class="btn btn-danger btn-sm admin-only" onclick="deleteEmp('${id}')">🗑</button>`:''}
         </td>
       </tr>`;
     }).join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:#555">No employees found</td></tr>`;
@@ -2634,7 +2662,7 @@ function editEmp(id){
 }
 
 async function deleteEmp(id){
-  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can do this'); return; }  // v83
+  if(!canDelete()){ toast('⛔ Only Superadmin or Dev can delete employees'); return; }  // v90
   const emps = load(KEYS.employees);
   const name = emps[id]?.name || id;
 
@@ -2963,7 +2991,7 @@ async function loadAtt(){
             <td>${badge(r.status||'—')}</td>
             <td>
               <button class="btn btn-success btn-sm admin-only" onclick="markAttRecordIndividual('${eid}','${date}')">✚ Mark</button>
-              ${(isOwner()||isSuperAdmin())?`<button class="btn btn-danger btn-sm" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>`:''}
+              ${canDelete()?`<button class="btn btn-danger btn-sm" onclick="deleteAttRecord('${eid}','${date}')">🗑</button>`:''}
             </td>
           </tr>`);
         });
@@ -3265,7 +3293,7 @@ async function archiveOldAttendance(){
 }
 
 async function deleteAttRecord(eid, date){
-  if(!(isOwner()||isSuperAdmin())){toast('⛔ Only Owner, Dev, or Superadmin can delete time records');return;}
+  if(!canDelete()){toast('⛔ Only Superadmin or Dev can delete time records');return;}
   const name = (load(KEYS.employees)[eid]||{}).name || eid;
   if(!(await _confirm(`Delete attendance for "${_esc(name)}" on ${date}?`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
   
@@ -3972,7 +4000,7 @@ function showLeave(){
       <td>
         <button class="btn btn-success btn-sm admin-only" onclick="setLeave('${eid}',${i},'Approved')">✔</button>
         <button class="btn btn-danger btn-sm admin-only" onclick="setLeave('${eid}',${i},'Rejected')">✖</button>
-        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-danger btn-sm" onclick="deleteLeave('${eid}',${i})">🗑</button>`:''}
+        ${canDelete()?`<button class="btn btn-danger btn-sm" onclick="deleteLeave('${eid}',${i})">🗑</button>`:''}
       </td>
     </tr>`;
   })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No leave records</td></tr>`;
@@ -4061,7 +4089,7 @@ function setLeave(eid,idx,status){
 async function deleteLeave(eid,idx){
   // v80: approved VL/SL counts as paid days in payroll, so deleting a leave
   // record removes the audit trail for pay already issued. Owner/Superadmin only.
-  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can delete leave records'); return; }
+  if(!canDelete()){ toast('⛔ Only Superadmin or Dev can delete leave records'); return; }
   const leaves=load(KEYS.leaves);
 
   if(!leaves[eid]){
@@ -4122,7 +4150,7 @@ function showLoans(){
       <td>
         ${(isOwner()||isSuperAdmin())?`<button class="btn btn-success btn-sm" onclick="markLoanPaid('${eid}',${i})">✔ Paid</button>`:''}
         <button class="btn btn-secondary btn-sm admin-only" onclick="editLoan('${eid}',${i})">✏</button>
-        ${(isOwner()||isSuperAdmin())?`<button class="btn btn-danger btn-sm" onclick="deleteLoan('${eid}',${i})">🗑</button>`:''}
+        ${canDelete()?`<button class="btn btn-danger btn-sm" onclick="deleteLoan('${eid}',${i})">🗑</button>`:''}
       </td>
     </tr>`;
   })).join('')||`<tr><td colspan="9" style="text-align:center;padding:20px;color:#555">No loan records</td></tr>`;
@@ -4186,7 +4214,7 @@ function markLoanPaid(eid,idx){
 async function deleteLoan(eid,idx){
   // v80: deleting a loan erases the debt record entirely. Branch admins may
   // originate and edit loans, but writing one off is an Owner/Superadmin call.
-  if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can delete loans'); return; }
+  if(!canDelete()){ toast('⛔ Only Superadmin or Dev can delete loans'); return; }
   const loans=load(KEYS.loans);
 
   // Validate employee exists
@@ -4377,7 +4405,14 @@ async function computePayroll(){
     const _lvs = load(KEYS.leaves)||{};
     const paidLeave = _paidLeaveDays(_lvs, eid, month, new Set(recs.map(r=>r.date)));
     const daysWorked = (hasAtt ? daysPresent + (halfDays*0.5) : 0) + paidLeave; // v68: no attendance = no pay (was silently paying full month)
-    const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, lateMinutes, {regHol:otRegHol, speHol:otSpeHol}, unworkedRegHol);
+    // v88: pull in whatever shortfall was carried from a prior cutoff so it
+    // actually gets collected this run (was calculated and shown before, but
+    // never re-applied — see computeNetPay).
+    const carriedDed = _getCarriedDeduction(eid);
+    const pay        = computeNetPay(rate, daysWorked, absences, halfDays, loanDed, otHours, ndHours, {regular:regHolDays, special:speHolDays}, allowances, lateMinutes, {regHol:otRegHol, speHol:otSpeHol}, unworkedRegHol, carriedDed);
+    // Update the carry-forward store: cleared if fully collected this run,
+    // or replaced with whatever's still outstanding.
+    _setCarriedDeduction(eid, pay.deferredDeductions);
     const dw         = daysWorked!==null ? daysWorked.toFixed(1) : WORKING_DAYS.toFixed(1);
     const totalAllow = totalAllowances(allowances);
     _payrollData.push({eid, name:e.name, branch:e.branch||'—', ...pay, days_worked:dw,
@@ -4393,7 +4428,7 @@ async function computePayroll(){
       <td>${totalAllow>0?`<span style="color:var(--teal);font-weight:700">${fmt(totalAllow)}</span>`:'—'}</td>
       <td>${fmt(pay.sss)}</td><td>${fmt(pay.ph)}</td>
       <td>${fmt(pay.pi)}</td><td>${fmt(pay.tax)}</td><td>${fmt(pay.loanDeduction)}</td>
-      <td>${fmt(pay.totalDeductions)}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
+      <td>${fmt(pay.totalDeductions)}${pay.carriedDeduction>0?` <span style="font-size:11px;color:#92400e" title="Includes ${fmt(pay.carriedDeduction)} carried from a prior cutoff that gross couldn't fully cover">(incl. ${fmt(pay.carriedDeduction)} carried-in)</span>`:''}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
       <td><button class="btn btn-primary btn-sm" onclick="openPayslipGenerator('${eid}','${month}')">📋 Generate</button></td>
     </tr>`;
   }).join('')||`<tr><td colspan="19" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
@@ -7785,7 +7820,7 @@ function showHolidayManager(){
           <span style="font-weight:600;color:var(--green)">${(h.rate*100).toFixed(0)}%</span>
         </td>
         <td style="padding:8px;text-align:center">
-          <button class="btn btn-danger btn-xs" onclick="deleteHoliday(${idx})" style="padding:4px 8px;font-size:11px">🗑 Delete</button>
+          ${canDelete()?`<button class="btn btn-danger btn-xs" onclick="deleteHoliday(${idx})" style="padding:4px 8px;font-size:11px">🗑 Delete</button>`:''}
         </td>
       </tr>
     `;
@@ -7821,6 +7856,7 @@ function updateHoliday(idx, field, val){
 }
 
 function deleteHoliday(idx){
+  if(!canDelete()){ toast('⛔ Only Superadmin or Dev can delete holidays'); return; }  // v90
   if(!confirm('Delete this holiday?')) return;
   
   const hols = getHolidays();
@@ -8321,7 +8357,7 @@ function renderAccounts(roleColors){
       <td><span style="color:${roleColors[(d.role||'employee').toLowerCase()]||'var(--muted)'};font-weight:700">${ROLE_LABELS[(d.role||'employee').toLowerCase()]||d.role}</span></td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="editAccount('${u}')">✏ Edit</button>
-        ${u!=='owner'&&!d._hidden?`<button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">🗑</button>`:''}
+        ${canDelete()&&u!=='owner'&&!d._hidden?`<button class="btn btn-danger btn-sm" onclick="deleteAccount('${u}')">🗑</button>`:''}
       </td>
     </tr>`).join('');
     const icons={owner:'👑',superadmin:'🛡',branch_admin:'🏬',employee:'👤'};
@@ -8468,6 +8504,7 @@ function editAccount(username){
 }
 
 async function deleteAccount(username){
+  if(!canDelete()){ toast('⛔ Only Superadmin or Dev can delete accounts'); return; }  // v90
   if(username==='owner'||USERS[username]?._hidden){ toast('⚠️ Cannot delete this account!'); return; }
   if(!(await _confirm(`Delete account "${_esc(username)}"?<br><br>This cannot be undone.`, {ok:'Delete', cancel:'Cancel', danger:true, icon:'🗑'}))) return;
   let authDeleteFailed = false;
@@ -8611,7 +8648,7 @@ function showBranchManager(){
         ${u} <span style="color:#555">(${d.role})</span></span>`).join('')||'<span style="color:#555;font-size:12px">No accounts yet</span>'}</td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="renameBranch(${i},'${b}')">✏ Rename</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteBranch(${i},'${b}')">🗑</button>
+        ${canDelete()?`<button class="btn btn-danger btn-sm" onclick="deleteBranch(${i},'${b}')">🗑</button>`:''}
       </td>
     </tr>`;
   }).join('');
@@ -8763,6 +8800,7 @@ function addBranch(){
 }
 
 async function deleteBranch(idx, name){
+  if(!canDelete()){ toast('⛔ Only Superadmin or Dev can delete branches'); return; }  // v90
   const emps = Object.keys((_ownerData[name]||{}).pr_employees||{}).length;
   if(emps>0){ 
     toast(`⚠️ Cannot delete "${_esc(name)}" — it has ${emps} employee(s). Remove them first.`); 
@@ -8805,11 +8843,19 @@ async function deleteBranch(idx, name){
     save(KEYS.accounts, USERS);
     
     // Clean up Supabase
-    if(_sb){ 
-      try{ 
+    // v88 fix: payroll_accounts has no 'data' jsonb column (that shape only
+    // exists on the legacy payroll_data blob table) — this was silently
+    // failing every time (caught, logged as a warning, execution continued),
+    // so the UI said "accounts will lose their branch" but the real
+    // payroll_accounts.branch column in the cloud never actually got
+    // cleared. Next login could then re-hydrate the user with the deleted
+    // branch's now-stale name. Matches the working pattern already used in
+    // _renameBranchInCloudAccounts().
+    if(_sb){
+      try{
         await _sb.from('payroll_accounts')
-          .update({data: {branch: null}})
-          .eq('data->>branch', name);
+          .update({branch: null})
+          .eq('branch', name);
       }catch(e){
         console.warn('Supabase user update warning:', e);
       }
@@ -8999,7 +9045,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v88';
+    const _SW_VER = 'dcpayroll-v89';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -9147,9 +9193,12 @@ async function auditBranchSystem(){
   try {
     if(!ALL_BRANCHES.length) audit.issues.push('❌ ALL_BRANCHES empty');
     if(_sb){
-      const {data, error} = await _sb.from('payroll_data').select('branch_key').distinct();
+      // v88 fix: supabase-js v2's query builder has no .distinct() method —
+      // this threw a TypeError every time, breaking the audit tool entirely.
+      // Dedupe client-side instead.
+      const {data, error} = await _sb.from('payroll_data').select('branch_key');
       if(error) throw error;
-      const cloudBranches = new Set(data.map(r=>r.branch_key).filter(b=>b));
+      const cloudBranches = new Set((data||[]).map(r=>r.branch_key).filter(b=>b));
       const localBranches = new Set(ALL_BRANCHES);
       for(const cb of cloudBranches){
         if(!localBranches.has(cb)){
