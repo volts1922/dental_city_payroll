@@ -130,7 +130,20 @@
 // never had late or undertime deductions at all (a gap that predates v91 —
 // it never had late deduction either) — now matches the other two payroll
 // screens exactly.
-const CACHE_VERSION = 'dental-city-payroll-v93-nocache';
+// v94: A+ hardening pass —
+// (1) added test_payroll.js, a permanent regression test suite that runs
+// the real shipped payroll functions against known-correct answers (run it
+// before deploying any future index.html that touches payroll math);
+// (2) addEmp() was writing an incomplete employees_201 row (name/rate/status
+// stayed blank until the employee's first edit) — now writes full data on
+// creation, matching editEmp();
+// (3) the real `loans` database table had correct security rules but was
+// never actually written to — deleteLoan() referenced a loanRecord.id that
+// no loan ever had. addLoan/editLoan/markLoanPaid now create and keep that
+// row in sync (widened the DB's loan-type rule to allow "Other" to match).
+// Payroll still computes loan deductions from the same place it always has
+// — this only fixes the real table drifting from reality.
+const CACHE_VERSION = 'dental-city-payroll-v94-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -240,4 +253,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v93');
+console.log('[SW] Service Worker loaded v94');
