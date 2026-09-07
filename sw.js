@@ -143,7 +143,10 @@
 // row in sync (widened the DB's loan-type rule to allow "Other" to match).
 // Payroll still computes loan deductions from the same place it always has
 // — this only fixes the real table drifting from reality.
-const CACHE_VERSION = 'dental-city-payroll-v94-nocache';
+// v95: fixed the update banner never appearing — see the note on the
+// 'install' event below (self.skipWaiting() was firing automatically instead
+// of waiting for the user to click "Update Now").
+const CACHE_VERSION = 'dental-city-payroll-v95-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -154,6 +157,13 @@ const urlsToCache = [
 ];
 
 // Install event - cache files
+// v95: removed the unconditional self.skipWaiting() here — it was the actual
+// cause of "the update banner doesn't show". skipWaiting() during install
+// makes a new SW activate immediately and silently, so it never sits in the
+// 'installed'/'waiting' state index.html's banner logic checks for — by the
+// time the banner code could detect it, it was already live. The 'message'
+// handler below already skips waiting on demand (index.html posts it only
+// when the user clicks "Update Now") — that's the correct, intended trigger.
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing...');
   event.waitUntil(
@@ -164,7 +174,6 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  self.skipWaiting();
 });
 
 // Activate event - clean old caches
@@ -253,4 +262,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v94');
+console.log('[SW] Service Worker loaded v95');
