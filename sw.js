@@ -1,4 +1,4 @@
-// DC PAYROLL SERVICE WORKER v88
+// DC PAYROLL SERVICE WORKER v86
 // v45: migrated login to Supabase Auth (real sessions + RLS) instead of a
 // client-trusted role check.
 // v46: removed hardcoded demo owner/branch1-9 credentials from the offline
@@ -90,31 +90,11 @@
 // from owner bulk load and per-branch load so payloads stay small.
 // v67: Owner/Dev login no longer shows the "Set Branch Name" modal — empty
 // branch now means All Branches (sidebar shows "All Branches", title kept).
-//
-// [v68-v85 changelog entries missing from this file — undocumented gap,
-// flagged for follow-up. CACHE_VERSION and _SW_VER were already at v86
-// when this file was received; contents of those versions not audited.]
-//
-// v87: FIX — holiday pay was not reaching the Payroll register or either
-// Payslip generator. Root cause: the `holiday` flag set when marking
-// attendance was never sent to Supabase (time_clock had no `holiday`
-// column), so it was lost the moment the app re-fetched cloud data — the
-// source of truth since v71. Added the `holiday` column to time_clock,
-// wired it into all 3 attendance-save call sites that were silently
-// dropping it, and added the missing holiday-pay calculation + line item
-// to both the individual Payslip and the batch Payslip generator (which
-// had no holiday logic at all, and whose full-month branch was also
-// hardcoding {regular:0, special:0} into computeNetPay instead of real
-// counts).
-// v88: FIX — v87 only fixed holiday pay going forward (required a manual
-// per-record "holiday" flag on attendance, which was never actually being
-// saved historically, so past months still showed nothing). Switched all 6
-// holiday-day-counting call sites (Payroll register, both Payslip
-// generators, Payroll Summary, BIR-adjacent export) to auto-detect holidays
-// via getHolidayType(date) against the existing Holiday Manager calendar,
-// falling back to the manual flag only for dates not in that calendar. This
-// retroactively fixes past months too, since it's computed live from the
-// date rather than depending on when/whether someone flagged the record.
+// v88: fetch handler was intercepting and caching cross-origin GET requests
+// (Supabase REST calls), which could serve one user's cached response to a
+// different user offline on the same shared device — now same-origin only.
+// Also fixed the CACHE_VERSION (v87) vs. the startup log (was stuck at
+// v67) drift — the exact bug v49 already fixed once for index.html's tag.
 const CACHE_VERSION = 'dental-city-payroll-v88-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
@@ -166,6 +146,22 @@ self.addEventListener('fetch', (event) => {
 
   // Skip non-http(s) requests
   if (!event.request.url.startsWith('http')) {
+    return;
+  }
+
+  // v88 fix: this used to intercept and cache EVERY GET, including
+  // cross-origin Supabase REST calls (e.g. time_clock/employees_201/
+  // payroll_data selects), keyed only by URL. On a shared branch
+  // computer, that meant one user's RLS-filtered response could get
+  // cached and then handed back — while offline — to a DIFFERENT user
+  // who later requests the same URL (same query params, different
+  // login). That's a cross-user, cross-branch data leak on exactly the
+  // kind of shared device this app runs on. Fix: only run the
+  // cache/network-first strategy for this app's own same-origin files
+  // (index.html, manifest, etc.); every cross-origin request (Supabase,
+  // CDNs) is left alone and goes straight to the network like normal,
+  // uncached.
+  if (new URL(event.request.url).origin !== self.location.origin) {
     return;
   }
 
