@@ -95,7 +95,23 @@
 // different user offline on the same shared device — now same-origin only.
 // Also fixed the CACHE_VERSION (v87) vs. the startup log (was stuck at
 // v67) drift — the exact bug v49 already fixed once for index.html's tag.
-const CACHE_VERSION = 'dental-city-payroll-v88-nocache';
+// v89: index.html fixes from the full audit —
+// (1) login button was firing doLogin() twice per click (duplicate 'click'
+// listener stacked on an inline onclick that already called it);
+// (2) showOwnerApprovals() (cross-branch pending leaves/loans/OT) had no
+// isOwner() guard, unlike its sibling admin screens;
+// (3) deleteBranch()'s Supabase cleanup referenced a nonexistent 'data'
+// column on payroll_accounts, so a deleted branch's accounts never actually
+// got their branch cleared in the cloud (local state cleared fine, cloud
+// didn't — now matches the working pattern in _renameBranchInCloudAccounts);
+// (4) auditBranchSystem() called .distinct(), which doesn't exist on
+// supabase-js v2's query builder — threw every time; now dedupes client-side;
+// (5) computeNetPay's "carried to next cutoff" deduction shortfall was
+// calculated and displayed but never actually re-applied to the next
+// payroll run — now it's pulled back in and collected (bulk Payroll screen
+// only; device-local storage — see index.html comments for the two open
+// limits on this one).
+const CACHE_VERSION = 'dental-city-payroll-v89-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -205,4 +221,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v88');
+console.log('[SW] Service Worker loaded v89');
