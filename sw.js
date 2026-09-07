@@ -111,7 +111,26 @@
 // payroll run — now it's pulled back in and collected (bulk Payroll screen
 // only; device-local storage — see index.html comments for the two open
 // limits on this one).
-const CACHE_VERSION = 'dental-city-payroll-v89-nocache';
+// v90: DELETE lockdown — only superadmin/dev can delete records app-wide
+// (Owner and branch_admin can no longer delete employees, attendance,
+// leaves, loans, holidays, accounts, or branches), enforced at both the UI
+// and the Supabase RLS level; found and fixed ownerDeleteEmp() having no
+// role guard at all while tracing this.
+// v91: Undertime deduction added — mirrors the late-deduction "cliff past
+// grace period" logic exactly (default shift end 7:00 PM, 15min grace),
+// wired into the bulk Payroll register and the individual Payslip.
+// v92: Rest Day premium pay — a worked "Rest Day" (time in/out recorded)
+// used to pay ₱0 (wasn't even counted as a present day); now it counts as a
+// worked day AND gets the +30% premium the dead OT_RESTDAY constant always
+// intended. Wired into the Payroll register, individual Payslip, and the
+// "Generate All Payslips" batch printer. Also added a new admin-generated,
+// on-screen printable Daily Time Record (DTR) per employee, per-cutoff or
+// monthly.
+// v93: the "Generate All Payslips" batch printer was the one place that
+// never had late or undertime deductions at all (a gap that predates v91 —
+// it never had late deduction either) — now matches the other two payroll
+// screens exactly.
+const CACHE_VERSION = 'dental-city-payroll-v93-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -221,4 +240,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v89');
+console.log('[SW] Service Worker loaded v93');
