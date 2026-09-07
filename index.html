@@ -7476,6 +7476,13 @@ function showOwnerLeave(filterBranch='All', filterStatus='All'){
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function showOwnerApprovals(){
+  // v82 fix: this pulls pending leaves/loans/OT across ALL branches. It was
+  // only reachable via the owner-only nav array — no check inside the
+  // function itself, unlike showAttendanceTracker() and friends — so any
+  // logged-in Staff/branch_admin could call showOwnerApprovals() directly
+  // (e.g. from devtools) and see every branch's data. RLS is the real
+  // backstop, but this brings it in line with the rest of the admin screens.
+  if(!isOwner()){ toast('❌ Owner only'); return; }
   // Gather all pending leaves and new loans across all branches
   const pendingLeaves = [];
   const activeLoans   = [];
@@ -9408,13 +9415,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
   
   const loginBtn = document.querySelector('button[onclick*="doLogin"]');
   if(loginBtn){
-    loginBtn.addEventListener('click', (e)=>{
-      console.log('📱 Mobile fallback: touchend/click event triggered');
-      doLogin();
-    });
+    // v82 fix: this button's inline onclick already calls doLogin() — a
+    // second 'click' listener here made every desktop click run doLogin()
+    // TWICE (two concurrent Supabase auth calls racing each other). Keep
+    // only the touchend fallback for mobile reliability; its preventDefault
+    // stops the synthetic click (and therefore the inline onclick) from
+    // firing afterward, so mobile still gets exactly one call too.
     loginBtn.addEventListener('touchend', (e)=>{
       e.preventDefault();
-      console.log('📱 Mobile: touchend event on button');
       doLogin();
     });
   }
