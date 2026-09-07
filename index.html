@@ -2642,10 +2642,21 @@ function addEmp(){
     save(KEYS.employees,emps);
     
     // Auto-create 201 record with photo in Supabase
+    // v94: was writing only {employee_id, branch_id, photo} — name/daily_rate/
+    // status/emp_type stayed NULL until the employee's first edit. Nothing
+    // payroll-critical reads this table today (real payroll reads the main
+    // employee data below), but leaving it half-populated is a foot-gun for
+    // any future feature that does. Now matches editEmp()'s full sync.
     try{
       const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
       if(branchData){
-        await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branchData.id,photo});
+        await _sbInsertOrUpdate('employees_201',{
+          employee_id:id, branch_id:branchData.id, photo,
+          name:fval('name'), role:fval('role'), daily_rate:fval('daily_rate'),
+          contact:fval('contact'), email:fval('email'),
+          status:fval('status'), date_hired:fval('date_hired'),
+          emp_type:fval('emp_type')||'Regular'
+        });
       }
     }catch(e){
       console.warn('⚠️ 201 auto-create failed (non-blocking):',e.message);
@@ -4212,6 +4223,27 @@ function showLoans(){
   applyRole();
 }
 
+// v94: loans table migration — the real `loans` DB table existed with full
+// RLS but was never actually written to (deleteLoan tried to reference a
+// loanRecord.id that no loan ever had, since add/edit only ever touched the
+// legacy blob). This maps the app's field names/values to the real table's
+// columns and constraints so it finally gets kept in sync. The legacy blob
+// stays the source of truth the app actually computes payroll from — this
+// is additive, not a replacement, so nothing about how loans get deducted
+// changes.
+function _loanTypeToDB(t){
+  if(!t) return 'Other';
+  if(t.startsWith('SSS')) return 'SSS';
+  if(t.startsWith('Pag-IBIG')||t.startsWith('Pag-ibig')) return 'Pag-ibig';
+  if(t.startsWith('Company')) return 'Company';
+  return 'Other';
+}
+function _loanStatusToDB(s){
+  if(s==='Paid') return 'fully_paid';
+  if(s==='Cancelled') return 'cancelled';
+  return 'active';
+}
+
 function loanForm(d={}){
   return `
     <div class="form-group"><label class="form-label">Employee *</label>
@@ -4227,25 +4259,78 @@ function loanForm(d={}){
 
 function addLoan(){
   if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
-  openModal('Add Loan',loanForm(),()=>{
+  openModal('Add Loan',loanForm(),async()=>{
     if(!fval('eid')){toast('⚠️ Select employee');return;}
     const loans=load(KEYS.loans), eid=fval('eid');
     if(!loans[eid]) loans[eid]=[];
-    loans[eid].push({type:fval('ltype'),total_amount:parseFloat(fval('total_amount'))||0,monthly_amort:parseFloat(fval('monthly_amort'))||0,balance:parseFloat(fval('balance'))||0,start_date:fval('start_date'),status:fval('lstatus'),remarks:fval('remarks')});
-    save(KEYS.loans,loans); closeModal(); toast('✅ Loan added!'); showLoans();
+    const newLoan = {type:fval('ltype'),total_amount:parseFloat(fval('total_amount'))||0,monthly_amort:parseFloat(fval('monthly_amort'))||0,balance:parseFloat(fval('balance'))||0,start_date:fval('start_date'),status:fval('lstatus'),remarks:fval('remarks')};
+    loans[eid].push(newLoan);
+    save(KEYS.loans,loans);
+    // v94: also create the matching row in the real `loans` table, and keep
+    // its generated id on the local record so edit/payoff/delete can find
+    // it again. Non-blocking — the app runs off the blob above regardless.
+    try{
+      if(_sb){
+        const emps = load(KEYS.employees);
+        const {data: branchData} = await _sb.from('branches').select('id').eq('name', emps[eid]?.branch).single();
+        if(branchData){
+          const {data: inserted, error} = await _sb.from('loans').insert({
+            employee_id: eid, branch_id: branchData.id,
+            loan_type: _loanTypeToDB(newLoan.type),
+            principal_amount: newLoan.total_amount,
+            monthly_deduction: newLoan.monthly_amort,
+            remaining_balance: newLoan.balance,
+            start_date: newLoan.start_date,
+            status: _loanStatusToDB(newLoan.status)
+          }).select('id').single();
+          if(!error && inserted){ newLoan.id = inserted.id; save(KEYS.loans, loans); }
+        }
+      }
+    }catch(e){ console.warn('⚠️ loans table sync failed (non-blocking):', e.message); }
+    closeModal(); toast('✅ Loan added!'); showLoans();
   });
 }
 
 function editLoan(eid,idx){
   if(!isAdmin()){ toast('⛔ Admins only'); return; }   // v83: real guard, not just a hidden button
   const loans=load(KEYS.loans), ln=loans[eid][idx];
-  openModal('Edit Loan',loanForm({...ln,_eid:eid}),()=>{
-    loans[eid][idx]={...loans[eid][idx],type:fval('ltype'),total_amount:parseFloat(fval('total_amount'))||0,monthly_amort:parseFloat(fval('monthly_amort'))||0,balance:parseFloat(fval('balance'))||0,start_date:fval('start_date'),status:fval('lstatus'),remarks:fval('remarks')};
-    save(KEYS.loans,loans); closeModal(); toast('✅ Updated!'); showLoans();
+  openModal('Edit Loan',loanForm({...ln,_eid:eid}),async()=>{
+    const updated = {...loans[eid][idx],type:fval('ltype'),total_amount:parseFloat(fval('total_amount'))||0,monthly_amort:parseFloat(fval('monthly_amort'))||0,balance:parseFloat(fval('balance'))||0,start_date:fval('start_date'),status:fval('lstatus'),remarks:fval('remarks')};
+    loans[eid][idx]=updated;
+    save(KEYS.loans,loans);
+    // v94: sync the edit to the real table too. If this loan predates the
+    // sync fix (no .id yet), create it now instead of leaving it orphaned.
+    try{
+      if(_sb){
+        if(updated.id){
+          await _sb.from('loans').update({
+            loan_type: _loanTypeToDB(updated.type),
+            principal_amount: updated.total_amount,
+            monthly_deduction: updated.monthly_amort,
+            remaining_balance: updated.balance,
+            start_date: updated.start_date,
+            status: _loanStatusToDB(updated.status)
+          }).eq('id', updated.id);
+        } else {
+          const emps = load(KEYS.employees);
+          const {data: branchData} = await _sb.from('branches').select('id').eq('name', emps[eid]?.branch).single();
+          if(branchData){
+            const {data: inserted, error} = await _sb.from('loans').insert({
+              employee_id: eid, branch_id: branchData.id,
+              loan_type: _loanTypeToDB(updated.type), principal_amount: updated.total_amount,
+              monthly_deduction: updated.monthly_amort, remaining_balance: updated.balance,
+              start_date: updated.start_date, status: _loanStatusToDB(updated.status)
+            }).select('id').single();
+            if(!error && inserted){ loans[eid][idx].id = inserted.id; save(KEYS.loans, loans); }
+          }
+        }
+      }
+    }catch(e){ console.warn('⚠️ loans table sync failed (non-blocking):', e.message); }
+    closeModal(); toast('✅ Updated!'); showLoans();
   });
 }
 
-function markLoanPaid(eid,idx){
+async function markLoanPaid(eid,idx){
   // v80: this zeroes the balance and stops the payroll deduction — i.e. it
   // writes off money the employee still owes. Owner/Superadmin only.
   if(!(isOwner()||isSuperAdmin())){ toast('⛔ Only Owner, Dev, or Superadmin can mark a loan paid'); return; }
@@ -4253,7 +4338,13 @@ function markLoanPaid(eid,idx){
   const _lnBefore = {balance: loans[eid][idx].balance, status: loans[eid][idx].status, type: loans[eid][idx].type};
   loans[eid][idx].status='Paid'; loans[eid][idx].balance=0;
   _audit('LOAN_WRITTEN_OFF','loans',eid+'#'+idx,{before:_lnBefore, after:{balance:0,status:'Paid'}});
-  save(KEYS.loans,loans); toast('✅ Marked Paid!'); showLoans();
+  save(KEYS.loans,loans);
+  // v94: keep the real table's row in sync on payoff too.
+  try{
+    const id = loans[eid][idx].id;
+    if(id && _sb){ await _sb.from('loans').update({status:'fully_paid', remaining_balance:0}).eq('id', id); }
+  }catch(e){ console.warn('⚠️ loans table sync failed (non-blocking):', e.message); }
+  toast('✅ Marked Paid!'); showLoans();
 }
 
 async function deleteLoan(eid,idx){
@@ -9276,7 +9367,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v93';
+    const _SW_VER = 'dcpayroll-v94';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
