@@ -90,63 +90,21 @@
 // from owner bulk load and per-branch load so payloads stay small.
 // v67: Owner/Dev login no longer shows the "Set Branch Name" modal — empty
 // branch now means All Branches (sidebar shows "All Branches", title kept).
-// v88: fetch handler was intercepting and caching cross-origin GET requests
-// (Supabase REST calls), which could serve one user's cached response to a
-// different user offline on the same shared device — now same-origin only.
-// Also fixed the CACHE_VERSION (v87) vs. the startup log (was stuck at
-// v67) drift — the exact bug v49 already fixed once for index.html's tag.
-// v89: index.html fixes from the full audit —
-// (1) login button was firing doLogin() twice per click (duplicate 'click'
-// listener stacked on an inline onclick that already called it);
-// (2) showOwnerApprovals() (cross-branch pending leaves/loans/OT) had no
-// isOwner() guard, unlike its sibling admin screens;
-// (3) deleteBranch()'s Supabase cleanup referenced a nonexistent 'data'
-// column on payroll_accounts, so a deleted branch's accounts never actually
-// got their branch cleared in the cloud (local state cleared fine, cloud
-// didn't — now matches the working pattern in _renameBranchInCloudAccounts);
-// (4) auditBranchSystem() called .distinct(), which doesn't exist on
-// supabase-js v2's query builder — threw every time; now dedupes client-side;
-// (5) computeNetPay's "carried to next cutoff" deduction shortfall was
-// calculated and displayed but never actually re-applied to the next
-// payroll run — now it's pulled back in and collected (bulk Payroll screen
-// only; device-local storage — see index.html comments for the two open
-// limits on this one).
-// v90: DELETE lockdown — only superadmin/dev can delete records app-wide
-// (Owner and branch_admin can no longer delete employees, attendance,
-// leaves, loans, holidays, accounts, or branches), enforced at both the UI
-// and the Supabase RLS level; found and fixed ownerDeleteEmp() having no
-// role guard at all while tracing this.
-// v91: Undertime deduction added — mirrors the late-deduction "cliff past
-// grace period" logic exactly (default shift end 7:00 PM, 15min grace),
-// wired into the bulk Payroll register and the individual Payslip.
-// v92: Rest Day premium pay — a worked "Rest Day" (time in/out recorded)
-// used to pay ₱0 (wasn't even counted as a present day); now it counts as a
-// worked day AND gets the +30% premium the dead OT_RESTDAY constant always
-// intended. Wired into the Payroll register, individual Payslip, and the
-// "Generate All Payslips" batch printer. Also added a new admin-generated,
-// on-screen printable Daily Time Record (DTR) per employee, per-cutoff or
-// monthly.
-// v93: the "Generate All Payslips" batch printer was the one place that
-// never had late or undertime deductions at all (a gap that predates v91 —
-// it never had late deduction either) — now matches the other two payroll
-// screens exactly.
-// v94: A+ hardening pass —
-// (1) added test_payroll.js, a permanent regression test suite that runs
-// the real shipped payroll functions against known-correct answers (run it
-// before deploying any future index.html that touches payroll math);
-// (2) addEmp() was writing an incomplete employees_201 row (name/rate/status
-// stayed blank until the employee's first edit) — now writes full data on
-// creation, matching editEmp();
-// (3) the real `loans` database table had correct security rules but was
-// never actually written to — deleteLoan() referenced a loanRecord.id that
-// no loan ever had. addLoan/editLoan/markLoanPaid now create and keep that
-// row in sync (widened the DB's loan-type rule to allow "Other" to match).
-// Payroll still computes loan deductions from the same place it always has
-// — this only fixes the real table drifting from reality.
-// v95: fixed the update banner never appearing — see the note on the
-// 'install' event below (self.skipWaiting() was firing automatically instead
-// of waiting for the user to click "Update Now").
-const CACHE_VERSION = 'dental-city-payroll-v95-nocache';
+// v88: (1) Payslip generator (showPayslip) now gets the same never-negative
+// deduction clamp computeNetPay already had — a short cutoff + full
+// SSS/PhilHealth/Pag-IBIG/loan deductions could otherwise print a negative
+// NET PAY on the actual document handed to an employee; the "carried to
+// next cutoff" row existed in the HTML already but its data field was never
+// set, so it never rendered. (2) SuperAdmin sidebar (13 items, one flat
+// list) now grouped into Operations / Payroll / Management, same group-tag
+// system Owner/Dev already used (v58).
+// v89: Add Employee ID generation now checks the CLOUD for the next free id
+// (not just the local cache) before writing, and re-verifies right before
+// saving. Previously a stale local cache — or a second admin adding someone
+// moments earlier — could generate a duplicate id; since employees_201
+// upserts on employee_id, that collision didn't even error, it silently
+// overwrote the OTHER employee's branch_id/photo. Now detected and blocked.
+const CACHE_VERSION = 'dental-city-payroll-v89-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -157,13 +115,6 @@ const urlsToCache = [
 ];
 
 // Install event - cache files
-// v95: removed the unconditional self.skipWaiting() here — it was the actual
-// cause of "the update banner doesn't show". skipWaiting() during install
-// makes a new SW activate immediately and silently, so it never sits in the
-// 'installed'/'waiting' state index.html's banner logic checks for — by the
-// time the banner code could detect it, it was already live. The 'message'
-// handler below already skips waiting on demand (index.html posts it only
-// when the user clicks "Update Now") — that's the correct, intended trigger.
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing...');
   event.waitUntil(
@@ -174,6 +125,7 @@ self.addEventListener('install', (event) => {
       });
     })
   );
+  self.skipWaiting();
 });
 
 // Activate event - clean old caches
@@ -203,22 +155,6 @@ self.addEventListener('fetch', (event) => {
 
   // Skip non-http(s) requests
   if (!event.request.url.startsWith('http')) {
-    return;
-  }
-
-  // v88 fix: this used to intercept and cache EVERY GET, including
-  // cross-origin Supabase REST calls (e.g. time_clock/employees_201/
-  // payroll_data selects), keyed only by URL. On a shared branch
-  // computer, that meant one user's RLS-filtered response could get
-  // cached and then handed back — while offline — to a DIFFERENT user
-  // who later requests the same URL (same query params, different
-  // login). That's a cross-user, cross-branch data leak on exactly the
-  // kind of shared device this app runs on. Fix: only run the
-  // cache/network-first strategy for this app's own same-origin files
-  // (index.html, manifest, etc.); every cross-origin request (Supabase,
-  // CDNs) is left alone and goes straight to the network like normal,
-  // uncached.
-  if (new URL(event.request.url).origin !== self.location.origin) {
     return;
   }
 
@@ -262,4 +198,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v95');
+console.log('[SW] Service Worker loaded v89');
