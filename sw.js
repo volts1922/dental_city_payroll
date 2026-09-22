@@ -104,7 +104,12 @@
 // moments earlier — could generate a duplicate id; since employees_201
 // upserts on employee_id, that collision didn't even error, it silently
 // overwrote the OTHER employee's branch_id/photo. Now detected and blocked.
-const CACHE_VERSION = 'dental-city-payroll-v89-nocache';
+// v90: Real Dental City Premier logo added to the sidebar avatar and the
+// two inline favicon/apple-touch-icon links — recolored from the source
+// logo's green card background to the app's own navy (#1E293B) so it sits
+// cleanly on the sidebar instead of showing as a green square. Also swapped
+// out the old oversized placeholder image (dropped index.html by ~550KB).
+const CACHE_VERSION = 'dental-city-payroll-v90-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -198,4 +203,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v89');
+console.log('[SW] Service Worker loaded v90');
