@@ -4952,6 +4952,8 @@ async function generatePayslipBatch(period){
 }
 
 // Deduct loan balances after confirming payroll run
+// v92: Select All for employee checkboxes (was referenced but undefined)
+function toggleAllEmps(el){document.querySelectorAll('.emp-chk').forEach(c=>c.checked=el.checked);}
 async function confirmPayrollRun(){
   if(!_payrollData.length){ toast('⚠️ Compute payroll first'); return; }
 
@@ -9664,7 +9666,7 @@ function renderPayrollApprovals(approvals){
   // total_deductions/total_net) -- there is no per-employee breakdown
   // column at this table's granularity, so we show the payroll period
   // instead of a per-employee count/list.
-  const rows = pendingRuns.map(p=>`<tr onclick="expandPayrollRun('${p.runId}')" style="cursor:pointer;transition:background 0.15s">
+  const rows = pendingRuns.map(p=>`<tr style="transition:background 0.15s">
     <td style="font-weight:600">${_esc(p.branch)}</td>
     <td>${p.date}</td>
     <td style="text-align:center"><span style="background:var(--blue-bg);color:var(--blue);padding:4px 8px;border-radius:6px;font-weight:600;font-size:12px">${_esc(p.period)}</span></td>
