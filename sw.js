@@ -109,11 +109,12 @@
 // logo's green card background to the app's own navy (#1E293B) so it sits
 // cleanly on the sidebar instead of showing as a green square. Also swapped
 // out the old oversized placeholder image (dropped index.html by ~550KB).
+// v92: Select All fix + Payroll Approvals row-click error fix
 // v91: Logo changed from a square badge to a circle with a gold trim ring
 // (same asset now used across the clinic app and this payroll app), and the
 // extra transparent margin around the ring was tightened so no faint white
 // halo shows outside the gold trim on light backgrounds.
-const CACHE_VERSION = 'dental-city-payroll-v91-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v92-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -207,4 +208,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v91');
+console.log('[SW] Service Worker loaded v92');
