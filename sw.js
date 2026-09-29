@@ -128,7 +128,15 @@
 // instead of this branch's "PRE-001") and no cloud check, same collision
 // risk the branch-level Add Employee form got fixed in v89. Now shares that
 // same cloud-checked generator plus the same pre-save recheck.
-const CACHE_VERSION = 'dental-city-payroll-v92-nocache';
+// v93: BUGFIX — the Rest Day dropdowns from v91 were only ever added to
+// ownerEmpForm (Owner's "All Employees" form). The actual Employees screen
+// used by branch admins/superadmins (empForm, via addEmp/editEmp) never got
+// them, and even ownerAddEmp/ownerEditEmp's own save logic wasn't reading
+// the fields in this file's shipped copy. Rest Day was effectively
+// invisible everywhere except code. Now present and wired end-to-end on
+// BOTH forms and all four save paths (addEmp, editEmp, ownerAddEmp,
+// ownerEditEmp).
+const CACHE_VERSION = 'dental-city-payroll-v93-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -222,4 +230,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v92');
+console.log('[SW] Service Worker loaded v93');
