@@ -109,23 +109,33 @@
 // logo's green card background to the app's own navy (#1E293B) so it sits
 // cleanly on the sidebar instead of showing as a green square. Also swapped
 // out the old oversized placeholder image (dropped index.html by ~550KB).
-// v92: Select All fix + Payroll Approvals row-click error fix
-// v91: Logo changed from a square badge to a circle with a gold trim ring
-// (same asset now used across the clinic app and this payroll app), and the
-// extra transparent margin around the ring was tightened so no faint white
-// halo shows outside the gold trim on light backgrounds.
-// v93: Premier logo PNG install icons (replaces emoji SVG icons)
-// v94: Android back button navigates screens instead of closing the app
-const CACHE_VERSION = 'dental-city-payroll-v94-nocache';
+// v91: Rest Day pay implemented (was a dead, unused, mislabeled constant).
+// Each employee can now have up to 2 rest days/week (set per-employee on
+// Add/Edit Employee — varies per employee, not one fixed day for everyone).
+// A scheduled rest day actually worked pays +30% premium (DOLE Art. 93);
+// OT hours worked on that rest day pay 169% instead of 125%. Wired into the
+// bulk Payroll register (new "Rest Day" column + CSV export) and the
+// individual Payslip. If a rest day also falls on a holiday, holiday pay
+// takes precedence — no compounding (known scope limit, not a bug).
+// Ships inert: no existing employee has rest days set, so nothing changes
+// for anyone until an admin actually assigns them.
+// Also fixed (found while wiring this up): the Owner's "All Employees" edit
+// screen (ownerEditEmp) was overwriting an employee's whole record with
+// only 8 basic fields on every save — silently wiping allowances, photo,
+// and bank/payout details. Now merges onto the existing record instead.
+// v92: Owner's "All Employees" ADD screen (ownerAddEmp) used a separate,
+// unpatched ID generator (nextId) — no branch-code prefix (bare "001"
+// instead of this branch's "PRE-001") and no cloud check, same collision
+// risk the branch-level Add Employee form got fixed in v89. Now shares that
+// same cloud-checked generator plus the same pre-save recheck.
+const CACHE_VERSION = 'dental-city-payroll-v92-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
 const urlsToCache = [
   '/dental_city_payroll/',
   '/dental_city_payroll/index.html',
-  '/dental_city_payroll/manifest.json',
-  '/dental_city_payroll/icon-192.png',
-  '/dental_city_payroll/icon-512.png'
+  '/dental_city_payroll/manifest.json'
 ];
 
 // Install event - cache files
@@ -212,4 +222,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v94');
+console.log('[SW] Service Worker loaded v92');
