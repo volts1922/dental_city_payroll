@@ -143,7 +143,33 @@
 // (already pays the +30% premium wired up in v91), so the kiosk buttons keep
 // working exactly the same either way. Purely a visual heads-up for whoever
 // is running the kiosk.
-const CACHE_VERSION = 'dental-city-payroll-v94-nocache';
+// v95: Audit pass — two real bugs found and fixed.
+// (1) Owner's cross-branch "Payroll Summary" and its "Branch Detail"
+// drill-down use a SEPARATE payroll engine (_monthPayrollByBranch) from the
+// branch-level Payroll register / Payslip. It was never updated when Rest
+// Day pay shipped in v91, so it silently under-reported gross/net for any
+// employee who worked a rest day — those two screens would disagree with
+// the correct numbers on the Payroll register and Payslip. Now computes
+// rest-day pay the same way those already do.
+// (2) Owner's "All Employees" ADD screen (ownerAddEmp) never created the
+// matching employees_201 row (the branch-level Add Employee form always
+// has). That row is what BOTH employee-ID generators check for collisions,
+// so an owner-added employee's ID was invisible to that check — reopening
+// the duplicate-ID risk v89/v92 were meant to close, just from the other
+// direction. Now creates it here too, same as the branch-level form.
+// v96: (1) Owner account had NO way to view Attendance at all — the menu
+// item was removed from Owner's sidebar back in v58 and never replaced.
+// Added it back; since Attendance is per-branch, it now asks Owner/Dev to
+// pick a branch first if none is selected yet (reuses the existing branch
+// picker/switch flow), then opens the normal Attendance screen. Dev's old
+// duplicate Attendance entry was removed — it's inherited from Owner's nav
+// now instead of pointing straight at a screen that errored without a
+// branch selected.
+// (2) Attendance calendar — an employee's scheduled rest day, when NOT
+// worked, was falling through to the red "Absent" dot for any past date.
+// Now shown as its own purple "🗓 Name" chip (new legend entry added) — a
+// rest day is not an absence.
+const CACHE_VERSION = 'dental-city-payroll-v96-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -237,4 +263,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v94');
+console.log('[SW] Service Worker loaded v96');
