@@ -1612,6 +1612,7 @@ const NAV_OWNER=[
   {icon:'👥',label:'All Employees',    fn:'showAllEmployees',   group:'Overview'},
   {icon:'✅',label:'Approvals',        fn:'showOwnerApprovals', group:'Overview'},
   {icon:'💰',label:'Payroll Summary',  fn:'showPayrollSummary', group:'Overview'},
+  {icon:'📅',label:'Attendance',       fn:'showOwnerAttendance', group:'Overview'}, // v96: Owner had no way to view Attendance at all (removed from Owner nav in v58)
   // ── Branch Operations (active when a branch is selected via picker) ───────
   {icon:'🎁',label:'13th Month',       fn:'show13thMonth',      group:'Reports'},
   {icon:'🏛',label:'Gov Reports',      fn:'showGovReports',     group:'Reports'},
@@ -1631,7 +1632,9 @@ const NAV_DEVELOPER=[
   // dev is the emergency full-access account.
   {icon:'👤',label:'Employees',        fn:'showEmployees',  group:'Branch Ops'},
   {icon:'⏱',label:'Time Kiosk',       fn:'showKiosk',      group:'Branch Ops'},
-  {icon:'📅',label:'Attendance',       fn:'showAttendance', group:'Branch Ops'},
+  // v96: Attendance now inherited from NAV_OWNER (showOwnerAttendance) —
+  // was a duplicate entry here pointing straight at showAttendance, which
+  // errors with "Branch not found" for Dev until a branch is picked.
   {icon:'🌴',label:'Leave',            fn:'showLeave',      group:'Branch Ops'},
   {icon:'💳',label:'Loans',            fn:'showLoans',      group:'Branch Ops'},
   {icon:'💰',label:'Payroll',          fn:'showPayroll',    group:'Branch Ops'},
@@ -2860,6 +2863,10 @@ async function _attRangeData(startStr, endStr){
         else {
           const r = byKey[eid + '|' + ds];
           if(r) list.push({n: nm, c: computeLateMinutes(r.time_in, eid) > 0 ? '#F59E0B' : '#10B981'});
+          // v96: a scheduled rest day the employee didn't work is not an
+          // absence — was previously falling through to the red "Absent"
+          // dot below for any past date. Now shown as its own purple chip.
+          else if(isRestDayDate(ds, eid)) list.push({n: '🗓 '+nm, c: '#8B5CF6'});
           else if(ds < tdy) list.push({n: nm, c: '#EF4444'});
         }
       });
@@ -2942,8 +2949,29 @@ async function renderAttCalendar(){
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F59E0B;margin-right:4px"></span>Late</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3B82F6;margin-right:4px"></span>On Leave</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EF4444;margin-right:4px"></span>Absent (past days)</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8B5CF6;margin-right:4px"></span>🗓 Rest Day</span>
     </div>`;
   el.innerHTML = `<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px">${html}${legend}</div>`;
+}
+
+// v96: Owner/Dev entry point for Attendance. Attendance is inherently
+// branch-scoped (the live time_clock table is keyed by branch_id), so if
+// no branch context is set yet (Owner/Dev land on "All Branches" by
+// default since v67), ask which branch to view first instead of erroring.
+// Reuses the existing branch-switch machinery (ownerSwitchBranch) which
+// already lands on showAttendance once a branch is loaded.
+function showOwnerAttendance(){
+  if(getBranch()){ showAttendance(); return; }
+  document.getElementById('main').innerHTML = `
+    <div class="section-header"><div class="section-title">📅 Attendance</div></div>
+    <div style="max-width:420px;margin:60px auto;text-align:center">
+      <div style="margin-bottom:14px;color:#555">Attendance is per-branch — pick a branch to view:</div>
+      <select id="ownerAttBranchPick" style="padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;width:100%;margin-bottom:12px">
+        <option value="">Select branch…</option>
+        ${ALL_BRANCHES.map(b=>`<option value="${_esc(b)}">${_esc(b)}</option>`).join('')}
+      </select>
+      <button class="btn btn-primary" style="width:100%" onclick="const b=document.getElementById('ownerAttBranchPick').value; if(b) ownerSwitchBranch(b); else toast('⚠️ Pick a branch first')">View Attendance →</button>
+    </div>`;
 }
 
 function showAttendance(){
@@ -7135,6 +7163,18 @@ function ownerAddEmp(){
                   date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
                   rest_days:_restDays};
     await ownerSaveBranch(branch,'pr_employees',emps);
+    // v95: unlike the branch-level Add Employee form (addEmp), this screen
+    // never created the matching employees_201 row — meaning an owner-added
+    // employee's ID was invisible to the very collision-check that both
+    // ID generators query, reopening the duplicate-ID risk v89/v92 closed
+    // (just from the other direction: a branch admin's new hire could still
+    // collide with an owner-added one). Now creates it here too, non-blocking.
+    try{
+      if(_sb){
+        const {data: branchData} = await _sb.from('branches').select('id').eq('name', branch).single();
+        if(branchData) await _sbInsertOrUpdate('employees_201',{employee_id:id,branch_id:branchData.id,photo:''});
+      }
+    }catch(e){ console.warn('⚠️ 201 auto-create failed (non-blocking):', e.message); }
     closeModal(); toast(`✅ Employee added to ${branch}!`);
     showAllEmployees('', branch);
   });
@@ -7427,11 +7467,24 @@ async function _monthPayrollByBranch(month){
       const otSpeHol= recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
       const _wd     = new Set(recs.map(r=>r.date));
       const _unwRH  = (dp+abs+hd>0) ? getHolidays().filter(h=>h.type==='RH' && h.date.startsWith(month) && !_wd.has(h.date)).length : 0; // v70
+      // v95: Rest Day pay — this engine (Owner's cross-branch Payroll Summary
+      // and Branch Detail drill-down) was never updated when Rest Day pay
+      // shipped in v91, so it under-reported gross/net for anyone who worked a
+      // rest day, out of step with the branch Payroll register and Payslip.
+      // Mirrors the exact same detection those two already use.
+      const restDayRecs = recs.filter(r=>
+        ['Present','clocked_in','clocked_out','Late'].includes(r.status) &&
+        isRestDayDate(r.date, eid) &&
+        (getHolidayType(r.date)||r.holiday)!=='Regular Holiday' &&
+        (getHolidayType(r.date)||r.holiday)!=='Special Holiday'
+      );
+      const restDayDays = restDayRecs.length;
+      const restDayOT   = restDayRecs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
       const lDed = (loans[eid]||[]).filter(l=>l.status==='Active').reduce((s,l)=>s+parseFloat(l.monthly_amort||0),0);
       const hasAtt = dp+abs+hd>0;
       const _plv = _paidLeaveDays(bdata.pr_leaves||{}, eid, month, new Set(recs.map(r=>r.date)));
       const dw   = (hasAtt ? dp+(hd*0.5) : 0) + _plv; // v68: no attendance = no pay · v69: + paid leave
-      const pay  = computeNetPay(rate, dw, abs, hd, lDed, otH, ndH, {regular:regHol,special:speHol}, e.allowances||{}, lateMin, {regHol:otRegHol,speHol:otSpeHol}, _unwRH);
+      const pay  = computeNetPay(rate, dw, abs, hd, lDed, otH, ndH, {regular:regHol,special:speHol}, e.allowances||{}, lateMin, {regHol:otRegHol,speHol:otSpeHol,restDay:restDayOT}, _unwRH, restDayDays);
       res.emps.push({eid, name:e.name, role:e.role, dw, otH:+otH.toFixed(2), gross:pay.gross, net:pay.net});
       res.gross+=pay.gross; res.net+=pay.net;
     });
@@ -9152,7 +9205,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v94';
+    const _SW_VER = 'dcpayroll-v96';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
