@@ -171,7 +171,25 @@
 // rest day is not an absence.
 // v97: re-applied Select All, Approvals row fix, iPhone icon link, Android back button, swipeable tables
 // v98: DTR (Daily Time Record) — printable per-employee time record
-const CACHE_VERSION = 'dental-city-payroll-v98-nocache';
+// v99: audit pass — found index.html's _SW_VER was still stuck at v96 while
+// this file kept bumping through v97/v98 (the exact "v49 bug" recurring —
+// browsers can silently keep running a stale service worker when the
+// registration URL doesn't change). Also fixed two real bugs found while
+// auditing v97/v98: (1) the DTR button was hidden via CSS for non-admins
+// only, no function-level check (same gap already closed elsewhere) — and
+// it fetches an employee's time records with no branch filter, so an
+// unguarded call could pull ANY employee's records. Now guarded like every
+// other admin action. (2) confirmPayrollRun's "already confirmed" duplicate
+// -run safety check was a complete no-op: it selected a "run_id" column
+// that doesn't exist on pr_payroll_approvals, compared branch_id (a uuid)
+// to the branch NAME, and checked status:'Confirmed' when this same
+// function actually writes status:'approved' — any one of those breaks it,
+// and the error was silently swallowed. Since the caller (_autoPayrollRun)
+// fires unattended on the 15th/30th guarded only by a per-device
+// localStorage flag, two devices open in the same branch that day could
+// each silently double-deduct every active loan. Verified the real schema
+// directly and fixed the check to match it exactly.
+const CACHE_VERSION = 'dental-city-payroll-v99-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
@@ -267,4 +285,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service Worker loaded v98');
+console.log('[SW] Service Worker loaded v99');
