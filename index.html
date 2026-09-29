@@ -2442,6 +2442,11 @@ function empForm(d={}){
     ${formRow('Contact No.','contact',d.contact)}
     ${formRow('Email','email',d.email,'email')}
     ${formRow('Status','status',d.status||'Active',null,['Active','Inactive','Resigned'])}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>${formRow('Rest Day 1','rest_day_1',(d.rest_days||[])[0]||'',null,['','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'])}</div>
+      <div>${formRow('Rest Day 2','rest_day_2',(d.rest_days||[])[1]||'',null,['','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'])}</div>
+    </div>
+    <div style="font-size:11px;color:#555;margin-top:-8px;margin-bottom:8px">🗓 As agreed with this employee — leave blank if none. A worked rest day pays +30% premium (per DOLE).</div>
 
     <div style="margin-top:14px;padding:12px 14px;background:var(--sky);border-radius:10px;border:1.5px solid var(--border)">
       <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">💰 Monthly Allowances</div>
@@ -2623,7 +2628,8 @@ function addEmp(){
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
       allowances:getAllowances(), photo,
       payout_method:fval('payout_method')||'GCash', bank_name:fval('bank_name')||'',
-      account_number:fval('account_number')||'', account_name:fval('account_name')||fval('name')};
+      account_number:fval('account_number')||'', account_name:fval('account_name')||fval('name'),
+      rest_days:[fval('rest_day_1'), fval('rest_day_2')].filter(Boolean)};
 
     // Ask the cloud for a free ID, then re-verify right before writing —
     // closes the window between "checked" and "saved" as tightly as a
@@ -2673,7 +2679,8 @@ function editEmp(id){
       status:fval('status'), date_hired:fval('date_hired'), emp_type:fval('emp_type')||'Regular',
       allowances:getAllowances(), photo,
       payout_method:fval('payout_method')||'GCash', bank_name:fval('bank_name')||'',
-      account_number:fval('account_number')||'', account_name:fval('account_name')||fval('name')};
+      account_number:fval('account_number')||'', account_name:fval('account_name')||fval('name'),
+      rest_days:[fval('rest_day_1'), fval('rest_day_2')].filter(Boolean)};
     save(KEYS.employees,emps);
     
     // Sync to Supabase employees_201 table
@@ -9145,7 +9152,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v92';
+    const _SW_VER = 'dcpayroll-v93';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
