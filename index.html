@@ -4816,6 +4816,12 @@ async function showPayslip(empId, month, startDate, endDate){
 // every day of a pay period, with employee / supervisor signature lines.
 // Uses the same numbers as payroll (computeLateMinutes / computeOT).
 function openDTRModal(preEmp){
+  // v99: the DTR button was "admin-only" CSS-hidden only — no function-level
+  // check, same class of gap already fixed elsewhere (editEmp, deleteEmp)
+  // because a hidden button doesn't stop a direct console call. Also fetches
+  // time_clock by employee_id only (no branch filter), so an unguarded call
+  // could pull ANY employee's time records across branches.
+  if(!isAdmin()){ toast('⛔ Admins only'); return; }
   const emps=load(KEYS.employees)||{};
   const list=Object.entries(emps).filter(([,e])=>e && e.status!=='Resigned')
     .sort((a,b)=>String(a[1].name||'').localeCompare(String(b[1].name||'')));
@@ -5180,14 +5186,26 @@ async function confirmPayrollRun(){
 
   // Guard against double-confirming the same month (would deduct loan
   // amortizations twice). Check for an existing confirmed run first.
+  // v99: this check was a complete no-op — three compounding bugs meant it
+  // could never find a match: (1) selected a "run_id" column that doesn't
+  // exist on pr_payroll_approvals (real columns: branch_id uuid,
+  // payroll_period text, status text, ...) — would error and get silently
+  // swallowed by the catch below; (2) compared branch_id (a uuid) to
+  // getBranch() (the branch NAME); (3) checked status:'Confirmed', but this
+  // very function writes status:'approved' further down. Net effect: this
+  // safety net never fired, and since the caller (_autoPayrollRun) runs
+  // unattended on the 15th/30th guarded only by a PER-DEVICE localStorage
+  // flag, two devices open in the same branch that day could each silently
+  // double-deduct every active loan. Now matches the real schema/values.
   const month = document.getElementById('payMonth')?.value || today().slice(0,7);
   if(_sb){
     try{
+      const _branchUUID = await getBranchUUID(getBranch());
       const { data: existing } = await _sb.from('pr_payroll_approvals')
-        .select('run_id')
-        .eq('branch_id', getBranch())
-        .eq('month', month)
-        .eq('status', 'Confirmed')
+        .select('id')
+        .eq('branch_id', _branchUUID)
+        .eq('payroll_period', month)
+        .eq('status', 'approved')
         .limit(1);
       if(existing && existing.length){
         const proceed = await _confirm(`⚠️ Payroll for ${month} was already confirmed earlier.<br><br>Confirming again will deduct loan amortizations a SECOND time for this month. Are you sure you want to proceed?`, {ok:'Yes, run again', cancel:'Cancel', danger:true, icon:'⚠️'});
@@ -9370,7 +9388,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v96';
+    const _SW_VER = 'dcpayroll-v99';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
