@@ -3135,7 +3135,7 @@ async function loadAtt(){
 
 // v100: list forgotten clock-outs (past days) above the live board, with a Fix button
 async function _renderMissingClockOuts(branchUUID){
-  const la = document.getElementById('liveAttendance'); if(!la || !_sb) return;
+  const la = document.getElementById('kioskBody') || document.getElementById('liveAttendance'); if(!la || !_sb) return; // v103: kiosk is where admins look
   let box = document.getElementById('missingOutBox');
   if(!box){ box=document.createElement('div'); box.id='missingOutBox'; la.parentNode.insertBefore(box, la); }
   try{
@@ -9483,7 +9483,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v102';
+    const _SW_VER = 'dcpayroll-v103';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -10663,6 +10663,7 @@ async function showKiosk(){
   try{
     if(_sb){
       const branchUUID = await getBranchUUID(getBranch());
+      if(isAdmin() && branchUUID) _renderMissingClockOuts(branchUUID); // v103: warning box was never shown (its old anchor no longer exists)
       const td = _phToday();
       const {data: rows} = await _sb.from('time_clock').select('employee_id,status,time_in,time_out')
         .eq('branch_id', branchUUID).eq('date', td);
