@@ -878,6 +878,8 @@ function getHolidays(){
 // v100: auto clock-out guard — a PAST-day record still clocked in / on break with no
 // time out is a forgotten clock-out. It is NOT paid until an admin enters the real time.
 function _isMissingOut(r){ return ['clocked_in','on_break'].includes(r?.status) && !r.time_out && !!r.date && r.date < today(); }
+// v102: night diff on a >16h shift (likely AM/PM typo) is paid only once the record is approved
+function _ndPay(r, c){ return (c && c.long && r?.approval_status!=='approved') ? 0 : (c?.nd||0); }
 function _isWorkedRec(r){ return (['Present','Late','clocked_in'].includes(r?.status) && !_isMissingOut(r)) || (r?.status==='clocked_out' && !!r.time_in); }
 function isHoliday(date){
   const hols = getHolidays();
@@ -1501,7 +1503,7 @@ function computeOT(timeIn, timeOut, regularHours=8){
   });
   nd = Math.max(nd, 0);
 
-  return { ot: Math.round(ot*100)/100, nd: Math.round(nd*100)/100 };
+  return { ot: Math.round(ot*100)/100, nd: Math.round(nd*100)/100, long: totalHours > 16 }; // v102: >16h = likely AM/PM typo
 }
 
 // ── PAYROLL CALCULATIONS (Daily Rate based) ───────────────────────────────────
@@ -3137,16 +3139,26 @@ async function _renderMissingClockOuts(branchUUID){
   let box = document.getElementById('missingOutBox');
   if(!box){ box=document.createElement('div'); box.id='missingOutBox'; la.parentNode.insertBefore(box, la); }
   try{
-    const {data} = await _sb.from('time_clock').select('employee_id,date,time_in,status')
+    let {data} = await _sb.from('time_clock').select('employee_id,date,time_in,status')
       .eq('branch_id', branchUUID).lt('date', today()).in('status',['clocked_in','on_break']).is('time_out', null)
       .order('date',{ascending:false}).limit(50);
-    if(!data || !data.length){ box.innerHTML=''; return; }
+    // v102: also flag suspiciously long shifts (>16h, usually AM/PM typo), last 45 days
+    const _since = new Date(Date.now()-45*864e5+8*36e5).toISOString().slice(0,10);
+    const {data: done} = await _sb.from('time_clock').select('employee_id,date,time_in,time_out,status,approval_status')
+      .eq('branch_id', branchUUID).gte('date', _since).not('time_out','is',null).limit(1000);
+    const longs = (done||[]).filter(r=>r.approval_status!=='approved' && computeOT(_timeOnly(r.time_in),_timeOnly(r.time_out)).long);
     const emps = load(KEYS.employees);
+    if((!data || !data.length) && !longs.length){ box.innerHTML=''; return; }
+    data = data || [];
     box.innerHTML = `<div style="background:#fff8e1;border:1.5px solid #fcd34d;border-radius:10px;padding:12px;margin-bottom:12px">
-      <div style="font-weight:700;color:#92400e;margin-bottom:6px">⚠️ ${data.length} missing clock-out(s) — not paid until fixed</div>
+      ${data.length?`<div style="font-weight:700;color:#92400e;margin-bottom:6px">⚠️ ${data.length} missing clock-out(s) — not paid until fixed</div>`:''}
       ${data.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid #fde68a;font-size:13px">
         <span><b>${_esc(emps[r.employee_id]?.name||r.employee_id)}</b> · ${r.date} · in ${to12h(r.time_in)}</span>
         <button class="btn btn-sm btn-secondary" onclick="clockOutPastDate('${_esc(r.employee_id)}','${r.date}')">Fix</button></div>`).join('')}
+      ${longs.length?`<div style="font-weight:700;color:#92400e;margin:10px 0 6px">⏰ ${longs.length} shift(s) over 16 hrs — check time out (AM/PM?). Night diff/OT not paid until fixed or approved</div>
+      ${longs.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid #fde68a;font-size:13px">
+        <span><b>${_esc(emps[r.employee_id]?.name||r.employee_id)}</b> · ${r.date} · ${to12h(r.time_in)} → ${to12h(r.time_out)}</span>
+        <button class="btn btn-sm btn-secondary" onclick="clockOutPastDate('${_esc(r.employee_id)}','${r.date}')">Fix</button></div>`).join('')}`:''}
     </div>`;
   }catch(e){ console.warn('[missing clock-out]', e); }
 }
@@ -4489,7 +4501,7 @@ async function computePayroll(){
           const tInHM = _timeOnly(r.time_in);
           const tOutHM = _timeOnly(r.time_out);
           const workResult = calculateWorkHours(tInHM, tOutHM);
-          const {ot: computedOT, nd: computedND} = computeOT(tInHM, tOutHM);
+          const _c = computeOT(tInHM, tOutHM); const computedOT=_c.ot, computedND=_ndPay(r,_c); // v102
 
           att[r.employee_id].push({
             date: r.date,
@@ -4689,7 +4701,7 @@ async function showPayslip(empId, month, startDate, endDate){
     const tOut = _timeOnly(r.time_out);
     lateMinutes += computeLateMinutes(r.time_in, empId);
     if(!tIn || !tOut) return;
-    const {ot, nd} = computeOT(tIn, tOut);
+    const _c = computeOT(tIn, tOut), ot=_c.ot, nd=_ndPay(r,_c); // v102
     otHours += (r.approval_status===undefined||r.approval_status==='approved') ? ot : 0; ndHours += nd; // v100: unapproved OT not paid (same as register)
   });
   const hourlyRate = rate / 8;
@@ -5184,7 +5196,7 @@ async function generatePayslipBatch(period){
     attRecords.forEach(r=>{
       _late += computeLateMinutes(r.time_in, empId);
       const tIn=_timeOnly(r.time_in), tOut=_timeOnly(r.time_out); if(!tIn||!tOut) return;
-      const {ot,nd}=computeOT(tIn,tOut); _nd+=nd;
+      const _c=computeOT(tIn,tOut), ot=_c.ot; _nd+=_ndPay(r,_c); // v102
       if(!(r.approval_status===undefined||r.approval_status==='approved')) return;
       _ot+=ot;
       const ht=getHolidayType(r.date)||r.holiday;
@@ -7702,7 +7714,7 @@ async function _monthPayrollByBranch(month){
         else if(status==='clocked_in') status=_isMissingOut(r)?'Missing clock-out':'Present'; // v100
         else if(status==='clocked_out') status='Absent';
         const tIn=_timeOnly(r.time_in), tOut=_timeOnly(r.time_out);
-        const {ot,nd} = computeOT(tIn, tOut);
+        const _c = computeOT(tIn, tOut), ot=_c.ot, nd=_ndPay(r,_c); // v102
         if(!cloud[bn]) cloud[bn]={};
         if(!cloud[bn][r.employee_id]) cloud[bn][r.employee_id]=[];
         cloud[bn][r.employee_id].push({date:r.date, status, time_in:r.time_in, time_out:r.time_out,
@@ -9471,7 +9483,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v101';
+    const _SW_VER = 'dcpayroll-v102';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 

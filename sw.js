@@ -189,7 +189,7 @@
 // localStorage flag, two devices open in the same branch that day could
 // each silently double-deduct every active loan. Verified the real schema
 // directly and fixed the check to match it exactly.
-const CACHE_VERSION = 'dental-city-payroll-v101-nocache';
+const CACHE_VERSION = 'dental-city-payroll-v102-nocache';
 const CACHE_NAME = CACHE_VERSION;
 
 // Files to cache
