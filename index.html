@@ -380,13 +380,19 @@ function _recordActivity(){
   SEC.lastActivity = Date.now();
   localStorage.setItem('_lastActivity', SEC.lastActivity);
 }
+// v100: track real activity (throttled) — before, activity was only recorded at login
+let _actT=0;
+['click','keydown','touchstart','scroll'].forEach(ev=>document.addEventListener(ev,()=>{
+  const n=Date.now(); if(n-_actT>15000){ _actT=n; _recordActivity(); }
+},{passive:true,capture:true}));
 
 // Auto-logout check every 30 seconds
 setInterval(()=>{
   const last = parseInt(localStorage.getItem('_lastActivity')||0);
   if(!last) return;
   const now = Date.now();
-  if((now - last) > SEC.inactivityMs && document.body.classList.contains('logged-in')){
+  // v100: never auto-logout the shared Time Kiosk screen (employees clock in there)
+  if((now - last) > SEC.inactivityMs && document.body.classList.contains('logged-in') && currentPage!=='Time Kiosk'){
     _handleInactivityLogout();
   }
 }, 30000);
@@ -394,7 +400,9 @@ setInterval(()=>{
 async function _handleInactivityLogout(){
   console.log('⏱️  Inactivity timeout - auto logout');
   await _auditLog('AUTO_LOGOUT', _currentUser, 'Session expired due to 30min inactivity');
-  await _removeSession();
+  // v100: _removeSession() never existed — this threw, so the session was never ended
+  document.body.classList.remove('logged-in');
+  try{ if(_sb) await _sb.auth.signOut(); }catch(e){}
   toast('⏱️  Your session expired (30 min inactivity)');
   setTimeout(()=> location.reload(), 2000);
 }
@@ -830,25 +838,47 @@ const save = (k,v)=>{
 };
 
 // ── PH HOLIDAYS (2026 Default) ────────────────────────────────────────────────
+// v100: corrected to Proclamation No. 1006 (2026). Old list had wrong dates/types
+// (Good Friday Apr 10, Araw ng Kagitingan as special, All Saints as regular, EDSA Feb 10)
+// and was missing Maundy Thu, Labor Day, Heroes Day and 6 special days.
 const DEFAULT_HOLIDAYS = [
-  {date:'2026-01-01', name:'New Year', type:'RH', rate:1.0},
-  {date:'2026-02-10', name:'EDSA Revolution', type:'SNH', rate:1.3},
-  {date:'2026-04-09', name:'Araw ng Kagitingan', type:'SNH', rate:1.3},
-  {date:'2026-04-10', name:'Good Friday', type:'RH', rate:1.0},
-  {date:'2026-04-11', name:'Black Saturday', type:'SNH', rate:1.3},
+  {date:'2026-01-01', name:"New Year's Day", type:'RH', rate:1.0},
+  {date:'2026-02-17', name:'Chinese New Year', type:'SNH', rate:1.3},
+  {date:'2026-04-02', name:'Maundy Thursday', type:'RH', rate:1.0},
+  {date:'2026-04-03', name:'Good Friday', type:'RH', rate:1.0},
+  {date:'2026-04-04', name:'Black Saturday', type:'SNH', rate:1.3},
+  {date:'2026-04-09', name:'Araw ng Kagitingan', type:'RH', rate:1.0},
+  {date:'2026-05-01', name:'Labor Day', type:'RH', rate:1.0},
   {date:'2026-06-12', name:'Independence Day', type:'RH', rate:1.0},
   {date:'2026-08-21', name:'Ninoy Aquino Day', type:'SNH', rate:1.3},
-  {date:'2026-11-01', name:'All Saints Day', type:'RH', rate:1.0},
+  {date:'2026-08-31', name:'National Heroes Day', type:'RH', rate:1.0},
+  {date:'2026-11-01', name:"All Saints' Day", type:'SNH', rate:1.3},
+  {date:'2026-11-02', name:"All Souls' Day", type:'SNH', rate:1.3},
   {date:'2026-11-30', name:'Bonifacio Day', type:'RH', rate:1.0},
+  {date:'2026-12-08', name:'Immaculate Conception', type:'SNH', rate:1.3},
+  {date:'2026-12-24', name:'Christmas Eve', type:'SNH', rate:1.3},
   {date:'2026-12-25', name:'Christmas Day', type:'RH', rate:1.0},
-  {date:'2026-12-30', name:'Rizal Day', type:'RH', rate:1.0}
+  {date:'2026-12-30', name:'Rizal Day', type:'RH', rate:1.0},
+  {date:'2026-12-31', name:'Last Day of the Year', type:'SNH', rate:1.3}
 ];
+// v100: dates of the old wrong default list — a saved list still carrying these
+// is upgraded automatically; any holidays the user added themselves are kept.
+const _OLD_DEFAULT_HOL_DATES = ['2026-01-01','2026-02-10','2026-04-09','2026-04-10','2026-04-11','2026-06-12','2026-08-21','2026-11-01','2026-11-30','2026-12-25','2026-12-30'];
 function getHolidays(){
   const hols = load(KEYS.holidays) || DEFAULT_HOLIDAYS;
   if(!Array.isArray(hols)) return DEFAULT_HOLIDAYS;
   if(hols.length===0) return DEFAULT_HOLIDAYS;
+  if(hols.some(h=>h.date==='2026-02-10' && /EDSA/i.test(h.name||''))){
+    const def=new Set(DEFAULT_HOLIDAYS.map(h=>h.date)), old=new Set(_OLD_DEFAULT_HOL_DATES);
+    return [...DEFAULT_HOLIDAYS, ...hols.filter(h=>!old.has(h.date)&&!def.has(h.date))].sort((x,y)=>x.date<y.date?-1:1);
+  }
   return hols;
 }
+// v100: a record counts as "worked" for holiday premiums only if the employee actually worked
+// v100: auto clock-out guard — a PAST-day record still clocked in / on break with no
+// time out is a forgotten clock-out. It is NOT paid until an admin enters the real time.
+function _isMissingOut(r){ return ['clocked_in','on_break'].includes(r?.status) && !r.time_out && !!r.date && r.date < today(); }
+function _isWorkedRec(r){ return (['Present','Late','clocked_in'].includes(r?.status) && !_isMissingOut(r)) || (r?.status==='clocked_out' && !!r.time_in); }
 function isHoliday(date){
   const hols = getHolidays();
   return hols.find(h=>h.date===date);
@@ -1291,6 +1321,7 @@ async function doLogin(){
 function isOwnerRole(r){ return r==='owner'||r==='dev'; }
 
 function _finishLogin(){
+  document.body.classList.add('logged-in'); _recordActivity(); // v100: enables inactivity auto-logout
   document.getElementById('loginScreen').style.display='none';
   const rb = document.getElementById('roleBadge');
   rb.textContent = currentRole==='dev'?'dev':currentRole; // Show actual role
@@ -1333,6 +1364,7 @@ function _finishLogin(){
 async function doLogout(){
   if(!(await _confirm('Logout?', {ok:'Logout', cancel:'Stay', danger:true, icon:'⏻'}))) return;
   if(_sb){ try{ await _sb.auth.signOut(); }catch(e){ console.warn('Sign-out error:', e.message); } }
+  document.body.classList.remove('logged-in');
   currentRole=null; currentUser=null;
   Object.keys(_cache).forEach(k=>delete _cache[k]);
   ownerShowBranchPicker(false);   // v86: don't leave an owner's branch picker on screen for the next login
@@ -3099,6 +3131,26 @@ async function loadAtt(){
   refreshLiveAttendance();
 }
 
+// v100: list forgotten clock-outs (past days) above the live board, with a Fix button
+async function _renderMissingClockOuts(branchUUID){
+  const la = document.getElementById('liveAttendance'); if(!la || !_sb) return;
+  let box = document.getElementById('missingOutBox');
+  if(!box){ box=document.createElement('div'); box.id='missingOutBox'; la.parentNode.insertBefore(box, la); }
+  try{
+    const {data} = await _sb.from('time_clock').select('employee_id,date,time_in,status')
+      .eq('branch_id', branchUUID).lt('date', today()).in('status',['clocked_in','on_break']).is('time_out', null)
+      .order('date',{ascending:false}).limit(50);
+    if(!data || !data.length){ box.innerHTML=''; return; }
+    const emps = load(KEYS.employees);
+    box.innerHTML = `<div style="background:#fff8e1;border:1.5px solid #fcd34d;border-radius:10px;padding:12px;margin-bottom:12px">
+      <div style="font-weight:700;color:#92400e;margin-bottom:6px">⚠️ ${data.length} missing clock-out(s) — not paid until fixed</div>
+      ${data.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid #fde68a;font-size:13px">
+        <span><b>${_esc(emps[r.employee_id]?.name||r.employee_id)}</b> · ${r.date} · in ${to12h(r.time_in)}</span>
+        <button class="btn btn-sm btn-secondary" onclick="clockOutPastDate('${_esc(r.employee_id)}','${r.date}')">Fix</button></div>`).join('')}
+    </div>`;
+  }catch(e){ console.warn('[missing clock-out]', e); }
+}
+
 async function refreshLiveAttendance(){
   if(!_sb || !document.getElementById('liveAttendance')) return;
   
@@ -3114,6 +3166,7 @@ async function refreshLiveAttendance(){
       if(la) la.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Branch not found</div>';
       return;
     }
+    _renderMissingClockOuts(branchData.id); // v100
     
     // Get all clocked-in employees for today (Philippines timezone)
     // v74: include 'on_break' — previously anyone on break vanished from the
@@ -4425,7 +4478,7 @@ async function computePayroll(){
           if((status === 'clocked_in' || status === 'clocked_out') && r.time_in && r.time_out) {
             status = 'Present';  // Has both times = worked
           } else if(status === 'clocked_in') {
-            status = 'Present';
+            status = _isMissingOut(r) ? 'Missing clock-out' : 'Present'; // v100
           } else if(status === 'clocked_out') {
             status = 'Absent';  // clocked_out alone = didn't work
           }
@@ -4478,13 +4531,13 @@ async function computePayroll(){
     const otHours    = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     const ndHours    = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
     const lateMinutes= recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
-    const regHolDays = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
-    const speHolDays = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
+    const regHolDays = recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+    const speHolDays = recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
     // v70: OT hours worked on holidays get the higher premium
-    const otRegHol   = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
-    const otSpeHol   = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
+    const otRegHol   = recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
+    const otSpeHol   = recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
     // v70: unworked regular holidays this month (only for employees with attendance)
-    const _workedDates = new Set(recs.map(r=>r.date));
+    const _workedDates = new Set(recs.filter(_isWorkedRec).map(r=>r.date)); // v100: absent rec on a RH still gets unworked-RH pay
     const _hasAttUR = daysPresent+absences+halfDays > 0;
     const unworkedRegHol = _hasAttUR ? getHolidays().filter(h=>h.type==='RH' && h.date.startsWith(month) && !_workedDates.has(h.date)).length : 0;
 
@@ -4570,7 +4623,7 @@ async function showPayslip(empId, month, startDate, endDate){
   console.log(`Payslip ${empId}: ${startDate} to ${endDate} = ${attRecords.length} records`);
   
   // Count actual days worked in range
-  const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length;
+  const daysPresent = attRecords.filter(r => (r.status === 'clocked_in' && !_isMissingOut(r)) || r.status === 'Present' || r.status === 'Late' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length; // v100: 'Late' counted (register already did)
   const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
   let daysWorked = daysPresent + (daysHalfDay * 0.5);
   
@@ -4637,7 +4690,7 @@ async function showPayslip(empId, month, startDate, endDate){
     lateMinutes += computeLateMinutes(r.time_in, empId);
     if(!tIn || !tOut) return;
     const {ot, nd} = computeOT(tIn, tOut);
-    otHours += ot; ndHours += nd;
+    otHours += (r.approval_status===undefined||r.approval_status==='approved') ? ot : 0; ndHours += nd; // v100: unapproved OT not paid (same as register)
   });
   const hourlyRate = rate / 8;
   const otPay = Math.round(hourlyRate * OT_MULTIPLIER * otHours * 100) / 100;
@@ -4647,17 +4700,26 @@ async function showPayslip(empId, month, startDate, endDate){
   // v87: holiday pay — was completely missing from the payslip (bulk Payroll
   // register had this logic, individual payslip never did). Mirrors the same
   // regHolDays/speHolDays approach used in showPayroll's computeNetPay call.
-  const regHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
-  const speHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
+  const regHolDays = attRecords.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+  const speHolDays = attRecords.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
   const regHolPay = Math.round(rate * (REG_HOL - 1) * regHolDays * 100) / 100;
   const speHolPay = Math.round(rate * (SPE_HOL - 1) * speHolDays * 100) / 100;
-  const holidayPay = regHolPay + speHolPay;
+  // v101: OT worked on a holiday is paid at the holiday OT rate (otPay already paid it at 1.25x; add the difference)
+  let _otRHp=0,_otSHp=0;
+  attRecords.forEach(r=>{
+    if(!_isWorkedRec(r) || !(r.approval_status===undefined||r.approval_status==='approved')) return;
+    const tIn=_timeOnly(r.time_in), tOut=_timeOnly(r.time_out); if(!tIn||!tOut) return;
+    const ht=getHolidayType(r.date)||r.holiday, {ot}=computeOT(tIn,tOut);
+    if(ht==='Regular Holiday') _otRHp+=ot; else if(ht==='Special Holiday') _otSHp+=ot;
+  });
+  const holidayOTPay = Math.round(hourlyRate*((REG_HOL_OT-OT_MULTIPLIER)*_otRHp + (SPE_HOL_OT-OT_MULTIPLIER)*_otSHp)*100)/100;
+  const holidayPay = regHolPay + speHolPay + holidayOTPay;
 
   // v91: Rest Day pay — scheduled rest day actually worked (and not also a
   // holiday, which already took the date above) pays the extra 30% premium;
   // OT worked on that rest day gets the higher 169% rate instead of 125%.
   const restDayRecs = attRecords.filter(r=>{
-    const worked = r.status==='clocked_in'||r.status==='Present'||(r.status==='clocked_out'&&r.time_in&&r.time_out);
+    const worked = (r.status==='clocked_in'&&!_isMissingOut(r))||r.status==='Present'||(r.status==='clocked_out'&&r.time_in&&r.time_out);
     if(!worked || !isRestDayDate(r.date, empId)) return false;
     const ht = getHolidayType(r.date)||r.holiday;
     return ht!=='Regular Holiday' && ht!=='Special Holiday';
@@ -4666,7 +4728,7 @@ async function showPayslip(empId, month, startDate, endDate){
   let restDayOTHours = 0;
   restDayRecs.forEach(r=>{
     const tIn=_timeOnly(r.time_in), tOut=_timeOnly(r.time_out);
-    if(tIn&&tOut){ const {ot}=computeOT(tIn,tOut); restDayOTHours += ot; }
+    if(tIn&&tOut&&(r.approval_status===undefined||r.approval_status==='approved')){ const {ot}=computeOT(tIn,tOut); restDayOTHours += ot; }
   });
   // otPay above already counted these OT hours at the normal 1.25×; swap that
   // portion for the correct 1.69× rest-day-OT premium instead of double-paying it.
@@ -4674,7 +4736,12 @@ async function showPayslip(empId, month, startDate, endDate){
 
   // Period-specific gross (for display) — now includes OT/ND/Holiday/Rest Day pay
   const basicPay = rate * daysWorked;
-  const gross = basicPay + otPay + ndPay + holidayPay + restDayPay;
+  // v100: unworked regular holidays (100%) and monthly allowances were in the register but missing here
+  const _wdP = new Set(attRecords.filter(_isWorkedRec).map(r=>r.date));
+  const unworkedRegHolDays = getHolidays().filter(h=>h.type==='RH' && h.date>=startDate && h.date<=endDate && !_wdP.has(h.date)).length;
+  const unworkedRegHolPay = Math.round(rate*unworkedRegHolDays*100)/100;
+  const allowPay = Math.round(totalAllowances(emp.allowances||{}) * (deductionType==='full_month'?1:0.5) * 100)/100; // monthly allowance, split per cutoff
+  const gross = basicPay + otPay + ndPay + holidayPay + restDayPay + unworkedRegHolPay + allowPay;
 
   // Determine deductions based on FULL MONTH gross — v61: real government
   // tables (same as payroll register), loans full on monthly / half per cutoff
@@ -4744,6 +4811,7 @@ async function showPayslip(empId, month, startDate, endDate){
     };
   }
   
+  Object.assign(pay, {restDayPay, restDayDays, unworkedRegHolPay, unworkedRegHolDays, allowPay}); // v100: full_month branch lacked rest-day fields
   pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.tax + pay.loanDeduction + (pay.lateDeduction||0);
   // v88: same negative-net guard as computeNetPay (bulk Payroll register) —
   // never deduct more than the period's gross can cover. The payslip HTML
@@ -4779,12 +4847,15 @@ async function showPayslip(empId, month, startDate, endDate){
         ${pay.ndPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Night Differential (${ndHours.toFixed(2)} hrs)</td><td style="padding:10px;text-align:right">${fmt(pay.ndPay)}</td></tr>` : ''}
         ${pay.holidayPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Holiday Pay${pay.regHolDays>0?` (${pay.regHolDays} Regular)`:''}${pay.speHolDays>0?` (${pay.speHolDays} Special)`:''}</td><td style="padding:10px;text-align:right">${fmt(pay.holidayPay)}</td></tr>` : ''}
         ${pay.restDayPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Rest Day Pay${pay.restDayDays>0?` (${pay.restDayDays} day(s) worked)`:''}</td><td style="padding:10px;text-align:right">${fmt(pay.restDayPay)}</td></tr>` : ''}
+        ${pay.unworkedRegHolPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Regular Holiday Pay (unworked, ${pay.unworkedRegHolDays} day(s) × 100%)</td><td style="padding:10px;text-align:right">${fmt(pay.unworkedRegHolPay)}</td></tr>` : ''}
+        ${pay.allowPay > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Allowances${deductionType==='full_month'?'':' (½ of monthly)'}</td><td style="padding:10px;text-align:right">${fmt(pay.allowPay)}</td></tr>` : ''}
         <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">GROSS PAY</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
         ${pay.sss > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">SSS</td><td style="padding:10px;text-align:right">${fmt(pay.sss)}</td></tr>` : ''}
         ${pay.ph > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">PhilHealth</td><td style="padding:10px;text-align:right">${fmt(pay.ph)}</td></tr>` : ''}
         ${pay.pi > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Pag-IBIG</td><td style="padding:10px;text-align:right">${fmt(pay.pi)}</td></tr>` : ''}
         ${pay.tax > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Income Tax</td><td style="padding:10px;text-align:right">${fmt(pay.tax)}</td></tr>` : ''}
+        ${pay.loanDeduction > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Loan</td><td style="padding:10px;text-align:right">${fmt(pay.loanDeduction)}</td></tr>` : ''}
         ${pay.lateDeduction > 0 ? `<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:10px">Late Deduction (${pay.lateMinutes} mins past ${SHIFT_START_TIME} + ${LATE_GRACE_MINUTES}min grace)</td><td style="padding:10px;text-align:right">${fmt(pay.lateDeduction)}</td></tr>` : ''}
         <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:10px;font-weight:700">TOTAL DEDUCTIONS</td><td style="padding:10px;text-align:right;font-weight:700">${fmt(pay.totalDeductions)}</td></tr>
         ${pay.deferredDeductions > 0 ? `<tr style="border-bottom:1px solid #e5e5e5;background:#fff8e1"><td style="padding:10px;color:#92400e">Less: carried to next cutoff <span style="font-size:11px">(gross could not cover full deductions)</span></td><td style="padding:10px;text-align:right;color:#92400e">(${fmt(pay.deferredDeductions)})</td></tr>
@@ -5082,7 +5153,7 @@ async function generatePayslipBatch(period){
       console.log(`Batch: skipping ${empId} — no records ${startDate}..${endDate}`);
       continue;
     }
-    const daysPresent = attRecords.filter(r => r.status === 'clocked_in' || r.status === 'Present' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length;
+    const daysPresent = attRecords.filter(r => (r.status === 'clocked_in' && !_isMissingOut(r)) || r.status === 'Present' || r.status === 'Late' || (r.status === 'clocked_out' && r.time_in && r.time_out)).length; // v100: 'Late' counted (register already did)
     const daysLate = attRecords.filter(r => r.status === 'Late').length;
     const daysAbsent = attRecords.filter(r => r.status === 'Absent').length;
     const daysHalfDay = attRecords.filter(r => r.status === 'Half-day').length;
@@ -5095,8 +5166,8 @@ async function generatePayslipBatch(period){
     // v87: holiday pay was missing entirely from the batch generator (both
     // cutoff branches, and the full-month branch hardcoded {regular:0,special:0}
     // into computeNetPay instead of the real counts).
-    const regHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
-    const speHolDays = attRecords.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
+    const regHolDays = attRecords.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+    const speHolDays = attRecords.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
     const holidayPay = Math.round((rate * (REG_HOL - 1) * regHolDays + rate * (SPE_HOL - 1) * speHolDays) * 100) / 100;
 
     // v61: ONE deduction rulebook — the same government tables as the payroll
@@ -5107,30 +5178,36 @@ async function generatePayslipBatch(period){
     const _sssM = computeSSS(_m), _phM = computePH(_m), _piM = computePagibig(_m);
     const _taxM = Math.round(computeTax(Math.max(_m - _sssM - _phM - _piM, 0))*100)/100;
     const _halfLoan = Math.round((loanDed/2)*100)/100;
+    // v101: batch payslips now use the same pay rules as the single payslip —
+    // approved OT (holiday/rest-day rates), night diff, late, rest day, unworked RH.
+    let _ot=0,_nd=0,_late=0,_otRH=0,_otSH=0,_otRD=0;
+    attRecords.forEach(r=>{
+      _late += computeLateMinutes(r.time_in, empId);
+      const tIn=_timeOnly(r.time_in), tOut=_timeOnly(r.time_out); if(!tIn||!tOut) return;
+      const {ot,nd}=computeOT(tIn,tOut); _nd+=nd;
+      if(!(r.approval_status===undefined||r.approval_status==='approved')) return;
+      _ot+=ot;
+      const ht=getHolidayType(r.date)||r.holiday;
+      if(ht==='Regular Holiday') _otRH+=ot; else if(ht==='Special Holiday') _otSH+=ot;
+      else if(_isWorkedRec(r)&&isRestDayDate(r.date,empId)) _otRD+=ot;
+    });
+    const _rdDays = attRecords.filter(r=>_isWorkedRec(r)&&isRestDayDate(r.date,empId)&&!['Regular Holiday','Special Holiday'].includes(getHolidayType(r.date)||r.holiday)).length;
+    const _wdB = new Set(attRecords.filter(_isWorkedRec).map(r=>r.date));
+    const _unwRH = getHolidays().filter(h=>h.type==='RH'&&h.date>=startDate&&h.date<endDate&&!_wdB.has(h.date)).length; // endDate is exclusive here
+    const _half = period==='first_half'||period==='second_half';
+    const _allowArg = _half ? {other: totalAllowances(allowances)/2} : allowances;
+    const _x = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, _half?0:loanDed, _ot, _nd, {regular:regHolDays, special:speHolDays}, _allowArg, _late, {regHol:_otRH,speHol:_otSH,restDay:_otRD}, _unwRH, _rdDays);
 
     let pay;
-    if(period === 'first_half'){
-      const basicPay = rate * daysWorked;
-      const gross = basicPay + totalAllowances(allowances) + holidayPay;
-      pay = {
-        basic: basicPay, gross: gross, holidayPay, regHolDays, speHolDays,
-        sss: _sssM, ph: _phM, pi: _piM, tax: 0,
-        loanDeduction: _halfLoan, net: 0
-      };
-      pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.loanDeduction;
-      pay.net = pay.gross - pay.totalDeductions;
-    } else if(period === 'second_half'){
-      const basicPay = rate * daysWorked;
-      const gross = basicPay + totalAllowances(allowances) + holidayPay;
-      pay = {
-        basic: basicPay, gross: gross, holidayPay, regHolDays, speHolDays,
-        sss: 0, ph: 0, pi: 0, tax: _taxM,
-        loanDeduction: _halfLoan, net: 0
-      };
-      pay.totalDeductions = pay.tax + pay.loanDeduction;
-      pay.net = pay.gross - pay.totalDeductions;
+    if(_half){
+      pay = { ..._x, basic: rate*daysWorked, holidayPay: _x.regHolPay+_x.speHolPay, regHolDays, speHolDays, restDayDays:_rdDays, unworkedRegHolDays:_unwRH,
+        sss: period==='first_half'?_sssM:0, ph: period==='first_half'?_phM:0, pi: period==='first_half'?_piM:0,
+        tax: period==='second_half'?_taxM:0, loanDeduction: _halfLoan };
+      pay.totalDeductions = Math.round((pay.sss+pay.ph+pay.pi+pay.tax+pay.loanDeduction+(_x.lateDeduction||0))*100)/100;
+      pay.deferredDeductions = Math.max(Math.round((pay.totalDeductions-pay.gross)*100)/100, 0);
+      pay.net = Math.max(Math.round((pay.gross-pay.totalDeductions)*100)/100, 0);
     } else {
-      pay = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, loanDed, 0, 0, {regular:regHolDays, special:speHolDays}, allowances);
+      pay = { ..._x, basic: rate*daysWorked, holidayPay: _x.regHolPay+_x.speHolPay, regHolDays, speHolDays, restDayDays:_rdDays, unworkedRegHolDays:_unwRH };
     }
     
     const periodLabel = period === 'first_half' ? '1st Half (1-15)' : period === 'second_half' ? '2nd Half (16-EOMonth)' : 'Full Month';
@@ -5152,12 +5229,18 @@ async function generatePayslipBatch(period){
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Days Worked</td><td style="text-align:right">${daysWorked.toFixed(1)}</td></tr>
           ${pay.holidayPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Holiday Pay${pay.regHolDays>0?` (${pay.regHolDays} Regular)`:''}${pay.speHolDays>0?` (${pay.speHolDays} Special)`:''}</td><td style="text-align:right">${fmt(pay.holidayPay)}</td></tr>` : ''}
           ${pay.restDayPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Rest Day Pay${pay.restDayDays>0?` (${pay.restDayDays} day(s) worked)`:''}</td><td style="text-align:right">${fmt(pay.restDayPay)}</td></tr>` : ''}
+          ${pay.otPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Overtime Pay</td><td style="text-align:right">${fmt(pay.otPay)}</td></tr>` : ''}
+          ${pay.ndPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Night Differential</td><td style="text-align:right">${fmt(pay.ndPay)}</td></tr>` : ''}
+          ${pay.unworkedRegHolPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Regular Holiday Pay (unworked, ${pay.unworkedRegHolDays})</td><td style="text-align:right">${fmt(pay.unworkedRegHolPay)}</td></tr>` : ''}
+          ${pay.totalAllow > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Allowances</td><td style="text-align:right">${fmt(pay.totalAllow)}</td></tr>` : ''}
           <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">GROSS PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.gross)}</td></tr>
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">SSS</td><td style="text-align:right">${fmt(pay.sss)}</td></tr>
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">PhilHealth</td><td style="text-align:right">${fmt(pay.ph)}</td></tr>
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Pag-IBIG</td><td style="text-align:right">${fmt(pay.pi)}</td></tr>
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Income Tax</td><td style="text-align:right">${fmt(pay.tax)}</td></tr>
+          ${pay.lateDeduction > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Late Deduction (${pay.lateMinutes} mins)</td><td style="text-align:right">${fmt(pay.lateDeduction)}</td></tr>` : ''}
           ${pay.loanDeduction > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Loan</td><td style="text-align:right">${fmt(pay.loanDeduction)}</td></tr>` : ''}
+          ${pay.deferredDeductions > 0 ? `<tr style="border-bottom:1px solid #ddd;background:#fff8e1"><td style="padding:8px;color:#92400e">Carried to next cutoff</td><td style="text-align:right">${fmt(pay.deferredDeductions)}</td></tr>` : ''}
           <tr style="border-bottom:2px solid #333;background:#f9f9f9"><td style="padding:8px;font-weight:700">NET PAY</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(pay.net)}</td></tr>
         </table>
       </div>
@@ -5743,7 +5826,7 @@ async function compute13th(){
       (data||[]).forEach(r=>{
         let st = r.status;
         if((st==='clocked_in'||st==='clocked_out') && r.time_in && r.time_out) st='Present';
-        else if(st==='clocked_in') st='Present';
+        else if(st==='clocked_in') st=_isMissingOut(r)?'Missing clock-out':'Present'; // v100
         else if(st==='clocked_out') st='Absent';
         if(!att[r.employee_id]) att[r.employee_id]=[];
         att[r.employee_id].push({date:r.date, status:st});
@@ -5962,8 +6045,8 @@ function generateBIR2316List(){
       const ab=recs.filter(r=>r.status==='Absent').length;
       const ot=recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
       const nd=recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
-      const rh=recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
-      const sh=recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
+      const rh=recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+      const sh=recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
       const dw=dp+hd+ab>0?dp+(hd*0.5):null;
       const p=computeNetPay(rate,dw,ab,hd,0,ot,nd,{regular:rh,special:sh},allow);
       aBasic+=p.gross-p.otPay-p.ndPay-p.regHolPay-p.speHolPay-p.totalAllow;
@@ -7616,7 +7699,7 @@ async function _monthPayrollByBranch(month){
         const bn = bName[r.branch_id]; if(!bn) return;
         let status = r.status;
         if((status==='clocked_in'||status==='clocked_out') && r.time_in && r.time_out) status='Present';
-        else if(status==='clocked_in') status='Present';
+        else if(status==='clocked_in') status=_isMissingOut(r)?'Missing clock-out':'Present'; // v100
         else if(status==='clocked_out') status='Absent';
         const tIn=_timeOnly(r.time_in), tOut=_timeOnly(r.time_out);
         const {ot,nd} = computeOT(tIn, tOut);
@@ -7644,11 +7727,11 @@ async function _monthPayrollByBranch(month){
       const otH  = recs.reduce((s,r)=>s+parseFloat(r.ot_hours||0),0);
       const ndH  = recs.reduce((s,r)=>s+parseFloat(r.nd_hours||0),0);
       const lateMin = recs.reduce((s,r)=>s+computeLateMinutes(r.time_in, eid),0);
-      const regHol  = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
-      const speHol  = recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
-      const otRegHol= recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
-      const otSpeHol= recs.filter(r=>(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
-      const _wd     = new Set(recs.map(r=>r.date));
+      const regHol  = recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').length;
+      const speHol  = recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').length;
+      const otRegHol= recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Regular Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
+      const otSpeHol= recs.filter(r=>_isWorkedRec(r)&&(getHolidayType(r.date)||r.holiday)==='Special Holiday').reduce((s,r)=>s+parseFloat(r.ot_hours||0),0); // v70
+      const _wd     = new Set(recs.filter(_isWorkedRec).map(r=>r.date)); // v100
       const _unwRH  = (dp+abs+hd>0) ? getHolidays().filter(h=>h.type==='RH' && h.date.startsWith(month) && !_wd.has(h.date)).length : 0; // v70
       // v95: Rest Day pay — this engine (Owner's cross-branch Payroll Summary
       // and Branch Detail drill-down) was never updated when Rest Day pay
@@ -9388,7 +9471,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v99';
+    const _SW_VER = 'dcpayroll-v101';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
