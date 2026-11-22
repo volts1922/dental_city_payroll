@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="DC Payroll">
 <meta name="application-name" content="DC Payroll">
@@ -199,6 +200,14 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 .spin{width:38px;height:38px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 </style>
+<style>/* v104: phone topbar — Sync/name/clock/role/logout were pushed off-screen (Logout stays in the sidebar) */
+@media(max-width:600px){#syncBtn,#userLabel,#clock,#roleBadge,#userBadge button[onclick="doLogout()"]{display:none!important}
+#userBadge{margin-right:0!important}#userBadge button{padding:6px 8px!important}#topbarTitle{font-size:15px!important;line-height:1.1}}
+/* v105: payroll cards on phones, table on desktop; week calendar fits 7 days */
+.pay-cards{display:none}
+@media(max-width:600px){.pay-cards{display:grid;gap:10px;margin-bottom:12px}.pay-table{display:none!important}
+.att-week{gap:3px!important}.att-week>div{min-width:0;padding-left:2px!important;padding-right:2px!important}
+.att-week>div *{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-sizing:border-box}.att-week>div span,.att-week>div div{font-size:10px}}</style>
 </head>
 <body>
 
@@ -249,20 +258,22 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   <div class="nav" id="nav"></div>
   <div class="sidebar-footer">
     <div id="syncBar" class="offline">☁ Not connected</div>
+    <div id="sbBackupTools" style="display:none"><!-- v106: moved into Backup Manager so nobody taps Import by accident -->
     <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:6px">Branch Backup</div>
     <button onclick="exportBackup()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">💾 Export Backup</button>
     <label style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;display:block;text-align:center;box-sizing:border-box;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">
       📂 Import Backup
-      <input type="file" accept=".csv" onchange="importBackup(event)" style="display:none">
+      <input id="sbImportBackup" type="file" accept=".csv" onchange="importBackup(event)" style="display:none">
     </label>
     <button id="devCloudRestoreBtn" onclick="showCloudBackups()" style="display:none;width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">☁️ Restore from Cloud</button>
-    <button onclick="sendToMain()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">📤 Send to Main Branch</button>
+    <button id="sendToMainBtn" onclick="sendToMain()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">📤 Send to Main Branch</button>
     <div style="border-top:1px solid rgba(255,255,255,0.1);margin:6px 0;padding-top:6px;font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:4px">Employee Transfer</div>
     <button onclick="exportEmployeesForBranch()" style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:4px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">👥 Export Employees</button>
     <label style="width:100%;padding:8px 12px;background:#E5E5E7;color:#1D1D1F;border:none;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;display:block;text-align:center;box-sizing:border-box;margin-bottom:8px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.background='#D1D1D6'" onmouseout="this.style.background='#E5E5E7'">
       📥 Import Employees
-      <input type="file" accept=".json,.csv" onchange="importEmployeesFromMain(event)" style="display:none">
+      <input id="sbImportEmps" type="file" accept=".json,.csv" onchange="importEmployeesFromMain(event)" style="display:none">
     </label>
+    </div>
     <div style="border-top:1px solid rgba(255,255,255,0.1);margin:8px 0 6px"></div>
     <button onclick="doLogout()" style="width:100%;padding:10px;background:#DC2626;color:#fff;font-weight:600;border:none;border-radius:6px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'";
       color:#FCA5A5;border:1px solid rgba(220,38,38,0.3);border-radius:8px;
@@ -880,6 +891,28 @@ function getHolidays(){
 function _isMissingOut(r){ return ['clocked_in','on_break'].includes(r?.status) && !r.time_out && !!r.date && r.date < today(); }
 // v102: night diff on a >16h shift (likely AM/PM typo) is paid only once the record is approved
 function _ndPay(r, c){ return (c && c.long && r?.approval_status!=='approved') ? 0 : (c?.nd||0); }
+// v107: absences = past days in the period with NO attendance record, excluding scheduled
+// rest days, holidays, approved leave and days before the hire date (same rule as the
+// attendance calendar's red "Absent" chips). Explicit 'Absent' records always count.
+// endStr is inclusive. Returns the list of dates.
+function _lastDayOfMonth(ym){ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
+function _absenceDates(eid, recs, startStr, endStr){
+  const emp=(load(KEYS.employees)||{})[eid]||{};
+  const lv=((load(KEYS.leaves)||{})[eid]||[]).filter(l=>l.status==='Approved'&&l.start_date&&l.end_date);
+  const hasRec=new Set((recs||[]).filter(r=>r.status!=='Absent').map(r=>r.date));
+  const explicit=new Set((recs||[]).filter(r=>r.status==='Absent').map(r=>r.date));
+  const tdy=today(), out=[];
+  const d=new Date(startStr+'T00:00:00'), end=new Date(endStr+'T00:00:00');
+  while(d<=end){
+    const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if(ds>=tdy) break;
+    if(!hasRec.has(ds) && (explicit.has(ds) || (!isRestDayDate(ds,eid) && !isHoliday(ds) &&
+       !(emp.date_hired && ds<emp.date_hired) && !lv.some(l=>l.start_date<=ds&&ds<=l.end_date)))) out.push(ds);
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
+function _absText(list){ return list.length ? `${list.length} day(s) — ${list.map(x=>x.slice(5).replace('-','/')).join(', ')}` : 'None'; }
 function _isWorkedRec(r){ return (['Present','Late','clocked_in'].includes(r?.status) && !_isMissingOut(r)) || (r?.status==='clocked_out' && !!r.time_in); }
 function isHoliday(date){
   const hols = getHolidays();
@@ -1323,6 +1356,7 @@ async function doLogin(){
 function isOwnerRole(r){ return r==='owner'||r==='dev'; }
 
 function _finishLogin(){
+  { const _sm=document.getElementById('sendToMainBtn'); if(_sm) _sm.style.display = (currentRole==='owner'||currentRole==='dev') ? 'none' : ''; } // v104
   document.body.classList.add('logged-in'); _recordActivity(); // v100: enables inactivity auto-logout
   document.getElementById('loginScreen').style.display='none';
   const rb = document.getElementById('roleBadge');
@@ -1958,11 +1992,7 @@ function to12h(t){
 }
 function nextId(data,prefix=''){ const nums=Object.keys(data).map(k=>parseInt(k.replace(prefix,''))).filter(n=>!isNaN(n)); return prefix+String(nums.length?Math.max(...nums)+1:1).padStart(3,'0'); }
 function fmt(n){ return '₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
-function formatEmpId(eid, branch=''){
-  const b = branch || getBranch() || '';
-  const code = b.replace(/\D/g, '').slice(-3) || '001';
-  return `BR${code}-${eid}`;
-}
+function formatEmpId(eid, branch=''){ return eid; } // v105: show plain ID (e.g. PRE-001) — the BR001- prefix only added noise
 async function getBranchUUID(branchName){
   if(!_sb) return null;
   const {data} = await _sb.from('branches').select('id').eq('name', branchName).single();
@@ -2945,7 +2975,7 @@ async function renderAttCalendar(){
     const attMap = await _attRangeData(_attFmt(days[0]), _attFmt(days[6]));
     const title = `${MONTHS[days[0].getMonth()]} ${days[0].getDate()} – ${MONTHS[days[6].getMonth()]} ${days[6].getDate()}, ${days[6].getFullYear()}`;
     html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">${navBtn(-1,'‹')}<b style="font-size:14px">${title}</b>${navBtn(1,'›')}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">` +
+      <div class="att-week" style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px">` +
       days.map((dd,i) => {
         const ds = _attFmt(dd), isSel = ds === sel, isToday = ds === tdy;
         return `<div onclick="attPick('${ds}')" style="cursor:pointer;text-align:center;padding:10px 4px;border-radius:10px;border:1.5px solid ${isSel?'var(--navy)':'var(--border)'};background:${isSel?'var(--navy)':(isToday?'var(--sky)':'#fff')};color:${isSel?'#fff':'#333'}">
@@ -4433,6 +4463,32 @@ async function deleteLoan(eid,idx){
 // PAYROLL
 // ══════════════════════════════════════════════════════════════════════════════
 let _payrollData=[];
+// v105: phone-friendly payroll — one card per employee (full table stays on desktop)
+function _renderPayCards(month){
+  const box = document.getElementById('payCards'); if(!box) return;
+  if(!_payrollData.length){ box.innerHTML='<div style="text-align:center;color:#888;padding:20px">No active employees</div>'; return; }
+  const chip = (lbl,v,c)=> v>0 ? `<span style="background:${c}1A;color:${c};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">${lbl} ${fmt(v)}</span>` : '';
+  const _tot=_payrollData.reduce((a,p)=>a+(p.net||0),0);
+  box.innerHTML = `<div style="background:var(--navy);color:#fff;border-radius:14px;padding:14px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:13px;opacity:.85">Total take-home · ${_payrollData.length} employee(s)</span><b style="font-size:18px">${fmt(_tot)}</b></div>` + _payrollData.map(p=>`
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div><div style="font-weight:700;font-size:15px">${_esc(p.name)}</div>
+          <div style="font-size:12px;color:#888">${p.eid} · ${p.days_worked} days${p.absent_dates?.length?` · <span style="color:#DC2626;font-weight:700">${p.absent_dates.length} absent</span>`:''} · ${fmt(p.dailyRate)}/day</div></div>
+        <div style="text-align:right"><div style="font-size:11px;color:#888">Take-home</div>
+          <div style="font-weight:800;font-size:18px;color:#16a34a">${fmt(p.net)}</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0">
+        ${chip('OT',p.otPay,'#2563EB')}${chip('Holiday',(p.regHolPay||0)+(p.speHolPay||0)+(p.unworkedRegHolPay||0),'#DC2626')}${chip('Rest day',p.restDayPay,'#7C3AED')}${chip('Allowance',p.totalAllow,'#0F766E')}${chip('Late',p.lateDeduction,'#B45309')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;background:#F8FAFC;border-radius:10px;padding:8px 10px">
+        <span style="color:#666">Gross pay</span><b style="text-align:right">${fmt(p.gross)}</b>
+        <span style="color:#666">Deductions</span><b style="text-align:right;color:#DC2626">− ${fmt(p.appliedDeductions ?? p.totalDeductions)}</b>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="openPayslipGenerator('${p.eid}','${month}')">📋 Make payslip</button>
+    </div>`).join('');
+}
+
 async function showPayroll(){
   const now=new Date();
   const defMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -4448,9 +4504,10 @@ async function showPayroll(){
       </div>
     </div>
     
-    <div class="table-wrap"><div class="table-scroll">
+    <div id="payCards" class="pay-cards"></div>
+    <div class="table-wrap pay-table"><div class="table-scroll">
       <table><thead><tr>
-        <th>ID</th><th>Name</th><th>Branch</th><th>Daily Rate</th><th>Days Worked</th><th>Gross</th>
+        <th>ID</th><th>Name</th><th>Branch</th><th>Daily Rate</th><th>Days Worked</th><th>Absences</th><th>Gross</th>
         <th>OT Pay</th><th>Night Diff</th><th>Late Ded.</th><th>Holiday Pay</th><th>Rest Day</th><th>Allowances</th>
         <th>SSS</th><th>PhilHealth</th><th>Pag-IBIG</th><th>Tax</th><th>Loan</th><th>Total Ded.</th><th>Net Pay</th><th>Actions</th>
       </tr></thead><tbody id="payBody"></tbody></table>
@@ -4577,10 +4634,10 @@ async function computePayroll(){
     const totalAllow = totalAllowances(allowances);
     _payrollData.push({eid, name:e.name, branch:e.branch||'—', ...pay, days_worked:dw,
       ot_hours:otHours, nd_hours:ndHours, reg_hol:regHolDays, spe_hol:speHolDays,
-      rest_day_days:restDayDays, rest_day_ot:restDayOT});
+      rest_day_days:restDayDays, rest_day_ot:restDayOT, absent_dates:_absenceDates(eid, recs, month+'-01', _lastDayOfMonth(month))}); // v107
     return `<tr>
       <td>${formatEmpId(eid, emps[eid]?.branch || getBranch())}</td><td><b>${_esc(e.name)}</b></td><td>${e.branch||'—'}</td>
-      <td>${fmt(rate)}/day</td><td>${dw} days</td>
+      <td>${fmt(rate)}/day</td><td>${dw} days</td><td>${(()=>{const a=_payrollData[_payrollData.length-1].absent_dates;return a.length?`<span style="color:var(--red);font-weight:700" title="${a.join(', ')}">${a.length}</span>`:'0';})()}</td>
       <td>${fmt(pay.gross)}</td>
       <td>${otHours>0?`<span style="color:var(--blue);font-weight:700">${fmt(pay.otPay)}</span>`:'—'}</td>
       <td>${ndHours>0?`<span style="color:var(--purple);font-weight:700">${fmt(pay.ndPay)}</span>`:'—'}</td>
@@ -4593,9 +4650,10 @@ async function computePayroll(){
       <td>${fmt(pay.totalDeductions)}</td><td><b style="color:var(--green)">${fmt(pay.net)}</b></td>
       <td><button class="btn btn-primary btn-sm" onclick="openPayslipGenerator('${eid}','${month}')">📋 Generate</button></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="20" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
+  }).join('')||`<tr><td colspan="21" style="text-align:center;padding:20px;color:#555">No active employees</td></tr>`;
   const payBody = document.getElementById('payBody');
   if(payBody) payBody.innerHTML=rows;
+  try{ _renderPayCards(month); }catch(e){ console.warn('[payCards]', e); } // v105
 }
 
 async function showPayslip(empId, month, startDate, endDate){
@@ -4824,6 +4882,7 @@ async function showPayslip(empId, month, startDate, endDate){
   }
   
   Object.assign(pay, {restDayPay, restDayDays, unworkedRegHolPay, unworkedRegHolDays, allowPay}); // v100: full_month branch lacked rest-day fields
+  const _absList = _absenceDates(empId, attRecords, startDate, endDate); // v107
   pay.totalDeductions = pay.sss + pay.ph + pay.pi + pay.tax + pay.loanDeduction + (pay.lateDeduction||0);
   // v88: same negative-net guard as computeNetPay (bulk Payroll register) —
   // never deduct more than the period's gross can cover. The payslip HTML
@@ -4851,6 +4910,7 @@ async function showPayslip(empId, month, startDate, endDate){
         <div style="font-weight:700;font-size:12px;margin-bottom:10px;text-transform:uppercase;color:#333">Period Details</div>
         <div style="font-weight:700;font-size:13px">Days Worked: <span style="color:#2563eb">${pay.daysWorked.toFixed(1)}</span> days</div>
         <div style="font-size:12px;color:#666;margin-top:5px">Period: ${startDate} to ${endDate}</div>
+        <div style="font-size:13px;margin-top:6px">Absences: <b style="color:${_absList.length?'#DC2626':'#16a34a'}">${_absText(_absList)}</b></div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
         <tr style="border-bottom:2px solid #333"><td style="padding:10px;font-weight:700">EARNINGS</td><td style="padding:10px;text-align:right;font-weight:700">AMOUNT</td></tr>
@@ -5207,6 +5267,7 @@ async function generatePayslipBatch(period){
     const _wdB = new Set(attRecords.filter(_isWorkedRec).map(r=>r.date));
     const _unwRH = getHolidays().filter(h=>h.type==='RH'&&h.date>=startDate&&h.date<endDate&&!_wdB.has(h.date)).length; // endDate is exclusive here
     const _half = period==='first_half'||period==='second_half';
+    const _absB = _absenceDates(empId, attRecords, startDate, (()=>{const x=new Date(endDate+'T00:00:00');x.setDate(x.getDate()-1);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;})()); // v107
     const _allowArg = _half ? {other: totalAllowances(allowances)/2} : allowances;
     const _x = computeNetPay(rate, daysWorked, daysAbsent, daysHalfDay, _half?0:loanDed, _ot, _nd, {regular:regHolDays, special:speHolDays}, _allowArg, _late, {regHol:_otRH,speHol:_otSH,restDay:_otRD}, _unwRH, _rdDays);
 
@@ -5239,6 +5300,7 @@ async function generatePayslipBatch(period){
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:15px">
           <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Days Worked</td><td style="text-align:right">${daysWorked.toFixed(1)}</td></tr>
+          <tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Absences</td><td style="text-align:right;color:${_absB.length?'#DC2626':'#16a34a'}">${_absText(_absB)}</td></tr>
           ${pay.holidayPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Holiday Pay${pay.regHolDays>0?` (${pay.regHolDays} Regular)`:''}${pay.speHolDays>0?` (${pay.speHolDays} Special)`:''}</td><td style="text-align:right">${fmt(pay.holidayPay)}</td></tr>` : ''}
           ${pay.restDayPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Rest Day Pay${pay.restDayDays>0?` (${pay.restDayDays} day(s) worked)`:''}</td><td style="text-align:right">${fmt(pay.restDayPay)}</td></tr>` : ''}
           ${pay.otPay > 0 ? `<tr style="border-bottom:1px solid #ddd"><td style="padding:8px">Overtime Pay</td><td style="text-align:right">${fmt(pay.otPay)}</td></tr>` : ''}
@@ -6898,7 +6960,7 @@ document.addEventListener('keydown',e=>{
   if(e.ctrlKey&&e.key==='r') e.preventDefault();
 });
 document.addEventListener('visibilitychange',()=>{
-  document.title=document.hidden?'⚠ Return to Dental City Payroll':((getBranch()||'Dental City Payroll')+' System');
+  document.title=document.hidden?'⚠ Return to Dental City Payroll':((currentPage?currentPage+' — ':'')+'Dental City Payroll'); // v104
 });
 
 // ── SETUP HELP ────────────────────────────────────────────────────────────────
@@ -7979,19 +8041,19 @@ async function showOwnerApprovals(){
       const _bn = {};
       try{ const {data:bs} = await _sb.from('branches').select('id,name'); (bs||[]).forEach(b=>_bn[b.id]=b.name); }catch(_e){}
       (data||[]).forEach(r=>{
-        const {ot} = computeOT(_timeOnly(r.time_in), _timeOnly(r.time_out));
+        const _c = computeOT(_timeOnly(r.time_in), _timeOnly(r.time_out)), ot=_c.ot;
         if(ot>0) pendingOT.push({id:r.id, eid:r.employee_id, branch:_bn[r.branch_id]||'—', date:r.date,
-          tin:_timeOnly(r.time_in)||'—', tout:_timeOnly(r.time_out)||'—', ot});
+          tin:to12h(r.time_in), tout:to12h(r.time_out), ot, long:_c.long}); // v104: 12h display + long-shift flag
       });
     }catch(e){ console.warn('OT approvals fetch failed:', e.message); }
   }
   const otRows = pendingOT.length ? pendingOT.map(o=>`
     <tr>
-      <td><b>${o.eid}</b></td>
+      <td><b>${_esc((load(KEYS.employees)||{})[o.eid]?.name||o.eid)}</b><div style="font-size:11px;color:#888">${o.eid}</div></td>
       <td><span class="badge badge-blue">${_esc(o.branch)}</span></td>
       <td>${o.date}</td>
       <td style="text-align:center">${o.tin} → ${o.tout}</td>
-      <td style="text-align:center;font-weight:700;color:#D97706">${o.ot} h</td>
+      <td style="text-align:center;font-weight:700;color:#D97706">${o.ot} h${o.long?'<div style="font-size:11px;color:#DC2626">⚠ over 16 hrs — check AM/PM</div>':''}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-success btn-sm" onclick="setOTApproval('${o.id}','approved')">✅ Approve OT</button>
@@ -9428,13 +9490,27 @@ function updateBackupBadge(){
   });
 }
 
+// v106: manual backup/transfer tools (were loose buttons at the bottom of the side menu)
+function _backupToolsHTML(){
+  const b=(lbl,js,warn)=>`<button class="btn btn-sm ${warn?'btn-secondary':'btn-primary'}" style="flex:1 1 45%" onclick="${js}">${lbl}</button>`;
+  return `<div style="margin-bottom:14px;padding:12px;border:1.5px dashed var(--border);border-radius:10px">
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px">Manual tools</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${b('💾 Download backup now','exportBackup()')}
+      ${b('👥 Export employees','exportEmployeesForBranch()')}
+      ${b('📂 Restore from a backup file…',"_confirm('Restore will REPLACE this branch\\'s data with the file you pick. Continue?',{ok:'Choose file',danger:true}).then(ok=>ok&&document.getElementById('sbImportBackup').click())",1)}
+      ${b('📥 Import employees file…',"document.getElementById('sbImportEmps').click()",1)}
+      ${!isOwner()?b('📤 Send to Main Branch','sendToMain()',1):''}
+      ${currentRole==='dev'?b('☁️ Restore from Cloud','showCloudBackups()',1):''}
+    </div></div>`;
+}
 function showBackupManager(){
   const lastDa = localStorage.getItem('backup_last_daily');
   const lastBm = localStorage.getItem('backup_last_bimonthly');
   const lastMo = localStorage.getItem('backup_last_monthly');
   const fmtDate = d => d ? new Date(d).toLocaleString('en-PH') : 'Never';
 
-  openModal('💾 Backup Manager', `
+  openModal('💾 Backup Manager', _backupToolsHTML() + `
     <div style="margin-bottom:14px;padding:12px;background:var(--sky);border-radius:10px;font-size:12px;color:#555">
       Backups download a CSV of employees, recent attendance &amp; loans. 
       A 🔴 badge on the Backup menu means a backup is due — no more auto-downloads!<br>
@@ -9483,7 +9559,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v103';
+    const _SW_VER = 'dcpayroll-v107';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
@@ -9587,6 +9663,39 @@ function showUpdateBanner(newSW){
     try{ if(newSW && (newSW.state === 'installed' || newSW.state === 'waiting')) newSW.postMessage({type:'SKIP_WAITING'}); }catch(e){}
     setTimeout(()=>window.location.reload(), 300);
   });
+}
+
+// v106: iPhone/iPad never fire 'beforeinstallprompt', so there was no install option at all.
+// Show an "Install App" button with Add-to-Home-Screen steps on iOS (when not already installed).
+function _isIOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }
+function _isStandalone(){ return window.navigator.standalone===true || matchMedia('(display-mode: standalone)').matches; }
+function showIOSInstallHelp(){
+  const inSafari = /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|GSA/.test(navigator.userAgent);
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100000;display:flex;align-items:flex-end;justify-content:center';
+  el.innerHTML=`<div style="background:#fff;width:100%;max-width:420px;border-radius:18px 18px 0 0;padding:20px 20px 28px;font-size:15px;color:#1D1D1F">
+    <div style="font-weight:800;font-size:18px;margin-bottom:12px">📲 Install DC Payroll</div>
+    ${inSafari?'':'<div style="background:#FEF3C7;border-radius:10px;padding:10px;margin-bottom:12px;font-size:13px">If you don\'t see <b>Add to Home Screen</b>, open this page in <b>Safari</b> (copy the link, paste it in Safari).</div>'}
+    <ol style="padding-left:20px;line-height:1.9;margin:0 0 14px">
+      <li>Tap the <b>Share</b> button <span style="font-size:18px">⬆️</span> (bottom of iPhone, top-right on iPad)</li>
+      <li>Scroll down, tap <b>Add to Home Screen</b> ➕</li>
+      <li>Tap <b>Add</b>. The app icon appears on your home screen.</li>
+    </ol>
+    <button style="width:100%;padding:12px;border:none;border-radius:12px;background:#1A3C5E;color:#fff;font-weight:700;font-size:15px">Got it</button></div>`;
+  el.onclick=e=>{ if(e.target===el||e.target.tagName==='BUTTON') el.remove(); };
+  document.body.appendChild(el);
+}
+if(_isIOS() && !_isStandalone()){
+  const _addIOSBtn=()=>{
+    const mk=(id,css)=>{ if(document.getElementById(id)) return; const b=document.createElement('button'); b.id=id; b.type='button'; b.innerHTML='📲 Install App'; b.style.cssText=css; b.onclick=showIOSInstallHelp; return b; };
+    const ls=document.getElementById('loginScreen');
+    const b1=mk('iosInstallLogin','position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600');
+    if(ls&&b1) ls.appendChild(b1);
+    const f=document.querySelector('.sidebar-footer');
+    const b2=mk('iosInstallSide','background:rgba(183,134,11,0.85);color:#fff;width:100%;margin-bottom:6px;font-size:12px;padding:8px;border:none;border-radius:10px');
+    if(f&&b2) f.prepend(b2);
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_addIOSBtn); else _addIOSBtn();
 }
 
 // ── PWA Install prompt ────────────────────────────────────────────────────────
