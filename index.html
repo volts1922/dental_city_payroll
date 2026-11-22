@@ -5154,8 +5154,12 @@ function openPayslipGenerator(empId, month){
 async function downloadPayslipPDF(empId, month, period){
   const emps = load(KEYS.employees);
   const emp = emps[empId];
-  const periodLabel = period === 'first_half' ? '1st Half' : period === 'second_half' ? '2nd Half' : 'Full Month';
-  const fileName = `Payslip_${formatEmpId(empId, emp.branch)}_${month}_${periodLabel}.pdf`;
+  // v109: the button passes (startDate, endDate) — the old code read them as (month, period),
+  // so every file was named "..._2026-10-01_Full Month.pdf" even for a 1st-half slip.
+  const _isD = x => /^\d{4}-\d{2}-\d{2}$/.test(x||'');
+  const periodLabel = _isD(period) ? `${month}_to_${period}` : (period === 'first_half' ? `${month}_1st-Half` : period === 'second_half' ? `${month}_2nd-Half` : `${month}_Full-Month`);
+  const _nm = String(emp?.name||'').trim().replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  const fileName = `Payslip_${empId}${_nm?'_'+_nm:''}_${periodLabel}.pdf`;
   
   // Load html2pdf from CDN
   const script = document.createElement('script');
@@ -9562,7 +9566,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v108';
+    const _SW_VER = 'dcpayroll-v109';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
