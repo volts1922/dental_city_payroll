@@ -207,7 +207,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 .pay-cards{display:none}
 @media(max-width:600px){.pay-cards{display:grid;gap:10px;margin-bottom:12px}.pay-table{display:none!important}
 .att-week{gap:3px!important}.att-week>div{min-width:0;padding-left:2px!important;padding-right:2px!important}
-.att-week>div *{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-sizing:border-box}.att-week>div span,.att-week>div div{font-size:10px}}</style>
+.att-week>div *{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-sizing:border-box}.att-week>div span,.att-week>div div{font-size:10px}}
+/* v108: payslips readable on phones (amount column was pushed off-screen) */
+.payslip-doc table{display:table!important;width:100%!important}.payslip-doc td,.payslip-doc th{white-space:normal!important}
+@media(max-width:600px){.payslip-doc{padding:16px!important}.payslip-doc td,.payslip-doc th{padding:8px 6px!important;font-size:12px!important}}</style>
 </head>
 <body>
 
@@ -4895,7 +4898,7 @@ async function showPayslip(empId, month, startDate, endDate){
   pay.net = Math.round((pay.gross - pay.appliedDeductions)*100)/100;
   
   const payslipHTML = `
-    <div style="max-width:800px;margin:0 auto;background:#fff;padding:40px;font-family:'Arial',sans-serif">
+    <div class="payslip-doc" style="max-width:800px;margin:0 auto;background:#fff;padding:40px;font-family:'Arial',sans-serif">
       <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #333;padding-bottom:20px">
         <div style="font-size:24px;font-weight:700;color:#1a1a1a">DENTAL CITY PAYROLL</div>
         <div style="font-size:14px;color:#555">${monthName} — ${periodLabel}</div>
@@ -5287,7 +5290,7 @@ async function generatePayslipBatch(period){
     const monthName = new Date(year, monthNum - 1).toLocaleString('default', {month:'long', year:'numeric'});
     
     allPayslipsHTML += `
-      <div style="page-break-after:always;padding:40px;border:1px solid #ddd;margin-bottom:20px">
+      <div class="payslip-doc" style="page-break-after:always;padding:40px;border:1px solid #ddd;margin-bottom:20px">
         <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #333;padding-bottom:15px">
           <div style="font-size:20px;font-weight:700">DENTAL CITY PAYROLL</div>
           <div style="font-size:12px;color:#555">${monthName} — ${periodLabel}</div>
@@ -9559,7 +9562,7 @@ else setSyncBar('syncing','☁ Supabase ready');
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     // ?v= busts GitHub Pages cache so browser always fetches latest sw.js
-    const _SW_VER = 'dcpayroll-v107';
+    const _SW_VER = 'dcpayroll-v108';
     navigator.serviceWorker.register('./sw.js?v='+_SW_VER).then(reg=>{
       console.log('[PWA] ✅ Service worker ready');
 
